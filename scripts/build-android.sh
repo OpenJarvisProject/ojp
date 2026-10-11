@@ -24,6 +24,7 @@ OUT=ojp-android/build
 ABIS=${OJP_ABIS:-arm64-v8a}
 targets=()
 for abi in $ABIS; do targets+=(-t "$abi"); done
+rm -rf "$OUT-jni"
 cargo ndk "${targets[@]}" -P 26 -o "$OUT-jni" build --release -p ojp-android
 
 rm -rf "$OUT" && mkdir -p "$OUT"/{classes,dex}
