@@ -37,6 +37,17 @@ n_ctx = 4096
 # Prompt format of the models: chatml (Qwen and most others), llama3,
 # mistral, gemma, phi3.
 chat_template = "chatml"
+
+[download]
+# Where the app fetches a model whose file above is missing (first run:
+# the "Download" button). Each is verified against its SHA-256 before use.
+# Bigger main model for desktops with a GPU (2.1 GB):
+#   main = "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf"
+#   main_sha256 = "626b4a6678b86442240e33df819e00132d3ba7dddfe1cdc4fbb18e0a9615c62d"
+router = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+router_sha256 = "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+main = "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+main_sha256 = "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e"
 "#;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -44,6 +55,7 @@ chat_template = "chatml"
 pub struct Config {
     pub persona: Persona,
     pub models: Models,
+    pub download: Download,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -71,9 +83,29 @@ pub struct Models {
 // DEFAULT_CONFIG: serde's container-level default calls Default::default()
 // while deserializing, so parsing inside default() recurses forever. A
 // test keeps them in sync with DEFAULT_CONFIG.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct Download {
+    pub router: Option<String>,
+    pub router_sha256: Option<String>,
+    pub main: Option<String>,
+    pub main_sha256: Option<String>,
+}
+
 impl Default for Config {
     fn default() -> Self {
-        Config { persona: Persona::default(), models: Models::default() }
+        Config { persona: Persona::default(), models: Models::default(), download: Download::default() }
+    }
+}
+
+impl Default for Download {
+    fn default() -> Self {
+        Download {
+            router: Some("https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf".into()),
+            router_sha256: Some("74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db".into()),
+            main: Some("https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf".into()),
+            main_sha256: Some("6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e".into()),
+        }
     }
 }
 
@@ -122,12 +154,30 @@ impl Config {
         }
         let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         let mut config: Config = toml::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
-        for model in [&mut config.models.router, &mut config.models.main].into_iter().flatten() {
+        config.resolve_paths(data_dir);
+        Ok(config)
+    }
+
+    /// Like `load_or_init`, but never fails: if the file can't be read or
+    /// parsed, use the defaults (still rooted in `data_dir`) and return a
+    /// warning for the UI to show instead of silently ignoring it.
+    pub fn load_or_default(path: &Path, data_dir: &Path) -> (Config, Option<String>) {
+        match Config::load_or_init(path, data_dir) {
+            Ok(config) => (config, None),
+            Err(e) => {
+                let mut config = Config::default();
+                config.resolve_paths(data_dir);
+                (config, Some(format!("Couldn't use the settings file ({e:#}), so default settings are in use.")))
+            }
+        }
+    }
+
+    fn resolve_paths(&mut self, data_dir: &Path) {
+        for model in [&mut self.models.router, &mut self.models.main].into_iter().flatten() {
             if model.is_relative() {
                 *model = data_dir.join(&*model);
             }
         }
-        Ok(config)
     }
 
     pub fn template(&self) -> Result<BuiltinTemplate> {
@@ -156,6 +206,18 @@ mod tests {
     }
 
     #[test]
+    fn unreadable_config_falls_back_to_defaults_under_data_dir() {
+        let dir = std::env::temp_dir().join("ojp-config-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "this is [not toml").unwrap();
+        let (config, warning) = Config::load_or_default(&path, Path::new("/data/ojp"));
+        assert!(warning.is_some());
+        assert_eq!(config.models.router.as_deref(), Some(Path::new("/data/ojp/models/router.gguf")));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn partial_file_keeps_other_defaults() {
         let c: Config = toml::from_str("[persona]\nname = \"Zelia\"\n").unwrap();
         assert_eq!(c.persona.name, "Zelia");
@@ -173,5 +235,8 @@ mod tests {
         assert_eq!((parsed.models.router, parsed.models.main), (m.router, m.main));
         assert_eq!((parsed.models.gpu_layers, parsed.models.n_ctx), (m.gpu_layers, m.n_ctx));
         assert_eq!(parsed.models.chat_template, m.chat_template);
+        let d = Download::default();
+        assert_eq!((parsed.download.router, parsed.download.router_sha256), (d.router, d.router_sha256));
+        assert_eq!((parsed.download.main, parsed.download.main_sha256), (d.main, d.main_sha256));
     }
 }

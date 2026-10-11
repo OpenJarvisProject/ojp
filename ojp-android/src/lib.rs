@@ -19,12 +19,12 @@ fn android_main(app: slint::android::AndroidApp) {
     slint::android::init(app).expect("slint android backend");
 
     let config_path = data_dir.join("config.toml");
-    let config = ojp_core::Config::load_or_init(&config_path, &data_dir).unwrap_or_default();
+    let (config, warning) = ojp_core::Config::load_or_default(&config_path, &data_dir);
     let hint = format!(
         "To get started, copy a GGUF model to {}/models/main.gguf (and optionally a small one to \
          models/router.gguf), e.g. with `adb push`, then restart the app. Settings are in {}.",
         data_dir.display(),
         config_path.display()
     );
-    glue::run(config, hint).expect("ui event loop");
+    glue::run(config, hint, warning).expect("ui event loop");
 }

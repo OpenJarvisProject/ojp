@@ -34,17 +34,29 @@ The persona (name, wake word, pronunciation, TTS voice) is plain config.
 
 ## Setup
 
-Config is created on first run with comments explaining every option:
+The installed app is called **OpenJarvis**. On first run it offers a
+**Download** button that fetches its models: a 0.5B router and a 1.5B
+main model, about 1.6 GB, from the official Qwen GGUF releases. Each file
+is verified against a pinned SHA-256, and interrupted downloads resume.
+After that, everything runs offline.
+
+- **Linux:** `scripts/install-linux.sh` installs the `openjarvis` command
+  and an "OpenJarvis" app-menu entry, both user-local.
+- **Android:** `scripts/build-android.sh` builds `ojp.apk`.
+
+Config is created on first run with comments explaining every option,
+including which models to download:
 
 - **Linux:** `~/.config/ojp/config.toml`, models in `~/.local/share/ojp/models/`
 - **Android:** `Android/data/org.openjarvisproject.ojp/files/` (`config.toml`, `models/`)
 
-Recommended models, Qwen2.5-Instruct GGUF:
+Models the Download button fetches, Qwen2.5-Instruct GGUF (swap them in
+`[download]`):
 
 | Role | File | Size |
 |---|---|---|
-| `models/router.gguf` | 0.5B, Q4_K_M + imatrix + q5_0 token embedding | 347 MB |
-| `models/main.gguf` | 1.5B Q4_K_M (phone) or 3B (desktop) | 1–2 GB |
+| `models/router.gguf` | 0.5B Q4_K_M | 491 MB |
+| `models/main.gguf` | 1.5B Q4_K_M (3B is in the config comments, for GPU desktops) | 1.1 GB |
 
 Measurements behind these picks are in
 [model-tooling/RESULTS.md](https://github.com/OpenJarvisProject/model-tooling/blob/main/RESULTS.md).
@@ -65,7 +77,7 @@ voice = "female"
 ```bash
 cargo build --release                 # desktop (x86_64, Vulkan GPU offload)
 cargo build --release -p ojp --no-default-features   # CPU-only
-./target/release/ojp                  # the app
+./target/release/openjarvis           # the app (scripts/install-linux.sh installs it)
 ./target/release/ojp-cli chat         # same engine in the terminal
 ```
 
@@ -83,7 +95,10 @@ aarch64 Linux and the Android APK: see `scripts/` and `ojp-android/android/`.
 | Feature | State |
 |---|---|
 | Typed chat, routing, device tools, fallbacks | done |
-| Android app, Digital assistant role | in progress |
+| In-app model download (resume, SHA-256 check) | done |
+| Prompt caching (router examples, chat history) | done |
+| Android app, Digital assistant role | done (emulator-verified) |
+| Rename the app to the assistant's name (e.g. Zelia) | planned |
 | Speech-to-text, text-to-speech (swappable voices), wake word ("hey zelia") | planned next |
 
 The old `ojp-cli route-eval` / benchmark harness is still in `ojp-core`.

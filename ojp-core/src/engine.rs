@@ -71,7 +71,7 @@ impl Engine {
                 }
             }
         };
-        let router_llm = load("router", &config.models.router);
+        let mut router_llm = load("router", &config.models.router);
         let main = match (&config.models.main_url, &config.models.main_model) {
             (Some(url), model) => {
                 let model = model.clone().unwrap_or_default();
@@ -85,6 +85,12 @@ impl Engine {
         }
 
         let template = config.template()?;
+        let router = Router::new(template);
+        // Warm the router's prompt cache now (during loading) so the first
+        // real message doesn't pay for evaluating the few-shot prompt.
+        if let Some(model) = router_llm.as_mut() {
+            let _ = router.classify(model, "hello");
+        }
         let name = &config.persona.name;
         let system_prompt = format!(
             "You are {name}, a helpful personal assistant running locally on the user's own device. \
@@ -93,7 +99,7 @@ impl Engine {
         Ok(Engine {
             router_llm,
             main,
-            router: Router::new(template),
+            router,
             template,
             history: Vec::new(),
             system_prompt,

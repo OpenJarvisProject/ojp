@@ -1,7 +1,7 @@
 // Shared chat UI for the desktop (ojp) and Android (ojp-android) apps.
 // Pure view: state lives in Rust and is pushed in through the `Chat`
 // global; user actions come back out through its callbacks.
-import { Button, LineEdit, ListView, Palette } from "std-widgets.slint";
+import { Button, LineEdit, ListView, Palette, ProgressIndicator } from "std-widgets.slint";
 
 export struct Message {
     from-user: bool,
@@ -19,6 +19,13 @@ export global Chat {
     in-out property <string> status;
     callback send(string);
     callback clear();
+
+    // First-run model download panel.
+    in-out property <bool> download-needed;
+    in-out property <string> download-text;
+    // 0..1 while downloading; negative when not running (shows the button).
+    in-out property <float> download-progress: -1;
+    callback download();
 }
 
 component Bubble inherits Rectangle {
@@ -45,7 +52,8 @@ component Bubble inherits Rectangle {
 }
 
 export component AppWindow inherits Window {
-    title: Chat.assistant-name;
+    // App name; the assistant's own name (persona) is shown in the header.
+    title: "OpenJarvis";
     preferred-width: 440px;
     preferred-height: 760px;
     background: Palette.background;
@@ -105,6 +113,33 @@ export component AppWindow inherits Window {
                 padding-top: 4px;
                 padding-bottom: 4px;
                 Bubble { message: message; }
+            }
+        }
+
+        if Chat.download-needed: HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-top: 4px;
+            vertical-stretch: 0;
+            Rectangle {
+                background: Palette.alternate-background;
+                border-radius: 14px;
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 10px;
+                    Text {
+                        text: Chat.download-text;
+                        wrap: word-wrap;
+                    }
+                    if Chat.download-progress >= 0: ProgressIndicator {
+                        progress: Chat.download-progress;
+                    }
+                    if Chat.download-progress < 0: Button {
+                        text: "Download";
+                        primary: true;
+                        clicked => { Chat.download(); }
+                    }
+                }
             }
         }
 

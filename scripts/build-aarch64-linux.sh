@@ -5,9 +5,9 @@
 #
 # Targets glibc 2.36 (Debian 12+) via cargo-zigbuild:
 #   cargo install cargo-zigbuild && pip install ziglang   (or install zig)
-# Output: target/aarch64-unknown-linux-gnu/release/{ojp,ojp-cli}
+# Output: target/aarch64-unknown-linux-gnu/release/{openjarvis,ojp-cli}
 set -euo pipefail
 cd "$(dirname "$0")/.."
 cargo zigbuild --release -p ojp -p ojp-core --no-default-features \
     --target aarch64-unknown-linux-gnu.2.36
-ls -lh target/aarch64-unknown-linux-gnu/release/{ojp,ojp-cli}
+ls -lh target/aarch64-unknown-linux-gnu/release/{openjarvis,ojp-cli}

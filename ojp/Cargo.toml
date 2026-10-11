@@ -4,6 +4,11 @@ description = "OpenJarvisProject desktop app (Linux)."
 version.workspace = true
 edition.workspace = true
 
+# Installed command is `openjarvis` (the crate keeps the short name).
+[[bin]]
+name = "openjarvis"
+path = "src/main.rs"
+
 [features]
 default = ["vulkan"]
 # GPU offload via Vulkan. Build with --no-default-features for CPU-only

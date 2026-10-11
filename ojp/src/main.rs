@@ -7,12 +7,12 @@ mod glue;
 
 fn main() -> anyhow::Result<()> {
     let (config_path, data_dir) = ojp_core::config::desktop_paths();
-    let config = ojp_core::Config::load_or_init(&config_path, &data_dir)?;
+    let (config, warning) = ojp_core::Config::load_or_default(&config_path, &data_dir);
     let hint = format!(
         "To get started, put a GGUF model at {}/models/main.gguf (and optionally a small one at \
          models/router.gguf), or point main_url at an Ollama/llama-server instance in {}.",
         data_dir.display(),
         config_path.display()
     );
-    glue::run(config, hint)
+    glue::run(config, hint, warning)
 }

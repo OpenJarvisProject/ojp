@@ -4,6 +4,7 @@
 //!   ojp-cli route-eval <model.gguf> [--dev]  score the router on fixed cases
 //!   ojp-cli chat [config.toml]               assistant REPL (default: the
 //!                                            desktop app's config)
+//!   ojp-cli download [config.toml]           fetch missing models
 use std::io::Write;
 
 use llama_crab::chat::BuiltinTemplate;
@@ -105,6 +106,21 @@ fn main() -> anyhow::Result<()> {
             let config_path = args.get(1).map_or(default_config, Into::into);
             let config = Config::load_or_init(&config_path, &data_dir)?;
             chat(&config)?;
+        }
+        Some("download") => {
+            let (default_config, data_dir) = ojp_core::config::desktop_paths();
+            let config_path = args.get(1).map_or(default_config, Into::into);
+            let config = Config::load_or_init(&config_path, &data_dir)?;
+            for item in ojp_core::download::missing(&config) {
+                let mut last = 0;
+                ojp_core::download::fetch(&item, &mut |done, total| {
+                    if done - last >= 50_000_000 || Some(done) == total {
+                        last = done;
+                        eprintln!("{}: {} / {:?} MB", item.role, done / 1_000_000, total.map(|t| t / 1_000_000));
+                    }
+                })?;
+                println!("{}: {}", item.role, item.dest.display());
+            }
         }
         Some("route-eval") => {
             let (model, cases): (&String, &[(&str, Route)]) = match args.as_slice() {
