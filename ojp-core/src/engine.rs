@@ -10,16 +10,17 @@
 //!   - device_control: a grammar-constrained tool call (tools.rs)
 //!   - a model file that is missing or fails to load is skipped with a
 //!     notice; only having no model at all is an error
-use std::path::Path;
 use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
 use llama_crab::chat::BuiltinTemplate;
+use llama_crab::chat::template::render_builtin;
 use llama_crab::high_level::completion::SamplingOptions;
-use llama_crab::{ChatMessage, CompletionOptions, Llama, LlamaParams, Role, StreamControl};
+use llama_crab::{ChatMessage, Role};
 use serde_json::{Value, json};
 
 use crate::config::Config;
+use crate::model::Model;
 use crate::router::{Route, Router};
 
 const MAX_TOKENS: usize = 512;
@@ -38,12 +39,12 @@ pub enum Event {
 }
 
 enum Main {
-    Local(Llama),
+    Local(Model),
     Remote { base_url: String, model: String },
 }
 
 pub struct Engine {
-    router_llm: Option<Llama>,
+    router_llm: Option<Model>,
     main: Option<Main>,
     router: Router,
     template: BuiltinTemplate,
@@ -53,26 +54,16 @@ pub struct Engine {
     pub status: Vec<String>,
 }
 
-fn load_model(path: &Path, config: &Config) -> Result<Llama> {
-    if !path.exists() {
-        bail!("{} not found", path.display());
-    }
-    let params = LlamaParams::new(path)
-        .with_n_ctx(config.models.n_ctx)
-        .with_n_gpu_layers(config.models.gpu_layers);
-    Llama::load(params).with_context(|| format!("loading {}", path.display()))
-}
-
 impl Engine {
     pub fn new(config: &Config) -> Result<Engine> {
         let mut status = Vec::new();
-        let mut load = |role: &str, path: &Option<std::path::PathBuf>| -> Option<Llama> {
+        let mut load = |role: &str, path: &Option<std::path::PathBuf>| -> Option<Model> {
             let path = path.as_ref()?;
-            match load_model(path, config) {
-                Ok(llama) => {
+            match Model::load(path, config.models.n_ctx, config.models.gpu_layers) {
+                Ok(model) => {
                     let name = path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into());
                     status.push(format!("{role}: {name}"));
-                    Some(llama)
+                    Some(model)
                 }
                 Err(e) => {
                     status.push(format!("{role}: skipped ({e:#})"));
@@ -134,7 +125,7 @@ impl Engine {
     fn route(&mut self, request: &str, on_event: &mut dyn FnMut(Event)) -> Route {
         let start = Instant::now();
         let classifier = match (&mut self.router_llm, &mut self.main) {
-            (Some(llama), _) | (None, Some(Main::Local(llama))) => llama,
+            (Some(model), _) | (None, Some(Main::Local(model))) => model,
             (None, _) => return Route::AnswerDirectly,
         };
         let route = match self.router.classify(classifier, request) {
@@ -152,11 +143,11 @@ impl Engine {
         if cfg!(target_os = "android") {
             return "Device control isn't available on Android yet.".into();
         }
-        let llama = match (&mut self.router_llm, &mut self.main) {
-            (Some(llama), _) | (None, Some(Main::Local(llama))) => llama,
+        let model = match (&mut self.router_llm, &mut self.main) {
+            (Some(model), _) | (None, Some(Main::Local(model))) => model,
             (None, _) => return "Device control needs a local model.".into(),
         };
-        crate::tools::handle(llama, self.template, request).unwrap_or_else(|e| format!("Couldn't do that: {e:#}"))
+        crate::tools::handle(model, self.template, request).unwrap_or_else(|e| format!("Couldn't do that: {e:#}"))
     }
 
     fn messages(&self) -> Vec<ChatMessage> {
@@ -169,37 +160,35 @@ impl Engine {
     fn answer(&mut self, on_event: &mut dyn FnMut(Event)) -> Result<String> {
         let messages = self.messages();
         let main_result = match &mut self.main {
-            Some(Main::Local(llama)) => Some(generate_local(llama, self.template, &messages, on_event)),
+            Some(Main::Local(model)) => Some(generate_local(model, self.template, &messages, on_event)),
             Some(Main::Remote { base_url, model }) => Some(generate_remote(base_url, model, &messages, on_event)),
             None => None,
         };
         match (main_result, &mut self.router_llm) {
             (Some(Ok(text)), _) => Ok(text),
-            (Some(Err(e)), Some(llama)) => {
+            (Some(Err(e)), Some(model)) => {
                 on_event(Event::Notice(format!("main model failed ({e:#}), using the router model")));
-                generate_local(llama, self.template, &messages, on_event)
+                generate_local(model, self.template, &messages, on_event)
             }
             (Some(Err(e)), None) => Err(e),
-            (None, Some(llama)) => generate_local(llama, self.template, &messages, on_event),
+            (None, Some(model)) => generate_local(model, self.template, &messages, on_event),
             (None, None) => unreachable!("Engine::new requires at least one model"),
         }
     }
 }
 
 fn generate_local(
-    llama: &mut Llama,
+    model: &mut Model,
     template: BuiltinTemplate,
     messages: &[ChatMessage],
     on_event: &mut dyn FnMut(Event),
 ) -> Result<String> {
-    let options = CompletionOptions { sampling: SamplingOptions::chat(), ..CompletionOptions::new(MAX_TOKENS) };
-    let reply = llama.create_chat_completion_stream_with(messages, template, &[], options, |chunk| {
-        if !chunk.text.is_empty() {
-            on_event(Event::Token(chunk.text));
-        }
-        StreamControl::Continue
-    })?;
-    Ok(reply.content)
+    // The rendered history only grows at the end between turns, so the
+    // prompt cache makes each turn evaluate just the newest messages.
+    let prompt = render_builtin(template, messages, &[], true);
+    let mut sampler = SamplingOptions::chat().build_sampler(model.llama())?;
+    let text = model.complete(&prompt, &mut sampler, MAX_TOKENS, &mut |t| on_event(Event::Token(t.to_string())))?;
+    Ok(text.trim().to_string())
 }
 
 /// Non-streaming OpenAI-compatible chat completion.

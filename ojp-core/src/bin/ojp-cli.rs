@@ -41,6 +41,11 @@ fn load(model_path: &str) -> anyhow::Result<Llama> {
     Ok(Llama::load(params)?)
 }
 
+/// Same env knobs as `load`, through ojp-core's prompt-caching Model.
+fn load_cached(model_path: &str) -> anyhow::Result<ojp_core::model::Model> {
+    ojp_core::model::Model::load(model_path.as_ref(), env_or("OJP_N_CTX", 2048), env_or("OJP_GPU_LAYERS", 0))
+}
+
 /// Dev set: for iterating on the router prompt. Disjoint from the test
 /// set below, which is only used to report results, never to tune.
 const DEV_CASES: [(&str, Route); 24] = [
@@ -91,8 +96,8 @@ fn main() -> anyhow::Result<()> {
             let [_, model, request] = args.as_slice() else {
                 anyhow::bail!("usage: ojp-core route <model.gguf> \"<request>\"");
             };
-            let mut llama = load(model)?;
-            let d = Router::new(BuiltinTemplate::ChatMl).classify(&mut llama, request)?;
+            let mut model = load_cached(model)?;
+            let d = Router::new(BuiltinTemplate::ChatMl).classify(&mut model, request)?;
             println!("{} ({} ms)", d.route.label(), d.elapsed.as_millis());
         }
         Some("chat") => {
@@ -107,11 +112,11 @@ fn main() -> anyhow::Result<()> {
                 [_, model, flag] if flag == "--dev" => (model, &DEV_CASES),
                 _ => anyhow::bail!("usage: ojp-core route-eval <model.gguf> [--dev]"),
             };
-            let mut llama = load(model)?;
+            let mut model = load_cached(model)?;
             let router = Router::new(BuiltinTemplate::ChatMl);
             let (mut passed, mut total_ms) = (0, 0);
             for &(request, expected) in cases {
-                let d = match router.classify(&mut llama, request) {
+                let d = match router.classify(&mut model, request) {
                     Ok(d) => d,
                     Err(e) => {
                         println!("FAIL  {e:#}  (want {}) {request}", expected.label());

@@ -7,7 +7,9 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use llama_crab::chat::template::{BuiltinTemplate, render_builtin};
-use llama_crab::{ChatMessage, CompletionOptions, Llama, LlamaSampler, Role};
+use llama_crab::{ChatMessage, LlamaSampler, Role};
+
+use crate::model::Model;
 
 /// Kept identical to model-tooling's agent_tests.py ROUTER_SYSTEM so the
 /// constrained in-process router and the unconstrained llama-server
@@ -81,7 +83,7 @@ impl Router {
         Router { grammar, template }
     }
 
-    pub fn classify(&self, llama: &mut Llama, request: &str) -> Result<Decision> {
+    pub fn classify(&self, model: &mut Model, request: &str) -> Result<Decision> {
         let start = Instant::now();
         let mut messages = vec![ChatMessage::new(Role::System, SYSTEM_PROMPT)];
         // Few-shot is the default: on the dev set it lifted 0.5B from 6/24
@@ -106,16 +108,17 @@ impl Router {
         let unconstrained = std::env::var("OJP_ROUTER_NO_GRAMMAR").is_ok_and(|v| v == "1");
         if !unconstrained {
             stages.push(
-                unsafe { LlamaSampler::grammar(llama.model(), &self.grammar, "root") }
+                unsafe { LlamaSampler::grammar(model.llama().model(), &self.grammar, "root") }
                     .context("router grammar rejected")?,
             );
         }
         stages.push(LlamaSampler::greedy().context("greedy sampler")?);
         let mut sampler = LlamaSampler::chain(stages, true).context("sampler chain")?;
 
-        let options = CompletionOptions::new(if unconstrained { 32 } else { 8 });
-        let completion = llama.create_completion_with_sampler(&prompt, options, &mut sampler)?;
-        let label = completion.text.trim();
+        // The system prompt and few-shot turns are identical every time, so
+        // after the first request only the user's message is evaluated.
+        let text = model.complete(&prompt, &mut sampler, if unconstrained { 32 } else { 8 }, &mut |_| {})?;
+        let label = text.trim();
         if unconstrained {
             eprintln!("raw: {label:?}");
         }

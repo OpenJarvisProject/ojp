@@ -6,6 +6,7 @@
 //! degrades gracefully instead of taking the rest down; see engine.rs.
 pub mod config;
 pub mod engine;
+pub mod model;
 pub mod router;
 pub mod tools;
 
