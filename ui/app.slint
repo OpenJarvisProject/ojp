@@ -1,0 +1,121 @@
+// Shared chat UI for the desktop (ojp) and Android (ojp-android) apps.
+// Pure view: state lives in Rust and is pushed in through the `Chat`
+// global; user actions come back out through its callbacks.
+import { Button, LineEdit, ListView, Palette } from "std-widgets.slint";
+
+export struct Message {
+    from-user: bool,
+    text: string,
+    // Small grey line under a reply: route, timing, notices.
+    meta: string,
+}
+
+export global Chat {
+    in-out property <string> assistant-name: "Jarvis";
+    in-out property <[Message]> messages;
+    // True while a reply is being generated; input is disabled meanwhile.
+    in-out property <bool> busy;
+    // One-line status under the header (models loaded, errors).
+    in-out property <string> status;
+    callback send(string);
+    callback clear();
+}
+
+component Bubble inherits Rectangle {
+    in property <Message> message;
+    background: message.from-user ? Palette.accent-background : Palette.alternate-background;
+    border-radius: 14px;
+
+    VerticalLayout {
+        padding: 10px;
+        spacing: 4px;
+        Text {
+            text: message.text;
+            wrap: word-wrap;
+            color: message.from-user ? Palette.accent-foreground : Palette.foreground;
+        }
+        if message.meta != "": Text {
+            text: message.meta;
+            wrap: word-wrap;
+            font-size: 0.8rem;
+            color: message.from-user ? Palette.accent-foreground : Palette.foreground;
+            opacity: 0.6;
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: Chat.assistant-name;
+    preferred-width: 440px;
+    preferred-height: 760px;
+    background: Palette.background;
+
+    function submit() {
+        if (input.text != "" && !Chat.busy) {
+            Chat.send(input.text);
+            input.text = "";
+        }
+    }
+
+    VerticalLayout {
+        HorizontalLayout {
+            padding: 12px;
+            spacing: 8px;
+            vertical-stretch: 0;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                Text {
+                    text: Chat.assistant-name;
+                    font-size: 1.4rem;
+                    font-weight: 700;
+                }
+                if Chat.status != "": Text {
+                    text: Chat.status;
+                    font-size: 0.8rem;
+                    opacity: 0.6;
+                    overflow: elide;
+                }
+            }
+            Button {
+                text: "New chat";
+                enabled: !Chat.busy;
+                clicked => { Chat.clear(); }
+            }
+        }
+
+        list := ListView {
+            vertical-stretch: 1;
+            // Keep the newest message in view as replies stream in.
+            changed content-height => {
+                self.content-y = min(0px, self.visible-height - self.content-height);
+            }
+            for message in Chat.messages: HorizontalLayout {
+                // Indent from the opposite side so user and assistant
+                // messages read as two columns.
+                padding-left: message.from-user ? 56px : 12px;
+                padding-right: message.from-user ? 12px : 56px;
+                padding-top: 4px;
+                padding-bottom: 4px;
+                Bubble { message: message; }
+            }
+        }
+
+        HorizontalLayout {
+            padding: 10px;
+            spacing: 8px;
+            vertical-stretch: 0;
+            input := LineEdit {
+                horizontal-stretch: 1;
+                placeholder-text: "Message " + Chat.assistant-name;
+                enabled: !Chat.busy;
+                accepted => { root.submit(); }
+            }
+            Button {
+                text: "Send";
+                enabled: !Chat.busy && input.text != "";
+                clicked => { root.submit(); }
+            }
+        }
+    }
+}

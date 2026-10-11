@@ -1,15 +1,15 @@
-//! ojp-core CLI.
-//!   ojp-core [model.gguf]                    Stage 1/2 smoke test (default)
-//!   ojp-core route <model.gguf> "<request>"  classify one request
-//!   ojp-core route-eval <model.gguf> [--dev]  score the router on fixed cases
-//!   ojp-core chat <router.gguf> [main.gguf | <base_url> <model>]
-//!                                            routed assistant REPL
-mod assistant;
-mod router;
-mod tools;
+//! ojp-cli: terminal front end and test harness for ojp-core.
+//!   ojp-cli [model.gguf]                     Stage 1/2 smoke test (default)
+//!   ojp-cli route <model.gguf> "<request>"   classify one request
+//!   ojp-cli route-eval <model.gguf> [--dev]  score the router on fixed cases
+//!   ojp-cli chat [config.toml]               assistant REPL (default: the
+//!                                            desktop app's config)
+use std::io::Write;
 
+use llama_crab::chat::BuiltinTemplate;
 use llama_crab::{Llama, LlamaParams};
-use router::{Route, Router};
+use ojp_core::router::Router;
+use ojp_core::{Config, Engine, Event, Route};
 
 fn env_or<T: std::str::FromStr>(key: &str, default: T) -> T {
     std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
@@ -91,20 +91,15 @@ fn main() -> anyhow::Result<()> {
             let [_, model, request] = args.as_slice() else {
                 anyhow::bail!("usage: ojp-core route <model.gguf> \"<request>\"");
             };
-            let mut router = Router::new(load(model)?);
-            let d = router.classify(request)?;
+            let mut llama = load(model)?;
+            let d = Router::new(BuiltinTemplate::ChatMl).classify(&mut llama, request)?;
             println!("{} ({} ms)", d.route.label(), d.elapsed.as_millis());
         }
         Some("chat") => {
-            let (router_model, main) = match args.as_slice() {
-                [_, r] => (r, None),
-                [_, r, url, model] if url.starts_with("http") => {
-                    (r, Some(assistant::Backend::Remote { base_url: url.clone(), model: model.clone() }))
-                }
-                [_, r, m] => (r, Some(assistant::Backend::Local(load(m)?))),
-                _ => anyhow::bail!("usage: ojp-core chat <router.gguf> [main.gguf | <base_url> <model>]"),
-            };
-            assistant::run(Router::new(load(router_model)?), main)?;
+            let (default_config, data_dir) = ojp_core::config::desktop_paths();
+            let config_path = args.get(1).map_or(default_config, Into::into);
+            let config = Config::load_or_init(&config_path, &data_dir)?;
+            chat(&config)?;
         }
         Some("route-eval") => {
             let (model, cases): (&String, &[(&str, Route)]) = match args.as_slice() {
@@ -112,10 +107,11 @@ fn main() -> anyhow::Result<()> {
                 [_, model, flag] if flag == "--dev" => (model, &DEV_CASES),
                 _ => anyhow::bail!("usage: ojp-core route-eval <model.gguf> [--dev]"),
             };
-            let mut router = Router::new(load(model)?);
+            let mut llama = load(model)?;
+            let router = Router::new(BuiltinTemplate::ChatMl);
             let (mut passed, mut total_ms) = (0, 0);
             for &(request, expected) in cases {
-                let d = match router.classify(request) {
+                let d = match router.classify(&mut llama, request) {
                     Ok(d) => d,
                     Err(e) => {
                         println!("FAIL  {e:#}  (want {}) {request}", expected.label());
@@ -144,4 +140,30 @@ fn main() -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+fn chat(config: &Config) -> anyhow::Result<()> {
+    let mut engine = Engine::new(config)?;
+    for line in &engine.status {
+        eprintln!("{line}");
+    }
+    eprintln!("{} is ready. Empty line or Ctrl-D quits.", config.persona.name);
+    let stdin = std::io::stdin();
+    loop {
+        print!("> ");
+        std::io::stdout().flush()?;
+        let mut line = String::new();
+        if stdin.read_line(&mut line)? == 0 || line.trim().is_empty() {
+            return Ok(());
+        }
+        engine.ask(line.trim(), &mut |event| match event {
+            Event::Routed { route, ms } => eprintln!("[route: {} in {ms} ms]", route.label()),
+            Event::Token(text) => {
+                print!("{text}");
+                let _ = std::io::stdout().flush();
+            }
+            Event::Notice(text) => eprintln!("[{text}]"),
+        })?;
+        println!();
+    }
 }

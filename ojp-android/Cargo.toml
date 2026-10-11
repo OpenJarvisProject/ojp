@@ -1,0 +1,17 @@
+[package]
+name = "ojp-android"
+description = "OpenJarvisProject Android app: the shared UI and engine as a NativeActivity library, plus the Java services that make it selectable as the Digital assistant app (see android/)."
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "ojp_android"
+crate-type = ["cdylib"]
+
+[target.'cfg(target_os = "android")'.dependencies]
+ojp-core.workspace = true
+anyhow.workspace = true
+slint = { workspace = true, features = ["backend-android-activity-06", "renderer-femtovg"] }
+
+[build-dependencies]
+slint-build.workspace = true

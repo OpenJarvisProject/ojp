@@ -1,3 +1,7 @@
 /target
-/models/*.gguf
+/models/
+*.gguf
 /.deps
+/ojp-android/build/
+*.apk
+*.keystore

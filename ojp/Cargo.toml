@@ -1,0 +1,19 @@
+[package]
+name = "ojp"
+description = "OpenJarvisProject desktop app (Linux)."
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = ["vulkan"]
+# GPU offload via Vulkan. Build with --no-default-features for CPU-only
+# (e.g. the aarch64 laptop build).
+vulkan = ["ojp-core/vulkan"]
+
+[dependencies]
+ojp-core.workspace = true
+anyhow.workspace = true
+slint = { workspace = true, features = ["backend-winit", "renderer-femtovg", "renderer-software"] }
+
+[build-dependencies]
+slint-build.workspace = true

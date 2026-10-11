@@ -1,0 +1,16 @@
+// Sample data for rendering the UI without the app, e.g.
+//   slint-viewer --screenshot shot.png --size 440x760 ui/preview.slint
+import { AppWindow, Chat } from "app.slint";
+
+export component Preview inherits AppWindow {
+    init => {
+        Chat.assistant-name = "Zelia";
+        Chat.status = "router: router.gguf · main: main.gguf";
+        Chat.messages = [
+            { from-user: true, text: "When was the Roman Empire founded?", meta: "" },
+            { from-user: false, text: "The Roman Empire is usually dated from 27 BC, when the Senate gave Octavian the title Augustus, making him the first emperor.", meta: "answer_directly (212 ms) · 2.4 s" },
+            { from-user: true, text: "Turn the volume down to 20.", meta: "" },
+            { from-user: false, text: "Volume set to 20%.", meta: "device_control (240 ms) · 0.6 s" },
+        ];
+    }
+}

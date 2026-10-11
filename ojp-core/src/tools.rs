@@ -29,9 +29,9 @@ name ::= [a-zA-Z0-9 ._-]+
 
 /// Ask the model for a tool call, then run it. Returns a short
 /// user-facing description of what happened.
-pub fn handle(llama: &mut Llama, request: &str) -> Result<String> {
+pub fn handle(llama: &mut Llama, template: BuiltinTemplate, request: &str) -> Result<String> {
     let messages = [ChatMessage::new(Role::System, SYSTEM_PROMPT), ChatMessage::new(Role::User, request)];
-    let prompt = render_builtin(BuiltinTemplate::ChatMl, &messages, &[], true);
+    let prompt = render_builtin(template, &messages, &[], true);
     // SAFETY: llama_sampler_init_grammar parses the grammar during the call.
     let grammar = unsafe { LlamaSampler::grammar(llama.model(), GRAMMAR, "root") }.context("tool grammar rejected")?;
     let greedy = LlamaSampler::greedy().context("greedy sampler")?;

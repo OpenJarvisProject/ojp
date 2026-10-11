@@ -1,10 +1,16 @@
-[package]
-name = "ojp-core"
+[workspace]
+resolver = "3"
+members = ["ojp-core", "ojp", "ojp-android"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
-llama-crab = { version = "0.1", default-features = false, features = ["vulkan", "common"] }
+[workspace.dependencies]
+ojp-core = { path = "ojp-core" }
 anyhow = "1"
-serde_json = "1"
-ureq = { version = "3", features = ["json"] }
+slint = { version = "1.18", default-features = false, features = ["compat-1-2", "std"] }
+slint-build = "1.18"
+
+[profile.release]
+strip = true

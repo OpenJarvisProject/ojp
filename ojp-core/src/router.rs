@@ -66,24 +66,22 @@ pub struct Decision {
     pub elapsed: Duration,
 }
 
+/// Stateless: classifies with whichever model it is handed, so any loaded
+/// model (a dedicated small router, or the main model on a one-model
+/// device) can do the routing.
 pub struct Router {
-    llama: Llama,
     grammar: String,
+    template: BuiltinTemplate,
 }
 
 impl Router {
-    pub fn new(llama: Llama) -> Self {
+    pub fn new(template: BuiltinTemplate) -> Self {
         let alternatives: Vec<String> = Route::ALL.iter().map(|r| format!("\"{}\"", r.label())).collect();
         let grammar = format!("root ::= {}\n", alternatives.join(" | "));
-        Router { llama, grammar }
+        Router { grammar, template }
     }
 
-    /// The router model doubles as the answer_directly responder.
-    pub fn llama_mut(&mut self) -> &mut Llama {
-        &mut self.llama
-    }
-
-    pub fn classify(&mut self, request: &str) -> Result<Decision> {
+    pub fn classify(&self, llama: &mut Llama, request: &str) -> Result<Decision> {
         let start = Instant::now();
         let mut messages = vec![ChatMessage::new(Role::System, SYSTEM_PROMPT)];
         // Few-shot is the default: on the dev set it lifted 0.5B from 6/24
@@ -96,7 +94,7 @@ impl Router {
             }
         }
         messages.push(ChatMessage::new(Role::User, request));
-        let prompt = render_builtin(BuiltinTemplate::ChatMl, &messages, &[], true);
+        let prompt = render_builtin(self.template, &messages, &[], true);
 
         // Grammar first, then greedy: greedy picks the most likely token
         // among those the grammar still allows.
@@ -108,7 +106,7 @@ impl Router {
         let unconstrained = std::env::var("OJP_ROUTER_NO_GRAMMAR").is_ok_and(|v| v == "1");
         if !unconstrained {
             stages.push(
-                unsafe { LlamaSampler::grammar(self.llama.model(), &self.grammar, "root") }
+                unsafe { LlamaSampler::grammar(llama.model(), &self.grammar, "root") }
                     .context("router grammar rejected")?,
             );
         }
@@ -116,7 +114,7 @@ impl Router {
         let mut sampler = LlamaSampler::chain(stages, true).context("sampler chain")?;
 
         let options = CompletionOptions::new(if unconstrained { 32 } else { 8 });
-        let completion = self.llama.create_completion_with_sampler(&prompt, options, &mut sampler)?;
+        let completion = llama.create_completion_with_sampler(&prompt, options, &mut sampler)?;
         let label = completion.text.trim();
         if unconstrained {
             eprintln!("raw: {label:?}");
