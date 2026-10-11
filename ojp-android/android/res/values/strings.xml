@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher label; scripts/build-android.sh overrides it with
+         OJP_APP_LABEL (e.g. OJP_APP_LABEL=Zelia). -->
+    <string name="app_name">OJP</string>
+</resources>

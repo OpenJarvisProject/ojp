@@ -58,6 +58,13 @@ export component AppWindow inherits Window {
     }
 
     VerticalLayout {
+        // Stay clear of the phone's status/navigation bars and, while it's
+        // open, the on-screen keyboard. All zero on desktop.
+        padding-top: root.safe-area-insets.top;
+        padding-left: root.safe-area-insets.left;
+        padding-right: root.safe-area-insets.right;
+        padding-bottom: max(root.safe-area-insets.bottom, root.virtual-keyboard-size.height);
+
         HorizontalLayout {
             padding: 12px;
             spacing: 8px;

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- recognitionService is mandatory in this schema; it points at the
+     app's own stub (NoopRecognitionService) so nothing depends on Google. -->
+<voice-interaction-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:sessionService="org.openjarvisproject.ojp.AssistSessionService"
+    android:recognitionService="org.openjarvisproject.ojp.NoopRecognitionService"
+    android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="false" />

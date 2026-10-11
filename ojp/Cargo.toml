@@ -15,5 +15,11 @@ ojp-core.workspace = true
 anyhow.workspace = true
 slint = { workspace = true, features = ["backend-winit", "renderer-femtovg", "renderer-software"] }
 
+# Load fontconfig at runtime instead of linking it, so the app can be
+# cross-compiled (e.g. for aarch64 Debian) without a target sysroot.
+# Feature-unifies with Slint's own fontique dependency.
+[target.'cfg(target_os = "linux")'.dependencies]
+fontique = { version = "0.11", default-features = false, features = ["fontconfig-dlopen"] }
+
 [build-dependencies]
 slint-build.workspace = true

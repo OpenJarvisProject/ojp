@@ -3180,6 +3180,7 @@ name = "ojp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "fontique",
  "ojp-core",
  "slint",
  "slint-build",

@@ -70,7 +70,8 @@ impl Engine {
             let path = path.as_ref()?;
             match load_model(path, config) {
                 Ok(llama) => {
-                    status.push(format!("{role}: {}", path.display()));
+                    let name = path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into());
+                    status.push(format!("{role}: {name}"));
                     Some(llama)
                 }
                 Err(e) => {
