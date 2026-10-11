@@ -36,7 +36,8 @@ The persona (name, wake word, pronunciation, TTS voice) is plain config.
 
 The installed app is called **OpenJarvis**. On first run it offers a
 **Download** button that fetches its models: a 0.5B router and a 1.5B
-main model, about 1.6 GB, from the official Qwen GGUF releases. Each file
+main model, about 1.5 GB: OJP's own optimized router build and the official
+Qwen 1.5B GGUF. Each file
 is verified against a pinned SHA-256, and interrupted downloads resume.
 After that, everything runs offline.
 
@@ -55,7 +56,7 @@ Models the Download button fetches, Qwen2.5-Instruct GGUF (swap them in
 
 | Role | File | Size |
 |---|---|---|
-| `models/router.gguf` | 0.5B Q4_K_M | 491 MB |
+| `models/router.gguf` | 0.5B Q4_K_M + imatrix + q5_0 embedding ([OpenJarvisProject/Qwen2.5-0.5B-Instruct-OJP-GGUF](https://huggingface.co/OpenJarvisProject/Qwen2.5-0.5B-Instruct-OJP-GGUF)) | 347 MB |
 | `models/main.gguf` | 1.5B Q4_K_M (3B is in the config comments, for GPU desktops) | 1.1 GB |
 
 Measurements behind these picks are in

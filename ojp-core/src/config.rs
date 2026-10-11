@@ -44,11 +44,13 @@ chat_template = "chatml"
 [download]
 # Where the app fetches a model whose file above is missing (first run:
 # the "Download" button). Each is verified against its SHA-256 before use.
+# The router is OJP's 347 MB build of Qwen2.5-0.5B-Instruct (Q4_K_M +
+# imatrix + q5_0 embedding): same quality as the original, 1/3 the size.
 # Bigger main model for desktops with a GPU (2.1 GB):
 #   main = "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf"
 #   main_sha256 = "626b4a6678b86442240e33df819e00132d3ba7dddfe1cdc4fbb18e0a9615c62d"
-router = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
-router_sha256 = "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+router = "https://huggingface.co/OpenJarvisProject/Qwen2.5-0.5B-Instruct-OJP-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m-imat-embq5_0.gguf"
+router_sha256 = "225dd294b01dab1cd24b5d404e12bc591dc9335d99f8a1f584e7b4c5bca86186"
 main = "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf"
 main_sha256 = "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e"
 "#;
@@ -106,8 +108,8 @@ impl Default for Config {
 impl Default for Download {
     fn default() -> Self {
         Download {
-            router: Some("https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf".into()),
-            router_sha256: Some("74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db".into()),
+            router: Some("https://huggingface.co/OpenJarvisProject/Qwen2.5-0.5B-Instruct-OJP-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m-imat-embq5_0.gguf".into()),
+            router_sha256: Some("225dd294b01dab1cd24b5d404e12bc591dc9335d99f8a1f584e7b4c5bca86186".into()),
             main: Some("https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf".into()),
             main_sha256: Some("6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e".into()),
         }
