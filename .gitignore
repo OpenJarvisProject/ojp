@@ -6,3 +6,4 @@
 /ojp-android/build-jni/
 *.apk
 *.keystore
+*.idsig
