@@ -3225,7 +3225,7 @@ dependencies = [
 
 [[package]]
 name = "ojp"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "fontique",
@@ -3236,7 +3236,7 @@ dependencies = [
 
 [[package]]
 name = "ojp-android"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "jni 0.21.1",
@@ -3247,7 +3247,7 @@ dependencies = [
 
 [[package]]
 name = "ojp-core"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "libc",
