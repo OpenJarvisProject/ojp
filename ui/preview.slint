@@ -7,8 +7,8 @@ export component Preview inherits AppWindow {
         Chat.assistant-name = "Zelia";
         Chat.status = "router: router.gguf · main: main.gguf";
         Chat.download-needed = true;
-        Chat.download-text = "Downloading the main model… 412 of 1117 MB";
-        Chat.download-progress = 0.37;
+        Chat.download-text = "OpenJarvis needs to download its AI models once: router model (347 MB) and main model (1117 MB). They stay on this device, and everything runs offline after that. Where should they be stored?";
+        Chat.download-targets = ["Phone storage (54.2 GB free)", "SD card (118.7 GB free)"];
         Chat.messages = [
             { from-user: true, text: "When was the Roman Empire founded?", meta: "" },
             { from-user: false, text: "The Roman Empire is usually dated from 27 BC, when the Senate gave Octavian the title Augustus, making him the first emperor.", meta: "answer_directly (212 ms) · 2.4 s" },

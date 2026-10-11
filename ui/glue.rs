@@ -3,11 +3,13 @@
 // slint::include_modules!). The engine lives on its own thread so model
 // loading and generation never block the UI; results come back through
 // slint's event loop.
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use ojp_core::download::{self, Item};
+use ojp_core::storage::{self, Location};
 use ojp_core::{Config, Engine, Event};
 use slint::{ComponentHandle, Model, VecModel};
 
@@ -16,18 +18,32 @@ use crate::{AppWindow, Chat, Message};
 enum Request {
     Ask(String),
     Clear,
-    Download,
+    /// Download missing models into `Setup::locations[i]`, or into the
+    /// current location for a negative index.
+    Download(i32),
 }
 
-/// Show the window and run until it closes. `setup_hint` is shown if no
-/// model could be loaded, telling the user where to put one; `warning`
-/// (e.g. an unreadable settings file) is shown as the first message.
-pub fn run(config: Config, setup_hint: String, warning: Option<String>) -> anyhow::Result<()> {
+/// Everything the platform-specific `main` provides.
+pub struct Setup {
+    pub config: Config,
+    pub config_path: PathBuf,
+    pub data_dir: PathBuf,
+    /// Places the user may keep models (phone storage, SD card). With
+    /// fewer than two there is nothing to choose.
+    pub locations: Vec<Location>,
+    /// Shown if no model can be loaded and none can be downloaded.
+    pub setup_hint: String,
+    /// Shown as the first message (e.g. an unreadable settings file).
+    pub warning: Option<String>,
+}
+
+/// Show the window and run until it closes.
+pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     let ui = AppWindow::new()?;
     let chat = ui.global::<Chat>();
-    chat.set_assistant_name(config.persona.name.clone().into());
+    chat.set_assistant_name(setup.config.persona.name.clone().into());
     let messages = Rc::new(VecModel::<Message>::default());
-    if let Some(warning) = warning {
+    if let Some(warning) = setup.warning.take() {
         messages.push(Message { from_user: false, text: warning.into(), meta: "settings".into() });
     }
     chat.set_messages(messages.clone().into());
@@ -36,7 +52,7 @@ pub fn run(config: Config, setup_hint: String, warning: Option<String>) -> anyho
 
     let (tx, rx) = mpsc::channel();
     let weak = ui.as_weak();
-    std::thread::spawn(move || worker(config, setup_hint, rx, weak));
+    std::thread::spawn(move || worker(setup, rx, weak));
 
     chat.on_send({
         let (tx, messages, weak) = (tx.clone(), messages.clone(), ui.as_weak());
@@ -51,8 +67,8 @@ pub fn run(config: Config, setup_hint: String, warning: Option<String>) -> anyho
     });
     chat.on_download({
         let tx = tx.clone();
-        move || {
-            let _ = tx.send(Request::Download);
+        move |index| {
+            let _ = tx.send(Request::Download(index));
         }
     });
     chat.on_clear(move || {
@@ -95,6 +111,15 @@ fn set_download(ui: &slint::Weak<AppWindow>, needed: bool, text: String, progres
     });
 }
 
+/// One button per storage location; an empty list shows a single
+/// "Download" button that keeps the current location.
+fn set_download_targets(ui: &slint::Weak<AppWindow>, targets: Vec<String>) {
+    let _ = ui.upgrade_in_event_loop(move |ui| {
+        let targets: Vec<slint::SharedString> = targets.into_iter().map(Into::into).collect();
+        ui.global::<Chat>().set_download_targets(Rc::new(VecModel::from(targets)).into());
+    });
+}
+
 fn push_message(ui: &slint::Weak<AppWindow>, text: String, meta: &'static str) {
     let _ = ui.upgrade_in_event_loop(move |ui| {
         let messages = ui.global::<Chat>().get_messages();
@@ -109,9 +134,25 @@ fn mb(bytes: u64) -> u64 {
 
 /// Load whatever models exist. Missing downloadable models are offered
 /// through the download panel instead of an error message.
-fn load_engine(config: &Config, setup_hint: &str, ui: &slint::Weak<AppWindow>) -> Option<Engine> {
+fn load_engine(setup: &Setup, ui: &slint::Weak<AppWindow>) -> Option<Engine> {
+    let config = &setup.config;
     set_state(ui, true, Some("Loading models…".into()));
     let missing = download::missing(config);
+    // Offer a choice of storage only before one has been made.
+    let choose = setup.locations.len() > 1 && config.models.location.is_none();
+    let targets = if choose {
+        setup
+            .locations
+            .iter()
+            .map(|l| match l.free_bytes() {
+                Some(free) => format!("{} ({:.1} GB free)", l.label, free as f64 / 1e9),
+                None => l.label.clone(),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    set_download_targets(ui, targets);
     if !missing.is_empty() {
         let sizes: Vec<Option<u64>> = missing.iter().map(|item| download::size(&item.url).ok().flatten()).collect();
         let parts: Vec<String> = missing
@@ -127,8 +168,9 @@ fn load_engine(config: &Config, setup_hint: &str, ui: &slint::Weak<AppWindow>) -
             true,
             format!(
                 "OpenJarvis needs to download its AI models once: {}. They stay on this device, and \
-                 everything runs offline after that.",
-                parts.join(" and ")
+                 everything runs offline after that.{}",
+                parts.join(" and "),
+                if choose { " Where should they be stored?" } else { "" }
             ),
             -1.0,
         );
@@ -140,7 +182,7 @@ fn load_engine(config: &Config, setup_hint: &str, ui: &slint::Weak<AppWindow>) -
         }
         Err(e) => {
             if missing.is_empty() {
-                push_message(ui, format!("{e:#}\n\n{setup_hint}"), "setup");
+                push_message(ui, format!("{e:#}\n\n{}", setup.setup_hint), "setup");
             }
             set_state(ui, false, Some("No model loaded yet".into()));
             None
@@ -176,16 +218,36 @@ fn download_all(items: &[Item], ui: &slint::Weak<AppWindow>) -> bool {
     true
 }
 
-fn worker(config: Config, setup_hint: String, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWindow>) {
-    let mut engine = load_engine(&config, &setup_hint, &ui);
+/// Save the chosen storage location and reload the config so model paths
+/// point there.
+fn choose_location(setup: &mut Setup, location: &Location) -> anyhow::Result<()> {
+    std::fs::create_dir_all(&location.path)?;
+    storage::save_location(&setup.config_path, &location.path)?;
+    let (config, warning) = Config::load_or_default(&setup.config_path, &setup.data_dir);
+    if let Some(warning) = warning {
+        anyhow::bail!(warning);
+    }
+    setup.config = config;
+    Ok(())
+}
+
+fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWindow>) {
+    let mut engine = load_engine(&setup, &ui);
 
     for request in rx {
         match (request, &mut engine) {
-            (Request::Download, _) => {
+            (Request::Download(index), _) => {
+                if let Some(location) = usize::try_from(index).ok().and_then(|i| setup.locations.get(i)).cloned()
+                    && let Err(e) = choose_location(&mut setup, &location)
+                {
+                    set_download(&ui, true, format!("Couldn't use {}: {e:#}", location.label), -1.0);
+                    continue;
+                }
+                set_download_targets(&ui, Vec::new());
                 set_state(&ui, true, Some("Downloading models…".into()));
-                let items = download::missing(&config);
+                let items = download::missing(&setup.config);
                 if download_all(&items, &ui) {
-                    engine = load_engine(&config, &setup_hint, &ui);
+                    engine = load_engine(&setup, &ui);
                 } else {
                     set_state(&ui, false, Some("Download failed".into()));
                 }

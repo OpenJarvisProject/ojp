@@ -25,7 +25,11 @@ export global Chat {
     in-out property <string> download-text;
     // 0..1 while downloading; negative when not running (shows the button).
     in-out property <float> download-progress: -1;
-    callback download();
+    // Storage choices (e.g. "Phone storage (54.2 GB free)", "SD card (…)");
+    // empty means a single Download button.
+    in-out property <[string]> download-targets;
+    // Index into download-targets, or -1 for the single button.
+    callback download(int);
 }
 
 component Bubble inherits Rectangle {
@@ -134,10 +138,18 @@ export component AppWindow inherits Window {
                     if Chat.download-progress >= 0: ProgressIndicator {
                         progress: Chat.download-progress;
                     }
-                    if Chat.download-progress < 0: Button {
+                    if Chat.download-progress < 0 && Chat.download-targets.length == 0: Button {
                         text: "Download";
                         primary: true;
-                        clicked => { Chat.download(); }
+                        clicked => { Chat.download(-1); }
+                    }
+                    if Chat.download-progress < 0: VerticalLayout {
+                        spacing: 8px;
+                        for target[index] in Chat.download-targets: Button {
+                            text: target;
+                            primary: index == 0;
+                            clicked => { Chat.download(index); }
+                        }
                     }
                 }
             }

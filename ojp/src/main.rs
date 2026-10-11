@@ -14,5 +14,5 @@ fn main() -> anyhow::Result<()> {
         data_dir.display(),
         config_path.display()
     );
-    glue::run(config, hint, warning)
+    glue::run(glue::Setup { config, config_path, data_dir, locations: Vec::new(), setup_hint: hint, warning })
 }

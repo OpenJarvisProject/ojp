@@ -12,6 +12,8 @@ crate-type = ["cdylib"]
 ojp-core.workspace = true
 anyhow.workspace = true
 slint = { workspace = true, features = ["backend-android-activity-06", "renderer-femtovg"] }
+# Same version slint's android backend uses; for getExternalFilesDirs.
+jni = "0.21"
 
 [build-dependencies]
 slint-build.workspace = true

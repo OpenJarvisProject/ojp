@@ -34,6 +34,9 @@ main = "models/main.gguf"
 # Layers to offload to the GPU (0 = CPU only, 99 = everything).
 gpu_layers = 0
 n_ctx = 4096
+# Where models/ lives. On Android this is set when you pick phone storage
+# or SD card at download time; unset means the app's data directory.
+# location = "/path/to/dir"
 # Prompt format of the models: chatml (Qwen and most others), llama3,
 # mistral, gemma, phi3.
 chat_template = "chatml"
@@ -70,6 +73,8 @@ pub struct Persona {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct Models {
+    /// Base directory for relative model paths (default: the data dir).
+    pub location: Option<PathBuf>,
     pub router: Option<PathBuf>,
     pub main: Option<PathBuf>,
     pub main_url: Option<String>,
@@ -123,6 +128,7 @@ impl Default for Persona {
 impl Default for Models {
     fn default() -> Self {
         Models {
+            location: None,
             router: Some("models/router.gguf".into()),
             main: Some("models/main.gguf".into()),
             main_url: None,
@@ -173,9 +179,10 @@ impl Config {
     }
 
     fn resolve_paths(&mut self, data_dir: &Path) {
+        let base = self.models.location.clone().unwrap_or_else(|| data_dir.to_path_buf());
         for model in [&mut self.models.router, &mut self.models.main].into_iter().flatten() {
             if model.is_relative() {
-                *model = data_dir.join(&*model);
+                *model = base.join(&*model);
             }
         }
     }
@@ -214,6 +221,18 @@ mod tests {
         let (config, warning) = Config::load_or_default(&path, Path::new("/data/ojp"));
         assert!(warning.is_some());
         assert_eq!(config.models.router.as_deref(), Some(Path::new("/data/ojp/models/router.gguf")));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn location_overrides_data_dir_for_relative_models() {
+        let dir = std::env::temp_dir().join("ojp-location-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "[models]\nlocation = \"/sd/ojp\"\nmain = \"/abs/main.gguf\"\n").unwrap();
+        let config = Config::load_or_init(&path, Path::new("/data/ojp")).unwrap();
+        assert_eq!(config.models.router.as_deref(), Some(Path::new("/sd/ojp/models/router.gguf")));
+        assert_eq!(config.models.main.as_deref(), Some(Path::new("/abs/main.gguf")));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
