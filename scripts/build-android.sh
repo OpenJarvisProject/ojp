@@ -19,6 +19,10 @@ BT=$SDK/build-tools/35.0.0
 export ANDROID_HOME=$SDK ANDROID_NDK_HOME=$NDK ANDROID_NDK_ROOT=$NDK
 export ANDROID_JAR=$SDK/platforms/android-35/android.jar ANDROID_D8_JAR=$BT/lib/d8.jar
 VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+# Android only installs an update with a higher versionCode: 0.0.2 -> 2,
+# 0.1.0 -> 100, 1.2.3 -> 10203.
+IFS=. read -r V_MAJ V_MIN V_PAT <<< "$VERSION"
+VERSION_CODE=$((V_MAJ * 10000 + V_MIN * 100 + V_PAT))
 SRC=ojp-android/android
 OUT=ojp-android/build
 
@@ -40,7 +44,7 @@ java -cp "$ANDROID_D8_JAR" com.android.tools.r8.D8 --release --min-api 26 --lib 
 
 "$BT/aapt2" compile --dir "$OUT/res" -o "$OUT/res.zip"
 "$BT/aapt2" link -o "$OUT/unsigned.apk" -I "$ANDROID_JAR" --manifest "$SRC/AndroidManifest.xml" \
-    --min-sdk-version 26 --target-sdk-version 35 --version-code 1 --version-name "$VERSION" "$OUT/res.zip"
+    --min-sdk-version 26 --target-sdk-version 35 --version-code "$VERSION_CODE" --version-name "$VERSION" "$OUT/res.zip"
 
 cp -r "$OUT-jni" "$OUT/lib"
 # aapt (v1) adds files under their path relative to the working dir.
