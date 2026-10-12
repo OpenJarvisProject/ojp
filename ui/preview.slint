@@ -9,11 +9,13 @@ export component Preview inherits AppWindow {
         Chat.download-needed = true;
         Chat.download-text = "OpenJarvis needs to download its AI models once: router model (347 MB) and main model (1117 MB). They stay on this device, and everything runs offline after that. Where should they be stored?";
         Chat.download-targets = ["Phone storage (54.2 GB free)", "SD card (118.7 GB free)"];
+        Chat.offer-main = true;
+        Chat.main-label = "Also download the main model (1117 MB), needed for good answers";
         Chat.messages = [
             { from-user: true, text: "When was the Roman Empire founded?", meta: "" },
-            { from-user: false, text: "The Roman Empire is usually dated from 27 BC, when the Senate gave Octavian the title Augustus, making him the first emperor.", meta: "answer_directly (212 ms) · 2.4 s" },
-            { from-user: true, text: "Turn the volume down to 20.", meta: "" },
-            { from-user: false, text: "Volume set to 20%.", meta: "device_control (240 ms) · 0.6 s" },
+            { from-user: false, rendered: @markdown("The Roman Empire is usually dated from **27 BC**, when the Senate gave Octavian the title *Augustus*:\n\n- first emperor\n- ruled until 14 AD"), meta: "answer_directly (212 ms) · 2.4 s" },
+            { from-user: true, text: "What is 12 times 13?", meta: "" },
+            { from-user: false, rendered: @markdown("12 × 13 = 156, and x² + y₁ ≤ 10"), meta: "answer_directly (180 ms) · 1.1 s" },
         ];
     }
 }

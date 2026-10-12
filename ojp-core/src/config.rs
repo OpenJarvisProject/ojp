@@ -49,6 +49,9 @@ chat_template = "chatml"
 # Bigger main model for desktops with a GPU (2.1 GB):
 #   main = "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf"
 #   main_sha256 = "626b4a6678b86442240e33df819e00132d3ba7dddfe1cdc4fbb18e0a9615c62d"
+# Set by unticking "also download the main model" at first run; set back
+# to false to be offered the main model again.
+skip_main = false
 router = "https://huggingface.co/OpenJarvisProject/Qwen2.5-0.5B-Instruct-OJP-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m-imat-embq5_0.gguf"
 router_sha256 = "225dd294b01dab1cd24b5d404e12bc591dc9335d99f8a1f584e7b4c5bca86186"
 main = "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf"
@@ -93,6 +96,8 @@ pub struct Models {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct Download {
+    /// The user chose router-only at first run: don't offer the main model.
+    pub skip_main: bool,
     pub router: Option<String>,
     pub router_sha256: Option<String>,
     pub main: Option<String>,
@@ -108,6 +113,7 @@ impl Default for Config {
 impl Default for Download {
     fn default() -> Self {
         Download {
+            skip_main: false,
             router: Some("https://huggingface.co/OpenJarvisProject/Qwen2.5-0.5B-Instruct-OJP-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m-imat-embq5_0.gguf".into()),
             router_sha256: Some("225dd294b01dab1cd24b5d404e12bc591dc9335d99f8a1f584e7b4c5bca86186".into()),
             main: Some("https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf".into()),
@@ -257,6 +263,7 @@ mod tests {
         assert_eq!((parsed.models.gpu_layers, parsed.models.n_ctx), (m.gpu_layers, m.n_ctx));
         assert_eq!(parsed.models.chat_template, m.chat_template);
         let d = Download::default();
+        assert_eq!(parsed.download.skip_main, d.skip_main);
         assert_eq!((parsed.download.router, parsed.download.router_sha256), (d.router, d.router_sha256));
         assert_eq!((parsed.download.main, parsed.download.main_sha256), (d.main, d.main_sha256));
     }

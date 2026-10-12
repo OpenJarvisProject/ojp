@@ -34,7 +34,7 @@ pub fn missing(config: &Config) -> Vec<Item> {
         }
     };
     add("router", &d.router, &d.router_sha256, &config.models.router);
-    if config.models.main_url.is_none() {
+    if config.models.main_url.is_none() && !d.skip_main {
         add("main", &d.main, &d.main_sha256, &config.models.main);
     }
     items

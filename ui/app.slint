@@ -1,11 +1,15 @@
 // Shared chat UI for the desktop (ojp) and Android (ojp-android) apps.
 // Pure view: state lives in Rust and is pushed in through the `Chat`
 // global; user actions come back out through its callbacks.
-import { Button, LineEdit, ListView, Palette, ProgressIndicator } from "std-widgets.slint";
+import { Button, CheckBox, LineEdit, ListView, Palette, ProgressIndicator } from "std-widgets.slint";
 
 export struct Message {
     from-user: bool,
+    // Raw text, as typed or as streamed from the model.
     text: string,
+    // Assistant replies rendered from `text` (markdown; LaTeX math turned
+    // into Unicode by ojp-core::format) by the Rust side.
+    rendered: styled-text,
     // Small grey line under a reply: route, timing, notices.
     meta: string,
 }
@@ -30,6 +34,11 @@ export global Chat {
     in-out property <[string]> download-targets;
     // Index into download-targets, or -1 for the single button.
     callback download(int);
+    // "Also download the main model" checkbox: shown when the main model is
+    // among the missing ones; unticked means router only.
+    in-out property <bool> offer-main;
+    in-out property <string> main-label;
+    in-out property <bool> download-main: true;
 }
 
 component Bubble inherits Rectangle {
@@ -40,10 +49,15 @@ component Bubble inherits Rectangle {
     VerticalLayout {
         padding: 10px;
         spacing: 4px;
-        Text {
+        if message.from-user: Text {
             text: message.text;
             wrap: word-wrap;
-            color: message.from-user ? Palette.accent-foreground : Palette.foreground;
+            color: Palette.accent-foreground;
+        }
+        if !message.from-user: StyledText {
+            text: message.rendered;
+            default-color: Palette.foreground;
+            link-color: Palette.accent-background;
         }
         if message.meta != "": Text {
             text: message.meta;
@@ -58,6 +72,7 @@ component Bubble inherits Rectangle {
 export component AppWindow inherits Window {
     // App name; the assistant's own name (persona) is shown in the header.
     title: "OpenJarvis";
+    icon: @image-url("../assets/openjarvis-256.png");
     preferred-width: 440px;
     preferred-height: 760px;
     background: Palette.background;
@@ -134,6 +149,29 @@ export component AppWindow inherits Window {
                     Text {
                         text: Chat.download-text;
                         wrap: word-wrap;
+                    }
+                    // CheckBox text can't wrap (it would widen the panel past a
+                    // phone screen), so the label is a separate wrapping Text
+                    // that toggles the box too.
+                    if Chat.download-progress < 0 && Chat.offer-main: HorizontalLayout {
+                        spacing: 8px;
+                        CheckBox {
+                            horizontal-stretch: 0;
+                            checked <=> Chat.download-main;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            VerticalLayout {
+                                alignment: center;
+                                Text {
+                                    text: Chat.main-label;
+                                    wrap: word-wrap;
+                                }
+                            }
+                            TouchArea {
+                                clicked => { Chat.download-main = !Chat.download-main; }
+                            }
+                        }
                     }
                     if Chat.download-progress >= 0: ProgressIndicator {
                         progress: Chat.download-progress;

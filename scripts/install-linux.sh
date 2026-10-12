@@ -9,12 +9,14 @@ BIN=${1:-target/release/openjarvis}
 [[ -x "$BIN" ]] || { echo "no binary at $BIN (cargo build --release first)"; exit 1; }
 
 install -Dm755 "$BIN" "$HOME/.local/bin/openjarvis"
+install -Dm644 assets/openjarvis.svg "$HOME/.local/share/icons/hicolor/scalable/apps/openjarvis.svg"
 install -Dm644 /dev/stdin "$HOME/.local/share/applications/openjarvis.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Name=OpenJarvis
 Comment=Local AI assistant
 Exec=$HOME/.local/bin/openjarvis
+Icon=openjarvis
 Terminal=false
 Categories=Utility;
 DESKTOP

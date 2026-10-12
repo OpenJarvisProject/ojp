@@ -8,3 +8,4 @@
 *.keystore
 *.idsig
 *.deb
+/vendor/*/.cargo-ok

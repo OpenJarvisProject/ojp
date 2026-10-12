@@ -65,14 +65,18 @@ impl Engine {
                     status.push(format!("{role}: {name}"));
                     Some(model)
                 }
+                Err(_) if !path.exists() => {
+                    status.push(format!("{role}: not downloaded"));
+                    None
+                }
                 Err(e) => {
-                    status.push(format!("{role}: skipped ({e:#})"));
+                    status.push(format!("{role}: failed to load ({e:#})"));
                     None
                 }
             }
         };
         let mut router_llm = load("router", &config.models.router);
-        let main = match (&config.models.main_url, &config.models.main_model) {
+        let mut main = match (&config.models.main_url, &config.models.main_model) {
             (Some(url), model) => {
                 let model = model.clone().unwrap_or_default();
                 status.push(format!("main: {model} @ {url}"));
@@ -96,6 +100,15 @@ impl Engine {
             "You are {name}, a helpful personal assistant running locally on the user's own device. \
              Answer accurately and concisely. If you don't know something, say so."
         );
+        // Likewise warm the main model: evaluating the system prompt pages its
+        // weights in from storage (they're memory-mapped) and caches that
+        // prefix, so the first real reply doesn't pay for either.
+        if let Some(Main::Local(model)) = main.as_mut() {
+            let prompt = render_builtin(template, &[ChatMessage::new(Role::System, system_prompt.clone())], &[], false);
+            if let Ok(mut sampler) = llama_crab::LlamaSampler::greedy().context("greedy") {
+                let _ = model.complete(&prompt, &mut sampler, 1, &mut |_| {});
+            }
+        }
         Ok(Engine {
             router_llm,
             main,

@@ -7,6 +7,7 @@
 pub mod config;
 pub mod download;
 pub mod engine;
+pub mod format;
 pub mod model;
 pub mod router;
 pub mod storage;

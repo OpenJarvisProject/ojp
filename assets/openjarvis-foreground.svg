@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-32 -32 576 576">
+  <!-- OpenJarvis icon: HUD rings around a glowing core. -->
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="75%">
+      <stop offset="0" stop-color="#16294a"/>
+      <stop offset="1" stop-color="#070d1a"/>
+    </radialGradient>
+    <radialGradient id="core" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.35" stop-color="#b8f4ff"/>
+      <stop offset="0.75" stop-color="#2ec5f0"/>
+      <stop offset="1" stop-color="#2ec5f0" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  
+  <g fill="none" stroke="#3fd2ff" stroke-linecap="round" filter="url(#glow)">
+    <!-- outer segmented HUD ring -->
+    <circle cx="256" cy="256" r="178" stroke-width="10" stroke-dasharray="210 70" transform="rotate(-100 256 256)" opacity="0.9"/>
+    <!-- thin full ring -->
+    <circle cx="256" cy="256" r="150" stroke-width="3" opacity="0.55"/>
+    <!-- inner ring with ticks -->
+    <circle cx="256" cy="256" r="118" stroke-width="14" stroke-dasharray="18 13.6" opacity="0.85"/>
+    <!-- inner arcs -->
+    <circle cx="256" cy="256" r="88" stroke-width="6" stroke-dasharray="120 18.3" transform="rotate(30 256 256)" opacity="0.95"/>
+  </g>
+  <circle cx="256" cy="256" r="72" fill="url(#core)"/>
+  <circle cx="256" cy="256" r="30" fill="#ffffff" opacity="0.95"/>
+</svg>

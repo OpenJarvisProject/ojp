@@ -43,12 +43,22 @@ fn free_bytes(_path: &Path) -> Option<u64> {
 /// Persist the chosen location in config.toml, keeping comments and
 /// everything else in the file unchanged.
 pub fn save_location(config_path: &Path, location: &Path) -> Result<()> {
+    set_config_value(config_path, "models", "location", toml_edit::value(location.to_string_lossy().as_ref()))
+}
+
+/// Remember that the user chose router-only (`[download] skip_main`).
+pub fn save_skip_main(config_path: &Path) -> Result<()> {
+    set_config_value(config_path, "download", "skip_main", toml_edit::value(true))
+}
+
+/// Set `[table] key = value` in config.toml, preserving the rest of the file.
+fn set_config_value(config_path: &Path, table: &str, key: &str, value: toml_edit::Item) -> Result<()> {
     let text = std::fs::read_to_string(config_path).unwrap_or_default();
     let mut doc: toml_edit::DocumentMut = text.parse().with_context(|| format!("parsing {}", config_path.display()))?;
-    if !doc.contains_table("models") {
-        doc["models"] = toml_edit::table();
+    if !doc.contains_table(table) {
+        doc[table] = toml_edit::table();
     }
-    doc["models"]["location"] = toml_edit::value(location.to_string_lossy().as_ref());
+    doc[table][key] = value;
     std::fs::write(config_path, doc.to_string()).with_context(|| format!("writing {}", config_path.display()))
 }
 

@@ -9,7 +9,10 @@ VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
 BIN=target/aarch64-unknown-linux-gnu/release
 OUT=target/deb
 PKG=$OUT/pkg
-rm -rf "$OUT" && mkdir -p "$PKG/usr/bin" "$PKG/usr/share/applications" "$OUT/control"
+rm -rf "$OUT" && mkdir -p "$PKG/usr/bin" "$PKG/usr/share/applications" "$OUT/control" \
+    "$PKG/usr/share/icons/hicolor/scalable/apps" "$PKG/usr/share/icons/hicolor/256x256/apps"
+install -m644 assets/openjarvis.svg "$PKG/usr/share/icons/hicolor/scalable/apps/openjarvis.svg"
+install -m644 assets/openjarvis-256.png "$PKG/usr/share/icons/hicolor/256x256/apps/openjarvis.png"
 
 install -m755 "$BIN/openjarvis" "$BIN/ojp-cli" "$PKG/usr/bin/"
 cat > "$PKG/usr/share/applications/openjarvis.desktop" <<DESKTOP
@@ -18,6 +21,7 @@ Type=Application
 Name=OpenJarvis
 Comment=Local AI assistant
 Exec=openjarvis
+Icon=openjarvis
 Terminal=false
 Categories=Utility;
 DESKTOP

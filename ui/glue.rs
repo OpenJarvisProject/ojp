@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use ojp_core::download::{self, Item};
 use ojp_core::storage::{self, Location};
 use ojp_core::{Config, Engine, Event};
-use slint::{ComponentHandle, Model, VecModel};
+use slint::{ComponentHandle, Model, StyledText, VecModel};
 
 use crate::{AppWindow, Chat, Message};
 
@@ -19,8 +19,9 @@ enum Request {
     Ask(String),
     Clear,
     /// Download missing models into `Setup::locations[i]`, or into the
-    /// current location for a negative index.
-    Download(i32),
+    /// current location for a negative index; the bool is "include the
+    /// main model".
+    Download(i32, bool),
 }
 
 /// Everything the platform-specific `main` provides.
@@ -44,7 +45,7 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     chat.set_assistant_name(setup.config.persona.name.clone().into());
     let messages = Rc::new(VecModel::<Message>::default());
     if let Some(warning) = setup.warning.take() {
-        messages.push(Message { from_user: false, text: warning.into(), meta: "settings".into() });
+        messages.push(reply(&warning, "settings"));
     }
     chat.set_messages(messages.clone().into());
     chat.set_busy(true);
@@ -57,8 +58,8 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     chat.on_send({
         let (tx, messages, weak) = (tx.clone(), messages.clone(), ui.as_weak());
         move |text| {
-            messages.push(Message { from_user: true, text: text.clone(), meta: "".into() });
-            messages.push(Message { from_user: false, text: "".into(), meta: "thinking…".into() });
+            messages.push(Message { from_user: true, text: text.clone(), ..Default::default() });
+            messages.push(Message { meta: "thinking…".into(), ..Default::default() });
             if let Some(ui) = weak.upgrade() {
                 ui.global::<Chat>().set_busy(true);
             }
@@ -66,9 +67,10 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
         }
     });
     chat.on_download({
-        let tx = tx.clone();
+        let (tx, weak) = (tx.clone(), ui.as_weak());
         move |index| {
-            let _ = tx.send(Request::Download(index));
+            let include_main = weak.upgrade().is_none_or(|ui| ui.global::<Chat>().get_download_main());
+            let _ = tx.send(Request::Download(index, include_main));
         }
     });
     chat.on_clear(move || {
@@ -79,7 +81,18 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Apply `edit` to the newest message (the reply being streamed).
+/// Markdown for display, with LaTeX math turned into Unicode first.
+fn render(text: &str) -> StyledText {
+    let text = ojp_core::format::latex_to_unicode(text);
+    StyledText::from_markdown(&text).unwrap_or_else(|_| StyledText::from_plain_text(&text))
+}
+
+fn reply(text: &str, meta: &str) -> Message {
+    Message { text: text.into(), rendered: render(text), meta: meta.into(), ..Default::default() }
+}
+
+/// Apply `edit` to the newest message (the reply being streamed), then
+/// re-render it.
 fn edit_last(ui: &slint::Weak<AppWindow>, edit: impl FnOnce(&mut Message) + Send + 'static) {
     let _ = ui.upgrade_in_event_loop(move |ui| {
         let messages = ui.global::<Chat>().get_messages();
@@ -87,6 +100,7 @@ fn edit_last(ui: &slint::Weak<AppWindow>, edit: impl FnOnce(&mut Message) + Send
             && let Some(mut message) = messages.row_data(last)
         {
             edit(&mut message);
+            message.rendered = render(&message.text);
             messages.set_row_data(last, message);
         }
     });
@@ -124,7 +138,7 @@ fn push_message(ui: &slint::Weak<AppWindow>, text: String, meta: &'static str) {
     let _ = ui.upgrade_in_event_loop(move |ui| {
         let messages = ui.global::<Chat>().get_messages();
         let model = messages.as_any().downcast_ref::<VecModel<Message>>().expect("VecModel");
-        model.push(Message { from_user: false, text: text.into(), meta: meta.into() });
+        model.push(reply(&text, meta));
     });
 }
 
@@ -163,6 +177,17 @@ fn load_engine(setup: &Setup, ui: &slint::Weak<AppWindow>) -> Option<Engine> {
                 None => format!("{} model", item.role),
             })
             .collect();
+        let main_size = missing.iter().zip(&sizes).find(|(item, _)| item.role == "main").map(|(_, size)| *size);
+        let main_label = match main_size {
+            Some(Some(size)) => format!("Also download the main model ({} MB), needed for good answers", mb(size)),
+            _ => "Also download the main model, needed for good answers".into(),
+        };
+        let offer_main = main_size.is_some();
+        let _ = ui.upgrade_in_event_loop(move |ui| {
+            let chat = ui.global::<Chat>();
+            chat.set_offer_main(offer_main);
+            chat.set_main_label(main_label.into());
+        });
         set_download(
             ui,
             true,
@@ -231,12 +256,29 @@ fn choose_location(setup: &mut Setup, location: &Location) -> anyhow::Result<()>
     Ok(())
 }
 
+/// Remember "router only" so the main model isn't offered again.
+fn skip_main(setup: &mut Setup) -> anyhow::Result<()> {
+    storage::save_skip_main(&setup.config_path)?;
+    let (config, warning) = Config::load_or_default(&setup.config_path, &setup.data_dir);
+    if let Some(warning) = warning {
+        anyhow::bail!(warning);
+    }
+    setup.config = config;
+    Ok(())
+}
+
 fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWindow>) {
     let mut engine = load_engine(&setup, &ui);
 
     for request in rx {
         match (request, &mut engine) {
-            (Request::Download(index), _) => {
+            (Request::Download(index, include_main), _) => {
+                if !include_main
+                    && let Err(e) = skip_main(&mut setup)
+                {
+                    set_download(&ui, true, format!("Couldn't save the router-only choice: {e:#}"), -1.0);
+                    continue;
+                }
                 if let Some(location) = usize::try_from(index).ok().and_then(|i| setup.locations.get(i)).cloned()
                     && let Err(e) = choose_location(&mut setup, &location)
                 {
