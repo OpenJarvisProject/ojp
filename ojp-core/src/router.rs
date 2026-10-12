@@ -9,7 +9,7 @@ use anyhow::{Context, Result, bail};
 use llama_crab::chat::template::{BuiltinTemplate, render_builtin};
 use llama_crab::{ChatMessage, LlamaSampler, Role};
 
-use crate::model::Model;
+use crate::model::{Model, Seq};
 
 /// Kept identical to model-tooling's agent_tests.py ROUTER_SYSTEM so the
 /// constrained in-process router and the unconstrained llama-server
@@ -117,7 +117,7 @@ impl Router {
 
         // The system prompt and few-shot turns are identical every time, so
         // after the first request only the user's message is evaluated.
-        let text = model.complete(&prompt, &mut sampler, if unconstrained { 32 } else { 8 }, &mut |_| {})?;
+        let text = model.complete(Seq::Route, &prompt, &mut sampler, if unconstrained { 32 } else { 8 }, &mut |_| {})?;
         let label = text.trim();
         if unconstrained {
             eprintln!("raw: {label:?}");

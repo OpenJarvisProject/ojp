@@ -15,7 +15,7 @@ use llama_crab::chat::template::render_builtin;
 use llama_crab::{ChatMessage, LlamaSampler, Role};
 use serde_json::Value;
 
-use crate::model::Model;
+use crate::model::{Model, Seq};
 
 const SYSTEM_PROMPT: &str = "You control this computer through tools. Available tools:\n\
 - set_timer(minutes: int)\n- open_app(name: str)\n- volume(level: int)  // 0-100\n\
@@ -38,7 +38,7 @@ pub fn handle(model: &mut Model, template: BuiltinTemplate, request: &str) -> Re
     let grammar = unsafe { LlamaSampler::grammar(model.llama().model(), GRAMMAR, "root") }.context("tool grammar rejected")?;
     let greedy = LlamaSampler::greedy().context("greedy sampler")?;
     let mut sampler = LlamaSampler::chain(vec![grammar, greedy], true).context("sampler chain")?;
-    let text = model.complete(&prompt, &mut sampler, 48, &mut |_| {})?;
+    let text = model.complete(Seq::Route, &prompt, &mut sampler, 48, &mut |_| {})?;
 
     let call: Value =
         serde_json::from_str(text.trim()).with_context(|| format!("tool call didn't parse: {text:?}"))?;

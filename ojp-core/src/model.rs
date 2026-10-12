@@ -10,10 +10,23 @@ use anyhow::{Context, Result, bail};
 use llama_crab::{Llama, LlamaBatch, LlamaParams, LlamaSampler, LlamaToken};
 use std::path::Path;
 
+/// Independent KV-cache sequences in one model. Routing and chat prompts
+/// differ from their first tokens, so on a router-only device (where the
+/// router both classifies and answers) one shared cache was evicted on
+/// every message; each kind of prompt now keeps its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Seq {
+    /// Routing and tool calls (short, mostly fixed prompts).
+    Route = 0,
+    /// Chat answers (system prompt + history).
+    Chat = 1,
+}
+const SEQS: usize = 2;
+
 pub struct Model {
     llama: Llama,
-    /// Tokens currently in the KV cache (sequence 0), in position order.
-    cached: Vec<LlamaToken>,
+    /// Tokens currently in the KV cache per sequence, in position order.
+    cached: [Vec<LlamaToken>; SEQS],
     /// End-of-generation tokens: eos, eot, and the end markers of common
     /// chat formats that exist in this vocabulary as single tokens.
     eog: Vec<LlamaToken>,
@@ -27,7 +40,10 @@ impl Model {
         if !path.exists() {
             bail!("{} not found", path.display());
         }
-        let params = LlamaParams::new(path).with_n_ctx(n_ctx).with_n_gpu_layers(gpu_layers);
+        // Each sequence gets its own n_ctx: llama.cpp splits a non-unified KV
+        // cache evenly between the n_seq_max sequences.
+        let mut params = LlamaParams::new(path).with_n_ctx(n_ctx * SEQS as u32).with_n_gpu_layers(gpu_layers);
+        params.context = params.context.with_n_seq_max(SEQS as u32);
         let llama = Llama::load(params).with_context(|| format!("loading {}", path.display()))?;
         let vocab = llama.model();
         let mut eog = vec![vocab.token_eos(), vocab.token_eot()];
@@ -39,7 +55,7 @@ impl Model {
                 eog.push(token);
             }
         }
-        Ok(Model { llama, cached: Vec::new(), eog, n_ctx: n_ctx as usize })
+        Ok(Model { llama, cached: Default::default(), eog, n_ctx: n_ctx as usize })
     }
 
     pub fn llama(&self) -> &Llama {
@@ -51,6 +67,7 @@ impl Model {
     /// Returns the generated text.
     pub fn complete(
         &mut self,
+        seq: Seq,
         prompt: &str,
         sampler: &mut LlamaSampler,
         max_tokens: usize,
@@ -63,21 +80,22 @@ impl Model {
         if tokens.len() + max_tokens > self.n_ctx {
             bail!("prompt of {} tokens + {max_tokens} to generate exceeds the {}-token context", tokens.len(), self.n_ctx);
         }
-        let result = self.generate(&tokens, sampler, max_tokens, on_text);
+        let result = self.generate(seq, &tokens, sampler, max_tokens, on_text);
         if result.is_err() {
             // Unknown KV state after a failed decode: start clean next time.
-            self.reset();
+            self.reset(seq);
         }
         result
     }
 
-    fn reset(&mut self) {
-        let _ = self.llama.context().seq_rm(0, -1, -1);
-        self.cached.clear();
+    fn reset(&mut self, seq: Seq) {
+        let _ = self.llama.context().seq_rm(seq as i32, -1, -1);
+        self.cached[seq as usize].clear();
     }
 
     fn generate(
         &mut self,
+        seq: Seq,
         tokens: &[LlamaToken],
         sampler: &mut LlamaSampler,
         max_tokens: usize,
@@ -85,25 +103,29 @@ impl Model {
     ) -> Result<String> {
         // Reuse the common prefix, but always re-evaluate at least the last
         // prompt token: its logits are what the first sample is drawn from.
-        let common = self.cached.iter().zip(tokens).take_while(|(a, b)| a == b).count();
+        let id = seq as i32;
+        let common = self.cached[seq as usize].iter().zip(tokens).take_while(|(a, b)| a == b).count();
         let keep = common.min(tokens.len() - 1);
-        if self.llama.context().seq_rm(0, keep as i32, -1).is_err() {
-            self.reset();
+        if self.llama.context().seq_rm(id, keep as i32, -1).is_err() {
+            self.reset(seq);
         }
-        let keep = keep.min(self.cached.len());
-        self.cached.truncate(keep);
+        let keep = keep.min(self.cached[seq as usize].len());
+        self.cached[seq as usize].truncate(keep);
 
         let n_batch = self.llama.context().n_batch() as usize;
         let mut logits_idx = 0;
         for start in (keep..tokens.len()).step_by(n_batch.max(1)) {
             let chunk = &tokens[start..(start + n_batch).min(tokens.len())];
+            // Capacity 1 sequence id per token: llama-crab marks every token as
+            // belonging to that many sequences, so a larger capacity would tie
+            // each token to sequence 0 too ("coupled sequences" in llama.cpp).
             let mut batch = LlamaBatch::new(chunk.len(), 1);
             for (i, &token) in chunk.iter().enumerate() {
                 let pos = start + i;
-                batch.add(token, pos as i32, &[0], pos + 1 == tokens.len())?;
+                batch.add(token, pos as i32, &[id], pos + 1 == tokens.len())?;
             }
             self.llama.context().decode(&batch)?;
-            self.cached.extend_from_slice(chunk);
+            self.cached[seq as usize].extend_from_slice(chunk);
             logits_idx = chunk.len() as i32 - 1;
         }
 
@@ -131,9 +153,9 @@ impl Model {
             }
 
             let mut batch = LlamaBatch::new(1, 1);
-            batch.add(token, self.cached.len() as i32, &[0], true)?;
+            batch.add(token, self.cached[seq as usize].len() as i32, &[id], true)?;
             self.llama.context().decode(&batch)?;
-            self.cached.push(token);
+            self.cached[seq as usize].push(token);
             logits_idx = 0;
         }
         if !pending.is_empty() {

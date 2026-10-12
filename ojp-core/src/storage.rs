@@ -48,7 +48,17 @@ pub fn save_location(config_path: &Path, location: &Path) -> Result<()> {
 
 /// Remember that the user chose router-only (`[download] skip_main`).
 pub fn save_skip_main(config_path: &Path) -> Result<()> {
-    set_config_value(config_path, "download", "skip_main", toml_edit::value(true))
+    set_bool(config_path, "download", "skip_main", true)
+}
+
+/// Set `[table] key = <bool>` in config.toml, preserving the rest.
+pub fn set_bool(config_path: &Path, table: &str, key: &str, value: bool) -> Result<()> {
+    set_config_value(config_path, table, key, toml_edit::value(value))
+}
+
+/// Set `[table] key = "<string>"` in config.toml, preserving the rest.
+pub fn set_str(config_path: &Path, table: &str, key: &str, value: &str) -> Result<()> {
+    set_config_value(config_path, table, key, toml_edit::value(value))
 }
 
 /// Set `[table] key = value` in config.toml, preserving the rest of the file.

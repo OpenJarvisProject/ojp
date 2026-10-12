@@ -1,7 +1,7 @@
-// Shared chat UI for the desktop (ojp) and Android (ojp-android) apps.
-// Pure view: state lives in Rust and is pushed in through the `Chat`
-// global; user actions come back out through its callbacks.
-import { Button, CheckBox, LineEdit, ListView, Palette, ProgressIndicator } from "std-widgets.slint";
+// Shared UI for the desktop (ojp) and Android (ojp-android) apps.
+// Pure view: state lives in Rust and is pushed in through the `Chat` and
+// `Settings` globals; user actions come back out through their callbacks.
+import { Button, CheckBox, ComboBox, LineEdit, Palette, ProgressIndicator, ScrollView, Switch } from "std-widgets.slint";
 
 export struct Message {
     from-user: bool,
@@ -14,6 +14,11 @@ export struct Message {
     meta: string,
 }
 
+export struct ChatSummary {
+    id: string,
+    title: string,
+}
+
 export global Chat {
     in-out property <string> assistant-name: "Jarvis";
     in-out property <[Message]> messages;
@@ -23,6 +28,12 @@ export global Chat {
     in-out property <string> status;
     callback send(string);
     callback clear();
+
+    // Saved chats, most recent first, and the one on screen.
+    in-out property <[ChatSummary]> chats;
+    in-out property <string> current-chat;
+    callback open-chat(string);
+    callback delete-chat(string);
 
     // First-run model download panel.
     in-out property <bool> download-needed;
@@ -39,6 +50,38 @@ export global Chat {
     in-out property <bool> offer-main;
     in-out property <string> main-label;
     in-out property <bool> download-main: true;
+}
+
+export global Settings {
+    // 0 = follow the system, 1 = light, 2 = dark.
+    in-out property <int> theme;
+    in-out property <bool> dynamic-colors: true;
+    // Only Android has wallpaper-based colours.
+    in-out property <bool> dynamic-colors-supported;
+    // Developer: false = router only, the main model is never loaded.
+    in-out property <bool> main-enabled: true;
+    // Read-only details shown in the developer section.
+    in-out property <string> info;
+    // Any of the above changed by the user; the host saves and applies it.
+    callback changed();
+}
+
+component IconButton inherits Rectangle {
+    in property <image> icon;
+    callback clicked;
+    width: 44px;
+    height: 44px;
+    border-radius: 22px;
+    background: touch.pressed ? Palette.alternate-background : transparent;
+    Image {
+        source: root.icon;
+        width: 24px;
+        height: 24px;
+        colorize: Palette.foreground;
+    }
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
 }
 
 component Bubble inherits Rectangle {
@@ -69,12 +112,8 @@ component Bubble inherits Rectangle {
     }
 }
 
-export component AppWindow inherits Window {
-    // App name; the assistant's own name (persona) is shown in the header.
-    title: "OpenJarvis";
-    icon: @image-url("../assets/openjarvis-256.png");
-    preferred-width: 440px;
-    preferred-height: 760px;
+component ChatPage inherits Rectangle {
+    callback open-menu;
     background: Palette.background;
 
     function submit() {
@@ -85,17 +124,14 @@ export component AppWindow inherits Window {
     }
 
     VerticalLayout {
-        // Stay clear of the phone's status/navigation bars and, while it's
-        // open, the on-screen keyboard. All zero on desktop.
-        padding-top: root.safe-area-insets.top;
-        padding-left: root.safe-area-insets.left;
-        padding-right: root.safe-area-insets.right;
-        padding-bottom: max(root.safe-area-insets.bottom, root.virtual-keyboard-size.height);
-
         HorizontalLayout {
-            padding: 12px;
-            spacing: 8px;
+            padding: 8px;
+            spacing: 4px;
             vertical-stretch: 0;
+            IconButton {
+                icon: @image-url("../assets/menu.png");
+                clicked => { root.open-menu(); }
+            }
             VerticalLayout {
                 horizontal-stretch: 1;
                 alignment: center;
@@ -118,20 +154,35 @@ export component AppWindow inherits Window {
             }
         }
 
-        list := ListView {
+        // Not a ListView: a ListView only instantiates visible rows and
+        // re-estimates its height while scrolling, which the auto-scroll
+        // below then mistook for new content (you couldn't scroll up).
+        list := ScrollView {
             vertical-stretch: 1;
-            // Keep the newest message in view as replies stream in.
-            changed content-height => {
-                self.content-y = min(0px, self.visible-height - self.content-height);
+            // Follow new text only while the user is at the bottom; scrolling
+            // up to read older messages stops following.
+            property <bool> follow: true;
+            scrolled => {
+                self.follow = self.content-y <= self.visible-height - self.content-height + 24px;
             }
-            for message in Chat.messages: HorizontalLayout {
-                // Indent from the opposite side so user and assistant
-                // messages read as two columns.
-                padding-left: message.from-user ? 56px : 12px;
-                padding-right: message.from-user ? 12px : 56px;
+            changed content-height => {
+                if (self.follow) {
+                    self.content-y = min(0px, self.visible-height - self.content-height);
+                }
+            }
+            VerticalLayout {
                 padding-top: 4px;
                 padding-bottom: 4px;
-                Bubble { message: message; }
+                alignment: start;
+                for message in Chat.messages: HorizontalLayout {
+                    // Indent from the opposite side so user and assistant
+                    // messages read as two columns.
+                    padding-left: message.from-user ? 56px : 12px;
+                    padding-right: message.from-user ? 12px : 56px;
+                    padding-top: 4px;
+                    padding-bottom: 4px;
+                    Bubble { message: message; }
+                }
             }
         }
 
@@ -208,6 +259,251 @@ export component AppWindow inherits Window {
                 enabled: !Chat.busy && input.text != "";
                 clicked => { root.submit(); }
             }
+        }
+    }
+}
+
+component Sidebar inherits Rectangle {
+    callback close;
+    callback open-settings;
+    background: Palette.alternate-background;
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+        Text {
+            text: "Chats";
+            font-size: 1.3rem;
+            font-weight: 700;
+        }
+        Button {
+            text: "New chat";
+            primary: true;
+            enabled: !Chat.busy;
+            clicked => {
+                Chat.clear();
+                root.close();
+            }
+        }
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                alignment: start;
+                spacing: 2px;
+                if Chat.chats.length == 0: Text {
+                    text: "No saved chats yet.";
+                    opacity: 0.6;
+                }
+                for chat in Chat.chats: Rectangle {
+                    height: 44px;
+                    border-radius: 10px;
+                    background: chat.id == Chat.current-chat ? Palette.control-background : (row-touch.pressed ? Palette.background : transparent);
+                    row-touch := TouchArea {
+                        enabled: !Chat.busy;
+                        clicked => {
+                            Chat.open-chat(chat.id);
+                            root.close();
+                        }
+                    }
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        spacing: 4px;
+                        Text {
+                            horizontal-stretch: 1;
+                            text: chat.title;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        IconButton {
+                            icon: @image-url("../assets/delete.png");
+                            clicked => { Chat.delete-chat(chat.id); }
+                        }
+                    }
+                }
+            }
+        }
+        Rectangle {
+            height: 44px;
+            border-radius: 10px;
+            background: settings-touch.pressed ? Palette.background : transparent;
+            settings-touch := TouchArea {
+                clicked => { root.open-settings(); }
+            }
+            HorizontalLayout {
+                padding-left: 10px;
+                spacing: 10px;
+                Image {
+                    source: @image-url("../assets/settings.png");
+                    width: 22px;
+                    colorize: Palette.foreground;
+                }
+                Text {
+                    text: "Settings";
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}
+
+component SettingRow inherits HorizontalLayout {
+    in property <string> title;
+    in property <string> description;
+    in-out property <bool> checked;
+    callback toggled;
+    spacing: 12px;
+    VerticalLayout {
+        horizontal-stretch: 1;
+        alignment: center;
+        Text { text: root.title; }
+        if root.description != "": Text {
+            text: root.description;
+            wrap: word-wrap;
+            font-size: 0.85rem;
+            opacity: 0.65;
+        }
+    }
+    Switch {
+        horizontal-stretch: 0;
+        checked <=> root.checked;
+        toggled => { root.toggled(); }
+    }
+}
+
+component SettingsPage inherits Rectangle {
+    callback back;
+    background: Palette.background;
+
+    VerticalLayout {
+        HorizontalLayout {
+            padding: 8px;
+            spacing: 8px;
+            vertical-stretch: 0;
+            Button {
+                text: "‹ Back";
+                horizontal-stretch: 0;
+                clicked => { root.back(); }
+            }
+            Text {
+                text: "Settings";
+                font-size: 1.3rem;
+                font-weight: 700;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+        }
+        ScrollView {
+            VerticalLayout {
+                padding: 16px;
+                spacing: 14px;
+                alignment: start;
+
+                Text { text: "Appearance"; font-weight: 700; color: Palette.accent-background; }
+                HorizontalLayout {
+                    spacing: 12px;
+                    Text {
+                        text: "Theme";
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    ComboBox {
+                        horizontal-stretch: 0;
+                        model: ["System", "Light", "Dark"];
+                        current-index <=> Settings.theme;
+                        selected => { Settings.changed(); }
+                    }
+                }
+                if Settings.dynamic-colors-supported: SettingRow {
+                    title: "Dynamic colours";
+                    description: "Tint the app with your wallpaper's colours.";
+                    checked <=> Settings.dynamic-colors;
+                    toggled => { Settings.changed(); }
+                }
+
+                Rectangle { height: 1px; background: Palette.border; opacity: 0.4; }
+
+                Text { text: "Developer"; font-weight: 700; color: Palette.accent-background; }
+                SettingRow {
+                    title: "Use the main model";
+                    description: "Off: only the small router model is loaded and answers everything (less memory, weaker answers).";
+                    checked <=> Settings.main-enabled;
+                    toggled => { Settings.changed(); }
+                }
+                Text {
+                    text: Settings.info;
+                    wrap: word-wrap;
+                    font-size: 0.8rem;
+                    opacity: 0.65;
+                }
+            }
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    // App name; the assistant's own name (persona) is shown in the header.
+    title: "OpenJarvis";
+    icon: @image-url("../assets/openjarvis-256.png");
+    preferred-width: 440px;
+    preferred-height: 760px;
+    background: Palette.background;
+
+    property <int> theme: Settings.theme;
+    init => { root.apply-theme(); }
+    changed theme => { root.apply-theme(); }
+    function apply-theme() {
+        Palette.color-scheme = root.theme == 1 ? ColorScheme.light : root.theme == 2 ? ColorScheme.dark : ColorScheme.unknown;
+    }
+
+    property <bool> show-settings;
+    property <length> drawer-width: min(320px, root.width * 0.82);
+    // How far the drawer is open, 0 (closed) to drawer-width (open).
+    property <bool> drawer-open;
+    property <length> drawer-target: drawer-open ? drawer-width : 0px;
+    property <length> drawer-pos: swipe.swiping ? clamp(drawer-target + swipe.current-position.x - swipe.pressed-position.x, 0px, drawer-width) : drawer-target;
+    animate drawer-target { duration: 200ms; easing: ease-out; }
+
+    // Stay clear of the phone's status/navigation bars and, while it's
+    // open, the on-screen keyboard. All zero on desktop.
+    swipe := SwipeGestureHandler {
+        x: root.safe-area-insets.left;
+        y: root.safe-area-insets.top;
+        width: root.width - root.safe-area-insets.left - root.safe-area-insets.right;
+        height: root.height - root.safe-area-insets.top - max(root.safe-area-insets.bottom, root.virtual-keyboard-size.height);
+        enabled: !root.show-settings;
+        // Swipe right (left edge to the right) opens the chat list; swipe
+        // left closes it, like a drawer.
+        handle-swipe-right: !root.drawer-open;
+        handle-swipe-left: root.drawer-open;
+        // `swiping` is already false when this runs, so use the finger's
+        // travel rather than drawer-pos (which has snapped back by now).
+        swiped => {
+            root.drawer-open = clamp(root.drawer-target + self.current-position.x - self.pressed-position.x, 0px, root.drawer-width) > root.drawer-width / 3;
+        }
+
+        ChatPage {
+            open-menu => { root.drawer-open = true; }
+        }
+
+        if root.drawer-pos > 0: Rectangle {
+            background: #000;
+            opacity: 0.45 * root.drawer-pos / root.drawer-width;
+            TouchArea {
+                clicked => { root.drawer-open = false; }
+            }
+        }
+        if root.drawer-pos > 0: Sidebar {
+            x: root.drawer-pos - root.drawer-width;
+            width: root.drawer-width;
+            height: parent.height;
+            close => { root.drawer-open = false; }
+            open-settings => {
+                root.drawer-open = false;
+                root.show-settings = true;
+            }
+        }
+        if root.show-settings: SettingsPage {
+            back => { root.show-settings = false; }
         }
     }
 }

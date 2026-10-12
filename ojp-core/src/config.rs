@@ -22,6 +22,9 @@ pronunciation = "jarvis"
 voice = "default"
 
 [models]
+# Developer switch (also in the app's settings): false = never load the
+# main model, so the router answers everything.
+main_enabled = true
 # Small, always-loaded model: classifies each request and runs tools.
 router = "models/router.gguf"
 # Bigger model for the actual answers. Either an in-process GGUF...
@@ -40,6 +43,12 @@ n_ctx = 4096
 # Prompt format of the models: chatml (Qwen and most others), llama3,
 # mistral, gemma, phi3.
 chat_template = "chatml"
+
+[ui]
+# "system", "light" or "dark".
+theme = "system"
+# Android: tint the app with your wallpaper's colours (Material You).
+dynamic_colors = true
 
 [download]
 # Where the app fetches a model whose file above is missing (first run:
@@ -64,6 +73,22 @@ pub struct Config {
     pub persona: Persona,
     pub models: Models,
     pub download: Download,
+    pub ui: Ui,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct Ui {
+    /// "system", "light" or "dark".
+    pub theme: String,
+    /// Android: tint the UI with the wallpaper-based system accent colour.
+    pub dynamic_colors: bool,
+}
+
+impl Default for Ui {
+    fn default() -> Self {
+        Ui { theme: "system".into(), dynamic_colors: true }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -78,6 +103,8 @@ pub struct Persona {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct Models {
+    /// Developer switch: false = don't load the main model (router only).
+    pub main_enabled: bool,
     /// Base directory for relative model paths (default: the data dir).
     pub location: Option<PathBuf>,
     pub router: Option<PathBuf>,
@@ -106,7 +133,7 @@ pub struct Download {
 
 impl Default for Config {
     fn default() -> Self {
-        Config { persona: Persona::default(), models: Models::default(), download: Download::default() }
+        Config { persona: Persona::default(), models: Models::default(), download: Download::default(), ui: Ui::default() }
     }
 }
 
@@ -136,6 +163,7 @@ impl Default for Persona {
 impl Default for Models {
     fn default() -> Self {
         Models {
+            main_enabled: true,
             location: None,
             router: Some("models/router.gguf".into()),
             main: Some("models/main.gguf".into()),
@@ -262,6 +290,9 @@ mod tests {
         assert_eq!((parsed.models.router, parsed.models.main), (m.router, m.main));
         assert_eq!((parsed.models.gpu_layers, parsed.models.n_ctx), (m.gpu_layers, m.n_ctx));
         assert_eq!(parsed.models.chat_template, m.chat_template);
+        assert_eq!(parsed.models.main_enabled, m.main_enabled);
+        let u = Ui::default();
+        assert_eq!((parsed.ui.theme, parsed.ui.dynamic_colors), (u.theme, u.dynamic_colors));
         let d = Download::default();
         assert_eq!(parsed.download.skip_main, d.skip_main);
         assert_eq!((parsed.download.router, parsed.download.router_sha256), (d.router, d.router_sha256));

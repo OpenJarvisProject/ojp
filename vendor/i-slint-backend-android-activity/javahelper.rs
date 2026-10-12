@@ -596,23 +596,48 @@ fn callback_update_text<'local>(
     i_slint_core::api::invoke_from_event_loop(move || {
         if let Some(adaptor) = CURRENT_WINDOW.with_borrow(|x| x.upgrade()) {
             adaptor.show_cursor_handles.set(false);
-            // OJP patch: the keyboard's composing range (the word being typed)
-            // used to be forwarded as a preedit whose "selection" spans the whole
-            // word, which Slint draws as a highlighted selection: the word looks
-            // selected while typing, and correcting typos behaves oddly. The
-            // composing state lives in the Java Editable that the keyboard talks
-            // to, so Slint only needs the resulting text and cursor: always
-            // commit it as plain text.
-            let _ = (preedit_start, preedit_end);
-            let mut key_event = KeyEvent::default();
-            key_event.text = text;
-            let event = InternalKeyEvent {
-                event_type: KeyEventType::CommitComposition,
-                replacement_range: Some(i32::MIN..i32::MAX),
-                cursor_position: Some(cursor_position as _),
-                anchor_position: Some(anchor_position as _),
-                key_event,
-                ..Default::default()
+            let event = if preedit_start != preedit_end {
+                let adjust = |pos| {
+                    if pos <= preedit_start {
+                        pos
+                    } else if pos >= preedit_end {
+                        preedit_start + (pos - preedit_end)
+                    } else {
+                        preedit_start
+                    }
+                } as i32;
+                let mut key_event = KeyEvent::default();
+                key_event.text =
+                    i_slint_core::format!("{}{}", &text[..preedit_start], &text[preedit_end..]);
+
+                InternalKeyEvent {
+                    event_type: KeyEventType::UpdateComposition,
+                    preedit_text: text[preedit_start..preedit_end].into(),
+                    // OJP patch: report the cursor's place inside the composing
+                    // word, not a selection spanning all of it (which rendered as
+                    // a highlight while typing). See OJP-PATCH.md.
+                    preedit_selection: {
+                        let c = (cursor_position.clamp(preedit_start, preedit_end) - preedit_start) as i32;
+                        Some(c..c)
+                    },
+                    replacement_range: Some(i32::MIN..i32::MAX),
+                    cursor_position: Some(adjust(cursor_position)),
+                    anchor_position: Some(adjust(anchor_position)),
+                    key_event,
+                    ..Default::default()
+                }
+            } else {
+                let mut key_event = KeyEvent::default();
+                key_event.text = text;
+
+                InternalKeyEvent {
+                    event_type: KeyEventType::CommitComposition,
+                    replacement_range: Some(i32::MIN..i32::MAX),
+                    cursor_position: Some(cursor_position as _),
+                    anchor_position: Some(anchor_position as _),
+                    key_event,
+                    ..Default::default()
+                }
             };
             adaptor.window.dispatch_event(i_slint_core::platform::WindowEvent::internal(event));
         }
@@ -636,9 +661,7 @@ fn callback_set_night_mode<'local>(
             };
             let ctx = i_slint_core::window::WindowInner::from_pub(&w.window).context();
             ctx.set_color_scheme(scheme);
-            if let Ok(accent) = w.java_helper.accent_color() {
-                ctx.set_accent_color(accent);
-            }
+            ctx.set_accent_color(effective_accent_color(&w.java_helper));
         }
     })
     .unwrap();
@@ -833,4 +856,29 @@ fn callback_set_insets<'local>(
     })
     .unwrap();
     Ok(())
+}
+
+// OJP patch: optional dynamic colours, see vendor/OJP-PATCHES.md.
+static DYNAMIC_COLOR: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// The system accent colour when dynamic colours are on, otherwise none
+/// (a transparent colour, which makes the style use its own palette).
+pub(crate) fn effective_accent_color(helper: &JavaHelper) -> Color {
+    if DYNAMIC_COLOR.load(std::sync::atomic::Ordering::Relaxed) {
+        helper.accent_color().unwrap_or_default()
+    } else {
+        Color::default()
+    }
+}
+
+/// Turn Android dynamic (wallpaper-based) accent colours on or off; takes
+/// effect immediately on the current window.
+pub fn set_dynamic_color(enabled: bool) {
+    DYNAMIC_COLOR.store(enabled, std::sync::atomic::Ordering::Relaxed);
+    let _ = i_slint_core::api::invoke_from_event_loop(|| {
+        if let Some(w) = CURRENT_WINDOW.with_borrow(|x| x.upgrade()) {
+            let ctx = i_slint_core::window::WindowInner::from_pub(&w.window).context();
+            ctx.set_accent_color(effective_accent_color(&w.java_helper));
+        }
+    });
 }

@@ -1,27 +1,32 @@
 // UI <-> engine glue shared by the desktop and Android apps (each includes
-// this file with #[path] and provides AppWindow/Chat/Message through
-// slint::include_modules!). The engine lives on its own thread so model
-// loading and generation never block the UI; results come back through
-// slint's event loop.
+// this file with #[path] and provides AppWindow/Chat/Settings/Message
+// through slint::include_modules!). A worker thread owns the engine, the
+// saved chats and the settings file, so model loading and generation never
+// block the UI; it reports back through slint's event loop.
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+use ojp_core::chats::{ChatStore, StoredChat, StoredMessage};
 use ojp_core::download::{self, Item};
 use ojp_core::storage::{self, Location};
 use ojp_core::{Config, Engine, Event};
 use slint::{ComponentHandle, Model, StyledText, VecModel};
 
-use crate::{AppWindow, Chat, Message};
+use crate::{AppWindow, Chat, ChatSummary, Message, Settings};
 
 enum Request {
     Ask(String),
-    Clear,
+    /// Start a new, empty chat.
+    NewChat,
+    OpenChat(String),
+    DeleteChat(String),
     /// Download missing models into `Setup::locations[i]`, or into the
     /// current location for a negative index; the bool is "include the
     /// main model".
     Download(i32, bool),
+    Settings { theme: i32, dynamic_colors: bool, main_enabled: bool },
 }
 
 /// Everything the platform-specific `main` provides.
@@ -36,6 +41,16 @@ pub struct Setup {
     pub setup_hint: String,
     /// Shown as the first message (e.g. an unreadable settings file).
     pub warning: Option<String>,
+    /// Applies the "dynamic colours" setting; None where unsupported.
+    pub set_dynamic_colors: Option<fn(bool)>,
+}
+
+fn theme_index(theme: &str) -> i32 {
+    match theme {
+        "light" => 1,
+        "dark" => 2,
+        _ => 0,
+    }
 }
 
 /// Show the window and run until it closes.
@@ -51,31 +66,63 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     chat.set_busy(true);
     chat.set_status("Loading models…".into());
 
+    let settings = ui.global::<Settings>();
+    settings.set_theme(theme_index(&setup.config.ui.theme));
+    settings.set_dynamic_colors(setup.config.ui.dynamic_colors);
+    settings.set_dynamic_colors_supported(setup.set_dynamic_colors.is_some());
+    settings.set_main_enabled(setup.config.models.main_enabled);
+    if let Some(apply) = setup.set_dynamic_colors {
+        apply(setup.config.ui.dynamic_colors);
+    }
+
     let (tx, rx) = mpsc::channel();
     let weak = ui.as_weak();
     std::thread::spawn(move || worker(setup, rx, weak));
 
+    let send = move |request| {
+        let _ = tx.send(request);
+    };
     chat.on_send({
-        let (tx, messages, weak) = (tx.clone(), messages.clone(), ui.as_weak());
+        let (send, messages, weak) = (send.clone(), messages.clone(), ui.as_weak());
         move |text| {
             messages.push(Message { from_user: true, text: text.clone(), ..Default::default() });
             messages.push(Message { meta: "thinking…".into(), ..Default::default() });
             if let Some(ui) = weak.upgrade() {
                 ui.global::<Chat>().set_busy(true);
             }
-            let _ = tx.send(Request::Ask(text.into()));
+            send(Request::Ask(text.into()));
         }
     });
     chat.on_download({
-        let (tx, weak) = (tx.clone(), ui.as_weak());
+        let (send, weak) = (send.clone(), ui.as_weak());
         move |index| {
             let include_main = weak.upgrade().is_none_or(|ui| ui.global::<Chat>().get_download_main());
-            let _ = tx.send(Request::Download(index, include_main));
+            send(Request::Download(index, include_main));
         }
     });
-    chat.on_clear(move || {
-        messages.set_vec(Vec::new());
-        let _ = tx.send(Request::Clear);
+    chat.on_clear({
+        let send = send.clone();
+        move || send(Request::NewChat)
+    });
+    chat.on_open_chat({
+        let send = send.clone();
+        move |id| send(Request::OpenChat(id.into()))
+    });
+    chat.on_delete_chat({
+        let send = send.clone();
+        move |id| send(Request::DeleteChat(id.into()))
+    });
+    settings.on_changed({
+        let weak = ui.as_weak();
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let s = ui.global::<Settings>();
+            send(Request::Settings {
+                theme: s.get_theme(),
+                dynamic_colors: s.get_dynamic_colors(),
+                main_enabled: s.get_main_enabled(),
+            });
+        }
     });
     ui.run()?;
     Ok(())
@@ -89,6 +136,14 @@ fn render(text: &str) -> StyledText {
 
 fn reply(text: &str, meta: &str) -> Message {
     Message { text: text.into(), rendered: render(text), meta: meta.into(), ..Default::default() }
+}
+
+fn to_message(m: &StoredMessage) -> Message {
+    if m.from_user {
+        Message { from_user: true, text: m.text.as_str().into(), meta: m.meta.as_str().into(), ..Default::default() }
+    } else {
+        reply(&m.text, &m.meta)
+    }
 }
 
 /// Apply `edit` to the newest message (the reply being streamed), then
@@ -139,6 +194,23 @@ fn push_message(ui: &slint::Weak<AppWindow>, text: String, meta: &'static str) {
         let messages = ui.global::<Chat>().get_messages();
         let model = messages.as_any().downcast_ref::<VecModel<Message>>().expect("VecModel");
         model.push(reply(&text, meta));
+    });
+}
+
+/// Show `chat` on screen and refresh the sidebar list.
+fn show_chat(ui: &slint::Weak<AppWindow>, store: &ChatStore, chat: &StoredChat) {
+    let messages: Vec<StoredMessage> = chat.messages.clone();
+    let id = if chat.messages.is_empty() { String::new() } else { chat.id.clone() };
+    let list: Vec<(String, String)> = store.list().into_iter().map(|c| (c.id, c.title)).collect();
+    let _ = ui.upgrade_in_event_loop(move |ui| {
+        let chat = ui.global::<Chat>();
+        let model = chat.get_messages();
+        let model = model.as_any().downcast_ref::<VecModel<Message>>().expect("VecModel");
+        model.set_vec(messages.iter().map(to_message).collect::<Vec<_>>());
+        chat.set_current_chat(id.into());
+        let list: Vec<ChatSummary> =
+            list.into_iter().map(|(id, title)| ChatSummary { id: id.into(), title: title.into() }).collect();
+        chat.set_chats(Rc::new(VecModel::from(list)).into());
     });
 }
 
@@ -199,8 +271,10 @@ fn load_engine(setup: &Setup, ui: &slint::Weak<AppWindow>) -> Option<Engine> {
             ),
             -1.0,
         );
+    } else {
+        set_download(ui, false, String::new(), -1.0);
     }
-    match Engine::new(config) {
+    let engine = match Engine::new(config) {
         Ok(engine) => {
             set_state(ui, false, Some(engine.status.join(" · ")));
             Some(engine)
@@ -212,7 +286,16 @@ fn load_engine(setup: &Setup, ui: &slint::Weak<AppWindow>) -> Option<Engine> {
             set_state(ui, false, Some("No model loaded yet".into()));
             None
         }
-    }
+    };
+    let base = config.models.location.clone().unwrap_or_else(|| setup.data_dir.clone());
+    let info = format!(
+        "{}\nModels: {}\nSettings file: {}",
+        engine.as_ref().map_or("No model loaded".into(), |e| e.status.join(" · ")),
+        base.join("models").display(),
+        setup.config_path.display()
+    );
+    let _ = ui.upgrade_in_event_loop(move |ui| ui.global::<Settings>().set_info(info.into()));
+    engine
 }
 
 /// Fetch every missing model, showing overall progress. Returns false
@@ -243,38 +326,35 @@ fn download_all(items: &[Item], ui: &slint::Weak<AppWindow>) -> bool {
     true
 }
 
+/// Re-read config.toml after the host changed it.
+fn reload_config(setup: &mut Setup) -> anyhow::Result<()> {
+    let (config, warning) = Config::load_or_default(&setup.config_path, &setup.data_dir);
+    if let Some(warning) = warning {
+        anyhow::bail!(warning);
+    }
+    setup.config = config;
+    Ok(())
+}
+
 /// Save the chosen storage location and reload the config so model paths
 /// point there.
 fn choose_location(setup: &mut Setup, location: &Location) -> anyhow::Result<()> {
     std::fs::create_dir_all(&location.path)?;
     storage::save_location(&setup.config_path, &location.path)?;
-    let (config, warning) = Config::load_or_default(&setup.config_path, &setup.data_dir);
-    if let Some(warning) = warning {
-        anyhow::bail!(warning);
-    }
-    setup.config = config;
-    Ok(())
-}
-
-/// Remember "router only" so the main model isn't offered again.
-fn skip_main(setup: &mut Setup) -> anyhow::Result<()> {
-    storage::save_skip_main(&setup.config_path)?;
-    let (config, warning) = Config::load_or_default(&setup.config_path, &setup.data_dir);
-    if let Some(warning) = warning {
-        anyhow::bail!(warning);
-    }
-    setup.config = config;
-    Ok(())
+    reload_config(setup)
 }
 
 fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWindow>) {
+    let store = ChatStore::new(&setup.data_dir);
+    let mut chat = StoredChat::new();
+    show_chat(&ui, &store, &chat);
     let mut engine = load_engine(&setup, &ui);
 
     for request in rx {
-        match (request, &mut engine) {
-            (Request::Download(index, include_main), _) => {
+        match request {
+            Request::Download(index, include_main) => {
                 if !include_main
-                    && let Err(e) = skip_main(&mut setup)
+                    && let Err(e) = storage::save_skip_main(&setup.config_path).and_then(|_| reload_config(&mut setup))
                 {
                     set_download(&ui, true, format!("Couldn't save the router-only choice: {e:#}"), -1.0);
                     continue;
@@ -290,20 +370,72 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 let items = download::missing(&setup.config);
                 if download_all(&items, &ui) {
                     engine = load_engine(&setup, &ui);
+                    if let Some(engine) = engine.as_mut() {
+                        engine.set_history(chat.messages.iter().map(|m| (m.from_user, m.text.clone())));
+                    }
                 } else {
                     set_state(&ui, false, Some("Download failed".into()));
                 }
             }
-            (Request::Clear, Some(engine)) => engine.clear(),
-            (Request::Clear, None) => {}
-            (Request::Ask(_), None) => {
+            Request::NewChat => {
+                chat = StoredChat::new();
+                if let Some(engine) = engine.as_mut() {
+                    engine.clear();
+                }
+                show_chat(&ui, &store, &chat);
+            }
+            Request::OpenChat(id) => match store.load(&id) {
+                Ok(loaded) => {
+                    chat = loaded;
+                    if let Some(engine) = engine.as_mut() {
+                        engine.set_history(chat.messages.iter().map(|m| (m.from_user, m.text.clone())));
+                    }
+                    show_chat(&ui, &store, &chat);
+                }
+                Err(e) => push_message(&ui, format!("Couldn't open that chat: {e:#}"), "error"),
+            },
+            Request::DeleteChat(id) => {
+                let _ = store.delete(&id);
+                if id == chat.id {
+                    chat = StoredChat::new();
+                    if let Some(engine) = engine.as_mut() {
+                        engine.clear();
+                    }
+                }
+                show_chat(&ui, &store, &chat);
+            }
+            Request::Settings { theme, dynamic_colors, main_enabled } => {
+                let theme = ["system", "light", "dark"].get(theme as usize).copied().unwrap_or("system");
+                let path = &setup.config_path;
+                let saved = storage::set_str(path, "ui", "theme", theme)
+                    .and_then(|_| storage::set_bool(path, "ui", "dynamic_colors", dynamic_colors))
+                    .and_then(|_| storage::set_bool(path, "models", "main_enabled", main_enabled));
+                if let Err(e) = saved {
+                    push_message(&ui, format!("Couldn't save settings: {e:#}"), "settings");
+                }
+                if let Some(apply) = setup.set_dynamic_colors {
+                    apply(dynamic_colors);
+                }
+                let main_changed = main_enabled != setup.config.models.main_enabled;
+                let _ = reload_config(&mut setup);
+                if main_changed {
+                    // Free the old models before loading the new set.
+                    drop(engine.take());
+                    engine = load_engine(&setup, &ui);
+                    if let Some(engine) = engine.as_mut() {
+                        engine.set_history(chat.messages.iter().map(|m| (m.from_user, m.text.clone())));
+                    }
+                }
+            }
+            Request::Ask(_) if engine.is_none() => {
                 edit_last(&ui, |m| {
                     m.text = "No model is loaded yet. Use the Download button below first.".into();
                     m.meta = "".into();
                 });
                 set_state(&ui, false, None);
             }
-            (Request::Ask(text), Some(engine)) => {
+            Request::Ask(text) => {
+                let engine = engine.as_mut().expect("checked above");
                 let start = Instant::now();
                 let mut meta = Vec::new();
                 let result = engine.ask(&text, &mut |event| match event {
@@ -311,14 +443,44 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                     Event::Token(token) => edit_last(&ui, move |m| m.text = format!("{}{token}", m.text).into()),
                     Event::Notice(notice) => meta.push(notice),
                 });
-                if let Err(e) = result {
+                if let Err(e) = &result {
                     meta.push(format!("error: {e:#}"));
                 }
                 meta.push(format!("{:.1} s", start.elapsed().as_secs_f32()));
                 let meta = meta.join(" · ");
-                edit_last(&ui, move |m| m.meta = meta.into());
+
+                chat.messages.push(StoredMessage { from_user: true, text, meta: String::new() });
+                chat.messages.push(StoredMessage {
+                    from_user: false,
+                    text: result.unwrap_or_default(),
+                    meta: meta.clone(),
+                });
+                chat.refresh_title();
+                chat.touch();
+                if let Err(e) = store.save(&chat) {
+                    meta_note(&ui, format!("{meta} · not saved: {e:#}"));
+                } else {
+                    meta_note(&ui, meta);
+                }
+                refresh_list(&ui, &store, &chat);
                 set_state(&ui, false, None);
             }
         }
     }
+}
+
+fn meta_note(ui: &slint::Weak<AppWindow>, meta: String) {
+    edit_last(ui, move |m| m.meta = meta.into());
+}
+
+fn refresh_list(ui: &slint::Weak<AppWindow>, store: &ChatStore, chat: &StoredChat) {
+    let list: Vec<(String, String)> = store.list().into_iter().map(|c| (c.id, c.title)).collect();
+    let id = chat.id.clone();
+    let _ = ui.upgrade_in_event_loop(move |ui| {
+        let c = ui.global::<Chat>();
+        let list: Vec<ChatSummary> =
+            list.into_iter().map(|(id, title)| ChatSummary { id: id.into(), title: title.into() }).collect();
+        c.set_chats(Rc::new(VecModel::from(list)).into());
+        c.set_current_chat(id.into());
+    });
 }

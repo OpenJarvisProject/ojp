@@ -15,6 +15,7 @@ slint-build = "1.18"
 [profile.release]
 strip = true
 
-# Patched Slint Android backend: see vendor/i-slint-backend-android-activity/OJP-PATCH.md
+# Patched Slint crates: see vendor/OJP-PATCHES.md
 [patch.crates-io]
 i-slint-backend-android-activity = { path = "vendor/i-slint-backend-android-activity" }
+i-slint-core = { path = "vendor/i-slint-core" }

@@ -11,6 +11,7 @@
 
 mod androidwindowadapter;
 mod javahelper;
+pub use javahelper::set_dynamic_color;
 mod vsync;
 
 #[cfg(all(not(feature = "aa-06"), feature = "aa-05"))]
@@ -191,9 +192,7 @@ impl i_slint_core::platform::Platform for AndroidPlatform {
             _ => i_slint_core::items::ColorScheme::Unknown,
         };
         ctx.set_color_scheme(color_scheme);
-        if let Ok(accent) = self.window.java_helper.accent_color() {
-            ctx.set_accent_color(accent);
-        }
+        ctx.set_accent_color(javahelper::effective_accent_color(&self.window.java_helper));
         if let Ok(scale) = self.window.java_helper.font_scale()
             && let Some(size) = javahelper::font_scale_to_logical_length(scale)
         {

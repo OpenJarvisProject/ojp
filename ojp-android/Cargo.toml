@@ -14,6 +14,8 @@ anyhow.workspace = true
 slint = { workspace = true, features = ["backend-android-activity-06", "renderer-femtovg"] }
 # Same version slint's android backend uses; for getExternalFilesDirs.
 jni = "0.21"
+# The (patched) backend itself, for its set_dynamic_color switch.
+i-slint-backend-android-activity = { version = "=1.18.1", default-features = false }
 
 [build-dependencies]
 slint-build.workspace = true

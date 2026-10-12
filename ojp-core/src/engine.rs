@@ -20,7 +20,7 @@ use llama_crab::{ChatMessage, Role};
 use serde_json::{Value, json};
 
 use crate::config::Config;
-use crate::model::Model;
+use crate::model::{Model, Seq};
 use crate::router::{Route, Router};
 
 const MAX_TOKENS: usize = 512;
@@ -82,6 +82,10 @@ impl Engine {
                 status.push(format!("main: {model} @ {url}"));
                 Some(Main::Remote { base_url: url.clone(), model })
             }
+            (None, _) if !config.models.main_enabled => {
+                status.push("main: off".into());
+                None
+            }
             (None, _) => load("main", &config.models.main).map(Main::Local),
         };
         if router_llm.is_none() && main.is_none() {
@@ -103,10 +107,15 @@ impl Engine {
         // Likewise warm the main model: evaluating the system prompt pages its
         // weights in from storage (they're memory-mapped) and caches that
         // prefix, so the first real reply doesn't pay for either.
-        if let Some(Main::Local(model)) = main.as_mut() {
+        let answerer = match main.as_mut() {
+            Some(Main::Local(model)) => Some(model),
+            Some(Main::Remote { .. }) => None,
+            None => router_llm.as_mut(),
+        };
+        if let Some(model) = answerer {
             let prompt = render_builtin(template, &[ChatMessage::new(Role::System, system_prompt.clone())], &[], false);
             if let Ok(mut sampler) = llama_crab::LlamaSampler::greedy().context("greedy") {
-                let _ = model.complete(&prompt, &mut sampler, 1, &mut |_| {});
+                let _ = model.complete(Seq::Chat, &prompt, &mut sampler, 1, &mut |_| {});
             }
         }
         Ok(Engine {
@@ -123,6 +132,14 @@ impl Engine {
     /// Forget the conversation so far.
     pub fn clear(&mut self) {
         self.history.clear();
+    }
+
+    /// Continue an earlier conversation: (from_user, text) pairs, oldest first.
+    pub fn set_history(&mut self, messages: impl IntoIterator<Item = (bool, String)>) {
+        self.history = messages
+            .into_iter()
+            .map(|(from_user, text)| ChatMessage::new(if from_user { Role::User } else { Role::Assistant }, text))
+            .collect();
     }
 
     /// Handle one request; returns the full reply text.
@@ -206,7 +223,7 @@ fn generate_local(
     // prompt cache makes each turn evaluate just the newest messages.
     let prompt = render_builtin(template, messages, &[], true);
     let mut sampler = SamplingOptions::chat().build_sampler(model.llama())?;
-    let text = model.complete(&prompt, &mut sampler, MAX_TOKENS, &mut |t| on_event(Event::Token(t.to_string())))?;
+    let text = model.complete(Seq::Chat, &prompt, &mut sampler, MAX_TOKENS, &mut |t| on_event(Event::Token(t.to_string())))?;
     Ok(text.trim().to_string())
 }
 

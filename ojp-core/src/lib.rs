@@ -4,6 +4,7 @@
 //! main model (in-process GGUF or any OpenAI-compatible server), tools, and
 //! the persona (name, wake word, voice). A piece that is missing or fails
 //! degrades gracefully instead of taking the rest down; see engine.rs.
+pub mod chats;
 pub mod config;
 pub mod download;
 pub mod engine;

@@ -73,5 +73,13 @@ fn android_main(app: slint::android::AndroidApp) {
         data_dir.display(),
         config_path.display()
     );
-    glue::run(glue::Setup { config, config_path, data_dir, locations, setup_hint: hint, warning }).expect("ui event loop");
+    glue::run(glue::Setup {
+        config,
+        config_path,
+        data_dir,
+        locations,
+        setup_hint: hint,
+        warning,
+        set_dynamic_colors: Some(i_slint_backend_android_activity::set_dynamic_color),
+    }).expect("ui event loop");
 }
