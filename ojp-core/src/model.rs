@@ -62,6 +62,51 @@ impl Model {
         &self.llama
     }
 
+    /// Save the KV cache (all sequences) and the token lists describing it,
+    /// so a later start can skip re-evaluating the same warm-up prompts.
+    pub fn save_cache(&mut self, path: &Path) -> Result<()> {
+        let state = self.llama.context().state_to_bytes()?;
+        let tokens: Vec<Vec<i32>> = self.cached.iter().map(|seq| seq.iter().map(|t| t.raw()).collect()).collect();
+        let header = serde_json::to_vec(&tokens)?;
+        let mut out = Vec::with_capacity(8 + header.len() + state.len());
+        out.extend_from_slice(&(header.len() as u64).to_le_bytes());
+        out.extend_from_slice(&header);
+        out.extend_from_slice(&state);
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let tmp = path.with_extension("tmp");
+        std::fs::write(&tmp, out)?;
+        std::fs::rename(tmp, path)?;
+        Ok(())
+    }
+
+    /// Restore a cache written by `save_cache` for this same model/prompts
+    /// (the caller keys the file name). On any error the model is left with
+    /// an empty cache, which is always correct, just slower.
+    pub fn load_cache(&mut self, path: &Path) -> Result<()> {
+        let result = (|| -> Result<()> {
+            let bytes = std::fs::read(path)?;
+            let len = u64::from_le_bytes(bytes.get(..8).context("short cache file")?.try_into()?) as usize;
+            let header = bytes.get(8..8 + len).context("short cache file")?;
+            let tokens: Vec<Vec<i32>> = serde_json::from_slice(header)?;
+            if tokens.len() != SEQS {
+                bail!("cache has {} sequences, expected {SEQS}", tokens.len());
+            }
+            self.llama.context().load_state(&bytes[8 + len..])?;
+            for (seq, toks) in self.cached.iter_mut().zip(tokens) {
+                *seq = toks.into_iter().map(LlamaToken::from).collect();
+            }
+            Ok(())
+        })();
+        if result.is_err() {
+            for seq in [Seq::Route, Seq::Chat] {
+                self.reset(seq);
+            }
+        }
+        result
+    }
+
     /// Evaluate `prompt` (reusing the cached prefix), then sample up to
     /// `max_tokens` with `sampler`, streaming text through `on_text`.
     /// Returns the generated text.

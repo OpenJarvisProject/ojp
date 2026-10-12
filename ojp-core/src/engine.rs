@@ -94,28 +94,42 @@ impl Engine {
 
         let template = config.template()?;
         let router = Router::new(template);
-        // Warm the router's prompt cache now (during loading) so the first
-        // real message doesn't pay for evaluating the few-shot prompt.
-        if let Some(model) = router_llm.as_mut() {
-            let _ = router.classify(model, "hello");
-        }
         let name = &config.persona.name;
         let system_prompt = format!(
             "You are {name}, a helpful personal assistant running locally on the user's own device. \
              Answer accurately and concisely. If you don't know something, say so."
         );
-        // Likewise warm the main model: evaluating the system prompt pages its
-        // weights in from storage (they're memory-mapped) and caches that
-        // prefix, so the first real reply doesn't pay for either.
-        let answerer = match main.as_mut() {
-            Some(Main::Local(model)) => Some(model),
-            Some(Main::Remote { .. }) => None,
-            None => router_llm.as_mut(),
-        };
-        if let Some(model) = answerer {
-            let prompt = render_builtin(template, &[ChatMessage::new(Role::System, system_prompt.clone())], &[], false);
+        // Warm-up, done while loading so the first message is fast: the
+        // router evaluates its few-shot prompt, and whichever model answers
+        // evaluates the system prompt (which also pages its memory-mapped
+        // weights in). The resulting KV cache is saved next to the models
+        // and restored on later starts instead of being recomputed.
+        let chat_prompt = render_builtin(template, &[ChatMessage::new(Role::System, system_prompt.clone())], &[], false);
+        let router_only = main.is_none();
+        let warm_chat = |model: &mut Model| {
             if let Ok(mut sampler) = llama_crab::LlamaSampler::greedy().context("greedy") {
-                let _ = model.complete(Seq::Chat, &prompt, &mut sampler, 1, &mut |_| {});
+                let _ = model.complete(Seq::Chat, &chat_prompt, &mut sampler, 1, &mut |_| {});
+            }
+        };
+        if let Some(model) = router_llm.as_mut() {
+            let path = cache_path(config, config.models.router.as_deref(), &[&chat_prompt, &format!("{router_only}")]);
+            if path.as_ref().is_none_or(|p| model.load_cache(p).is_err()) {
+                let _ = router.classify(model, "hello");
+                if router_only {
+                    warm_chat(model);
+                }
+                if let Some(p) = &path {
+                    let _ = model.save_cache(p);
+                }
+            }
+        }
+        if let Some(Main::Local(model)) = main.as_mut() {
+            let path = cache_path(config, config.models.main.as_deref(), &[&chat_prompt]);
+            if path.as_ref().is_none_or(|p| model.load_cache(p).is_err()) {
+                warm_chat(model);
+                if let Some(p) = &path {
+                    let _ = model.save_cache(p);
+                }
             }
         }
         Ok(Engine {
@@ -249,4 +263,24 @@ fn generate_remote(
         .to_string();
     on_event(Event::Token(text.clone()));
     Ok(text)
+}
+
+/// Where a model's warm-up cache lives: `<models dir>/.cache/<name>-<key>.kv`,
+/// keyed on everything that would change its contents (the model file's
+/// path, size and modification time, the prompts, this build).
+fn cache_path(config: &Config, model: Option<&std::path::Path>, prompts: &[&str]) -> Option<std::path::PathBuf> {
+    use std::hash::{Hash, Hasher};
+    let model = model?;
+    let meta = std::fs::metadata(model).ok()?;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    model.hash(&mut h);
+    meta.len().hash(&mut h);
+    meta.modified().ok().hash(&mut h);
+    prompts.hash(&mut h);
+    crate::router::PROMPT_VERSION.hash(&mut h);
+    config.models.n_ctx.hash(&mut h);
+    config.models.gpu_layers.hash(&mut h);
+    env!("CARGO_PKG_VERSION").hash(&mut h);
+    let name = model.file_stem()?.to_string_lossy();
+    Some(model.parent()?.join(".cache").join(format!("{name}-{:016x}.kv", h.finish())))
 }

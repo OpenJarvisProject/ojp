@@ -457,11 +457,24 @@ export component AppWindow inherits Window {
 
     property <bool> show-settings;
     property <length> drawer-width: min(320px, root.width * 0.82);
-    // How far the drawer is open, 0 (closed) to drawer-width (open).
     property <bool> drawer-open;
-    property <length> drawer-target: drawer-open ? drawer-width : 0px;
-    property <length> drawer-pos: swipe.swiping ? clamp(drawer-target + swipe.current-position.x - swipe.pressed-position.x, 0px, drawer-width) : drawer-target;
-    animate drawer-target { duration: 200ms; easing: ease-out; }
+    // Where the drawer rests (0 = closed, drawer-width = open), animated
+    // when it changes, plus the live finger offset while swiping. On
+    // release the offset eases back to 0 while the resting position eases
+    // to its new value, so the drawer continues from under the finger
+    // instead of jumping (Slint's SwipeGestureHandler pattern).
+    property <length> drawer-rest: drawer-open ? drawer-width : 0px;
+    animate drawer-rest { duration: 220ms; easing: ease-out; }
+    property <length> drag-offset;
+    property <length> drawer-pos: clamp(drawer-rest + drag-offset, 0px, drawer-width);
+    states [
+        dragging when swipe.swiping: {
+            drag-offset: swipe.current-position.x - swipe.pressed-position.x;
+            out {
+                animate drag-offset { duration: 220ms; easing: ease-out; }
+            }
+        }
+    ]
 
     // Stay clear of the phone's status/navigation bars and, while it's
     // open, the on-screen keyboard. All zero on desktop.
@@ -476,9 +489,9 @@ export component AppWindow inherits Window {
         handle-swipe-right: !root.drawer-open;
         handle-swipe-left: root.drawer-open;
         // `swiping` is already false when this runs, so use the finger's
-        // travel rather than drawer-pos (which has snapped back by now).
+        // travel rather than drag-offset (which is easing back to 0 by now).
         swiped => {
-            root.drawer-open = clamp(root.drawer-target + self.current-position.x - self.pressed-position.x, 0px, root.drawer-width) > root.drawer-width / 3;
+            root.drawer-open = clamp(root.drawer-rest + self.current-position.x - self.pressed-position.x, 0px, root.drawer-width) > root.drawer-width / 3;
         }
 
         ChatPage {
