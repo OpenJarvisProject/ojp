@@ -86,6 +86,10 @@ export global Settings {
     out property <float> mix-total: (mix-v0 > 0 ? mix-a0 : 0) + (mix-v1 > 0 ? mix-a1 : 0) + (mix-v2 > 0 ? mix-a2 : 0);
     // Play a sample in the current voice, speed and blend.
     callback preview();
+    in-out property <[string]> tts-engines;
+    in-out property <int> tts-engine;
+    in-out property <[string]> tts-moss-voices;
+    in-out property <int> tts-moss-voice;
     in-out property <[string]> tts-speeds;
     in-out property <int> tts-speed;
     // Read-only details shown in the developer section.
@@ -524,13 +528,41 @@ component SettingsPage inherits Rectangle {
                     checked <=> Settings.tts-enabled;
                     toggled => { Settings.changed(); }
                 }
-                if Settings.tts-supported && Settings.tts-enabled: Text {
+                if Settings.tts-supported && Settings.tts-enabled: HorizontalLayout {
+                    spacing: 12px;
+                    Text {
+                        text: "Voice engine";
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    ComboBox {
+                        horizontal-stretch: 0;
+                        model: Settings.tts-engines;
+                        current-index <=> Settings.tts-engine;
+                        selected => { Settings.changed(); }
+                    }
+                }
+                if Settings.tts-supported && Settings.tts-enabled && Settings.tts-engine == 1: HorizontalLayout {
+                    spacing: 12px;
+                    Text {
+                        text: "MOSS voice";
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    ComboBox {
+                        horizontal-stretch: 0;
+                        model: Settings.tts-moss-voices;
+                        current-index <=> Settings.tts-moss-voice;
+                        selected => { Settings.changed(); }
+                    }
+                }
+                if Settings.tts-supported && Settings.tts-enabled && Settings.tts-engine == 0: Text {
                     text: "Voice mix: blend up to three voices; strengths are shared out between them.";
                     wrap: word-wrap;
                     font-size: 0.8rem;
                     opacity: 0.65;
                 }
-                if Settings.tts-supported && Settings.tts-enabled: MixRow {
+                if Settings.tts-supported && Settings.tts-enabled && Settings.tts-engine == 0: MixRow {
                     title: "Voice 1";
                     choices: Settings.tts-voice-choices;
                     total: Settings.mix-total;
@@ -538,7 +570,7 @@ component SettingsPage inherits Rectangle {
                     amount <=> Settings.mix-a0;
                     edited => { Settings.changed(); }
                 }
-                if Settings.tts-supported && Settings.tts-enabled: MixRow {
+                if Settings.tts-supported && Settings.tts-enabled && Settings.tts-engine == 0: MixRow {
                     title: "Voice 2";
                     choices: Settings.tts-voice-choices;
                     total: Settings.mix-total;
@@ -546,7 +578,7 @@ component SettingsPage inherits Rectangle {
                     amount <=> Settings.mix-a1;
                     edited => { Settings.changed(); }
                 }
-                if Settings.tts-supported && Settings.tts-enabled: MixRow {
+                if Settings.tts-supported && Settings.tts-enabled && Settings.tts-engine == 0: MixRow {
                     title: "Voice 3";
                     choices: Settings.tts-voice-choices;
                     total: Settings.mix-total;
@@ -554,7 +586,7 @@ component SettingsPage inherits Rectangle {
                     amount <=> Settings.mix-a2;
                     edited => { Settings.changed(); }
                 }
-                if Settings.tts-supported && Settings.tts-enabled: HorizontalLayout {
+                if Settings.tts-supported && Settings.tts-enabled && Settings.tts-engine == 0: HorizontalLayout {
                     spacing: 12px;
                     Text {
                         text: "Speaking speed";

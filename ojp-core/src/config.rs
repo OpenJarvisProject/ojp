@@ -53,6 +53,17 @@ enabled = false
 voice = ""
 # 1.0 = normal; lower is slower.
 speed = 1.0
+# "kokoro" (built in) or "moss" (experimental: MOSS-TTS-Nano through a
+# Python sidecar; set it up with scripts/setup-moss.sh).
+engine = "kokoro"
+# MOSS voice: Ava, Bella, Adam or Nathan.
+moss_voice = "Bella"
+# A recording of a voice to imitate instead of the built-in MOSS voices
+# (WAV, a few seconds to half a minute, clean speech; use only voices you
+# have the right to use). Empty = use moss_voice.
+moss_reference = ""
+# Where setup-moss.sh installed MOSS; empty = <data dir>/moss.
+moss_dir = ""
 model = "models/tts/kokoro.onnx"
 voices = "models/tts/voices.bin"
 
@@ -102,19 +113,49 @@ pub struct Tts {
     pub speed: f32,
     pub model: PathBuf,
     pub voices: PathBuf,
+    pub engine: String,
+    pub moss_voice: String,
+    pub moss_dir: PathBuf,
+    pub moss_reference: String,
 }
 
 impl Default for Tts {
     fn default() -> Self {
-        Tts { enabled: false, voice: String::new(), speed: 1.0, model: "models/tts/kokoro.onnx".into(), voices: "models/tts/voices.bin".into() }
+        Tts {
+            enabled: false,
+            voice: String::new(),
+            speed: 1.0,
+            model: "models/tts/kokoro.onnx".into(),
+            voices: "models/tts/voices.bin".into(),
+            engine: "kokoro".into(),
+            moss_voice: "Bella".into(),
+            moss_dir: PathBuf::new(),
+            moss_reference: String::new(),
+        }
     }
 }
 
 impl Config {
     /// What the speech engine needs; the voice falls back to the persona's.
     pub fn tts_options(&self) -> crate::tts::Options {
-        let voice = if self.tts.voice.is_empty() { self.persona.voice.clone() } else { self.tts.voice.clone() };
-        crate::tts::Options { model: self.tts.model.clone(), voices: self.tts.voices.clone(), voice, speed: self.tts.speed }
+        let engine = crate::tts::Engine::from_id(&self.tts.engine);
+        let voice = match engine {
+            crate::tts::Engine::Moss => self.tts.moss_voice.clone(),
+            // Always a concrete id or blend, never "default".
+            crate::tts::Engine::Kokoro => {
+                let voice = if self.tts.voice.is_empty() { &self.persona.voice } else { &self.tts.voice };
+                crate::tts::mix_string(&crate::tts::parse_mix(voice))
+            }
+        };
+        crate::tts::Options {
+            engine,
+            model: self.tts.model.clone(),
+            voices: self.tts.voices.clone(),
+            voice,
+            speed: self.tts.speed,
+            moss_dir: self.tts.moss_dir.clone(),
+            moss_reference: (!self.tts.moss_reference.is_empty()).then(|| PathBuf::from(&self.tts.moss_reference)),
+        }
     }
 }
 
@@ -270,6 +311,9 @@ impl Config {
             if model.is_relative() {
                 *model = base.join(&*model);
             }
+        }
+        if self.tts.moss_dir.as_os_str().is_empty() {
+            self.tts.moss_dir = data_dir.join("moss");
         }
         for file in [&mut self.tts.model, &mut self.tts.voices] {
             if file.is_relative() {

@@ -128,21 +128,67 @@ pub fn mix_string(slots: &MixSlots) -> String {
 /// What to load and how to speak.
 #[derive(Debug, Clone)]
 pub struct Options {
+    pub engine: Engine,
     pub model: PathBuf,
     pub voices: PathBuf,
-    /// A Kokoro voice id (e.g. `bm_george`, `af_heart`), or "default".
+    /// Kokoro: a voice id or blend (e.g. `bm_george`, `af_heart.6+af_bella.4`),
+    /// or "default". MOSS: one of [`MOSS_VOICES`].
     pub voice: String,
     pub speed: f32,
+    /// Where `scripts/setup-moss.sh` put the MOSS environment.
+    pub moss_dir: PathBuf,
+    /// MOSS: a recording to imitate instead of a built-in voice.
+    pub moss_reference: Option<PathBuf>,
+}
+
+/// Which speech engine to use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Engine {
+    Kokoro,
+    /// MOSS-TTS-Nano through a Python sidecar (experimental).
+    Moss,
+}
+
+impl Engine {
+    pub const ALL: [(Engine, &'static str, &'static str); 2] =
+        [(Engine::Kokoro, "kokoro", "Kokoro (built in)"), (Engine::Moss, "moss", "MOSS (experimental)")];
+
+    pub fn from_id(id: &str) -> Engine {
+        Engine::ALL.iter().find(|(_, i, _)| *i == id).map_or(Engine::Kokoro, |(e, _, _)| *e)
+    }
+
+    pub fn id(self) -> &'static str {
+        Engine::ALL.iter().find(|(e, _, _)| *e == self).map_or("kokoro", |(_, i, _)| *i)
+    }
+
+    pub fn index(self) -> usize {
+        Engine::ALL.iter().position(|(e, _, _)| *e == self).unwrap_or(0)
+    }
+}
+
+/// MOSS-TTS-Nano's bundled English voices (short reference recordings the
+/// model imitates). Its sample of a real public figure is left out.
+pub const MOSS_VOICES: &[&str] = &["Ava", "Bella", "Adam", "Nathan"];
+
+pub fn moss_voice_index(voice: &str) -> usize {
+    MOSS_VOICES.iter().position(|v| *v == voice).unwrap_or(1)
 }
 
 impl Options {
     pub fn files_present(&self) -> bool {
-        self.model.exists() && self.voices.exists()
+        match self.engine {
+            Engine::Kokoro => self.model.exists() && self.voices.exists(),
+            Engine::Moss => self.moss_dir.join("venv/bin/python").exists() && self.moss_dir.join("moss_server.py").exists(),
+        }
     }
 
     #[cfg_attr(not(feature = "tts"), allow(dead_code))]
     fn voice_id(&self) -> &str {
-        if self.voice.is_empty() || self.voice == "default" { DEFAULT_VOICE } else { &self.voice }
+        match self.engine {
+            Engine::Moss => MOSS_VOICES[moss_voice_index(&self.voice)],
+            Engine::Kokoro if self.voice.is_empty() || self.voice == "default" => DEFAULT_VOICE,
+            Engine::Kokoro => &self.voice,
+        }
     }
 }
 
@@ -272,7 +318,14 @@ mod imp {
         /// for the user) if either isn't possible. Blocks while loading.
         pub fn start(options: Options) -> Result<Tts> {
             if !options.files_present() {
-                anyhow::bail!("the voice files aren't downloaded yet");
+                match options.engine {
+                    super::Engine::Kokoro => anyhow::bail!("the voice files aren't downloaded yet"),
+                    super::Engine::Moss => anyhow::bail!(
+                        "MOSS isn't set up in {}: run scripts/setup-moss.sh {}",
+                        options.moss_dir.display(),
+                        options.moss_dir.display()
+                    ),
+                }
             }
             let (tx, rx) = mpsc::channel();
             let (ready_tx, ready_rx) = mpsc::channel();
@@ -308,20 +361,113 @@ mod imp {
         }
     }
 
+    /// A speech engine: turns one chunk of text into mono samples and their
+    /// sample rate. Anything that can do that can be the voice; see
+    /// docs/tts-engines.md. `voice` and `speed` are whatever the engine
+    /// understands (an engine may ignore either).
+    trait SpeechEngine {
+        fn synthesize(&mut self, text: &str, voice: &str, speed: f32) -> Result<(Vec<f32>, u32)>;
+    }
+
+    struct Kokoro(kokoro_micro::TtsEngine);
+
+    impl SpeechEngine for Kokoro {
+        fn synthesize(&mut self, text: &str, voice: &str, speed: f32) -> Result<(Vec<f32>, u32)> {
+            self.0
+                .synthesize_with_options(text, Some(voice), speed, 1.0, None)
+                .map(|samples| (samples, 24_000))
+                .map_err(|e| anyhow!(e))
+        }
+    }
+
+    /// The MOSS Python process (scripts/moss_server.py), talking over pipes.
+    struct Sidecar {
+        reference: Option<String>,
+        child: std::process::Child,
+        stdin: std::process::ChildStdin,
+        stdout: std::io::BufReader<std::process::ChildStdout>,
+    }
+
+    impl Sidecar {
+        fn start(options: &Options) -> Result<Sidecar> {
+            use std::io::BufRead;
+            let dir = &options.moss_dir;
+            let mut child = std::process::Command::new(dir.join("venv/bin/python"))
+                .arg(dir.join("moss_server.py"))
+                .arg(dir.join("repo"))
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .context("starting the MOSS process")?;
+            let stdin = child.stdin.take().context("no stdin")?;
+            let mut stdout = std::io::BufReader::new(child.stdout.take().context("no stdout")?);
+            let mut line = String::new();
+            stdout.read_line(&mut line)?;
+            if line.trim() != "READY" {
+                let _ = child.kill();
+                anyhow::bail!("MOSS didn't start (run scripts/setup-moss.sh again?)");
+            }
+            let reference = options.moss_reference.as_ref().map(|p| p.to_string_lossy().into_owned());
+            Ok(Sidecar { reference, child, stdin, stdout })
+        }
+
+    }
+
+    impl SpeechEngine for Sidecar {
+        fn synthesize(&mut self, text: &str, voice: &str, _speed: f32) -> Result<(Vec<f32>, u32)> {
+            use std::io::{BufRead, Read, Write};
+            let request = format!(
+                "{}\n",
+                serde_json::json!({ "text": text, "voice": voice, "reference": self.reference })
+            );
+            self.stdin.write_all(request.as_bytes())?;
+            self.stdin.flush()?;
+            let mut header = String::new();
+            self.stdout.read_line(&mut header)?;
+            let mut parts = header.trim().splitn(3, ' ');
+            match parts.next() {
+                Some("OK") => {
+                    let rate: u32 = parts.next().context("no sample rate")?.parse()?;
+                    let len: usize = parts.next().context("no length")?.parse()?;
+                    let mut bytes = vec![0_u8; len];
+                    self.stdout.read_exact(&mut bytes)?;
+                    let samples = bytes.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect();
+                    Ok((samples, rate))
+                }
+                Some("ERR") => Err(anyhow!("MOSS: {}", header.trim().trim_start_matches("ERR "))),
+                _ => Err(anyhow!("MOSS stopped answering")),
+            }
+        }
+    }
+
+    impl Drop for Sidecar {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
     fn run(options: Options, rx: Receiver<Cmd>, ready: Sender<Result<()>>) {
         let setup = || -> Result<_> {
-            let rt = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
-            let engine = rt
-                .block_on(kokoro_micro::TtsEngine::with_paths(
-                    &options.model.to_string_lossy(),
-                    &options.voices.to_string_lossy(),
-                ))
-                .map_err(|e| anyhow!("loading the voice model: {e}"))?;
+            let backend: Box<dyn SpeechEngine> = match options.engine {
+                super::Engine::Kokoro => {
+                    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+                    let engine = rt
+                        .block_on(kokoro_micro::TtsEngine::with_paths(
+                            &options.model.to_string_lossy(),
+                            &options.voices.to_string_lossy(),
+                        ))
+                        .map_err(|e| anyhow!("loading the voice model: {e}"))?;
+                    Box::new(Kokoro(engine))
+                }
+                super::Engine::Moss => Box::new(Sidecar::start(&options)?),
+            };
             let (stream, handle) = rodio::OutputStream::try_default().context("opening the audio output")?;
             let sink = rodio::Sink::try_new(&handle).context("opening the audio output")?;
-            Ok((engine, stream, sink))
+            Ok((backend, stream, sink))
         };
-        let (engine, _stream, sink) = match setup() {
+        let (mut backend, _stream, sink) = match setup() {
             Ok(parts) => {
                 let _ = ready.send(Ok(()));
                 parts
@@ -354,9 +500,10 @@ mod imp {
             if sink.len() < 2
                 && let Some(sentence) = pending.pop_front()
             {
-                match engine.synthesize_with_options(&sentence, Some(&voice), speed, 1.0, None) {
-                    Ok(samples) => sink.append(rodio::buffer::SamplesBuffer::new(1, 24_000, samples)),
-                    Err(_) => {}
+                if let Ok((samples, rate)) = backend.synthesize(&sentence, &voice, speed)
+                    && samples.len() > 100
+                {
+                    sink.append(rodio::buffer::SamplesBuffer::new(1, rate, samples));
                 }
             } else {
                 std::thread::sleep(std::time::Duration::from_millis(30));
