@@ -167,11 +167,22 @@ impl Engine {
 }
 
 /// MOSS-TTS-Nano's bundled English voices (short reference recordings the
-/// model imitates). Its sample of a real public figure is left out.
-pub const MOSS_VOICES: &[&str] = &["Ava", "Bella", "Adam", "Nathan"];
+/// model imitates; its sample of a real public figure is left out), then
+/// "Custom": the user's own reference clip (`<moss dir>/reference.wav`, made
+/// with scripts/make-reference.py, or `[tts] moss_reference`).
+pub const MOSS_VOICES: &[(&str, &str)] = &[
+    ("Ava", "Ava"),
+    ("Bella", "Bella"),
+    ("Adam", "Adam"),
+    ("Nathan", "Nathan"),
+    (CUSTOM_VOICE, "My own reference clip"),
+];
+
+/// The MOSS voice id that means "use the reference clip".
+pub const CUSTOM_VOICE: &str = "Custom";
 
 pub fn moss_voice_index(voice: &str) -> usize {
-    MOSS_VOICES.iter().position(|v| *v == voice).unwrap_or(1)
+    MOSS_VOICES.iter().position(|(v, _)| *v == voice).unwrap_or(1)
 }
 
 impl Options {
@@ -185,7 +196,7 @@ impl Options {
     #[cfg_attr(not(feature = "tts"), allow(dead_code))]
     fn voice_id(&self) -> &str {
         match self.engine {
-            Engine::Moss => MOSS_VOICES[moss_voice_index(&self.voice)],
+            Engine::Moss => MOSS_VOICES[moss_voice_index(&self.voice)].0,
             Engine::Kokoro if self.voice.is_empty() || self.voice == "default" => DEFAULT_VOICE,
             Engine::Kokoro => &self.voice,
         }
@@ -317,6 +328,14 @@ mod imp {
         /// Load the model and open the audio output; fails (with a message
         /// for the user) if either isn't possible. Blocks while loading.
         pub fn start(options: Options) -> Result<Tts> {
+            if let Some(reference) = &options.moss_reference
+                && !reference.exists()
+            {
+                anyhow::bail!(
+                    "the reference clip {} doesn't exist yet; make it with scripts/make-reference.py",
+                    reference.display()
+                );
+            }
             if !options.files_present() {
                 match options.engine {
                     super::Engine::Kokoro => anyhow::bail!("the voice files aren't downloaded yet"),

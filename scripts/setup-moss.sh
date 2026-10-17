@@ -11,7 +11,7 @@ DIR=${1:-${XDG_DATA_HOME:-$HOME/.local/share}/ojp/moss}
 REV=8b7bcc9341b3b4ef3a3a58ba1338a7d85ff133eb
 mkdir -p "$DIR"
 [[ -d "$DIR/venv" ]] || python3 -m venv "$DIR/venv"
-"$DIR/venv/bin/pip" -q install onnxruntime numpy sentencepiece soundfile huggingface_hub
+"$DIR/venv/bin/pip" -q install onnxruntime numpy sentencepiece soundfile huggingface_hub praat-parselmouth
 "$DIR/venv/bin/pip" -q install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 if [[ ! -d "$DIR/repo" ]]; then
     git clone -q https://github.com/OpenMOSS/MOSS-TTS-Nano "$DIR/repo"

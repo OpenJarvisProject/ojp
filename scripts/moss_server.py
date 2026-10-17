@@ -26,6 +26,19 @@ proto = os.fdopen(os.dup(1), "wb", buffering=0)
 sys.stdout = sys.stderr
 
 import numpy as np  # noqa: E402
+import soundfile  # noqa: E402
+import torch  # noqa: E402
+import torchaudio  # noqa: E402
+
+
+def _load_with_soundfile(path, *args, **kwargs):
+    """torchaudio.load without TorchCodec/ffmpeg, for reading reference clips."""
+    data, rate = soundfile.read(str(path), dtype="float32", always_2d=True)
+    return torch.from_numpy(np.ascontiguousarray(data.T)), rate
+
+
+torchaudio.load = _load_with_soundfile
+
 from onnx_tts_runtime import OnnxTtsRuntime  # noqa: E402
 
 runtime = OnnxTtsRuntime(
@@ -36,6 +49,23 @@ runtime = OnnxTtsRuntime(
     sample_mode="fixed",
     execution_provider="cpu",
 )
+# Encoding a reference clip is slow, so do it once per clip (and per change to it).
+_resolve_codes = runtime.resolve_prompt_audio_codes
+_codes_cache = {}
+
+
+def _cached_codes(**kwargs):
+    path = kwargs.get("prompt_audio_path")
+    stamp = os.stat(path).st_mtime_ns if path else None
+    key = (str(kwargs.get("voice")), str(path), stamp)
+    if key not in _codes_cache:
+        _codes_cache.clear()
+        _codes_cache[key] = _resolve_codes(**kwargs)
+    return _codes_cache[key]
+
+
+runtime.resolve_prompt_audio_codes = _cached_codes
+
 if "--check" in sys.argv:
     proto.write(b"READY\n")
     sys.exit(0)
