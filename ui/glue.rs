@@ -12,9 +12,9 @@ use ojp_core::chats::{ChatStore, StoredChat, StoredMessage};
 use ojp_core::download::{self, Item};
 use ojp_core::storage::{self, Location};
 use ojp_core::{Config, Engine, Event};
-use slint::{ComponentHandle, Model, StyledText, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, StyledText, VecModel};
 
-use crate::{AppWindow, Chat, ChatSummary, Message, Settings};
+use crate::{AppWindow, Block, Chat, ChatSummary, Message, Settings};
 
 enum Request {
     Ask(String),
@@ -26,7 +26,9 @@ enum Request {
     /// current location for a negative index; the bool is "include the
     /// main model".
     Download(i32, bool),
-    Settings { theme: i32, dynamic_colors: bool, main_enabled: bool },
+    Settings { theme: i32, dynamic_colors: bool, main_enabled: bool, tts_enabled: bool, tts_mix: ojp_core::tts::MixSlots, tts_speed: i32 },
+    /// Play a sample in the current settings.
+    Preview,
 }
 
 /// Everything the platform-specific `main` provides.
@@ -43,6 +45,8 @@ pub struct Setup {
     pub warning: Option<String>,
     /// Applies the "dynamic colours" setting; None where unsupported.
     pub set_dynamic_colors: Option<fn(bool)>,
+    /// Picks light or dark system status-bar icons; None where unsupported.
+    pub set_light_status_bar: Option<fn(bool)>,
 }
 
 fn theme_index(theme: &str) -> i32 {
@@ -71,6 +75,28 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     settings.set_dynamic_colors(setup.config.ui.dynamic_colors);
     settings.set_dynamic_colors_supported(setup.set_dynamic_colors.is_some());
     settings.set_main_enabled(setup.config.models.main_enabled);
+    settings.set_tts_supported(ojp_core::tts::AVAILABLE);
+    settings.set_tts_enabled(ojp_core::tts::AVAILABLE && setup.config.tts.enabled);
+    let choices: Vec<slint::SharedString> = std::iter::once("None")
+        .chain(ojp_core::tts::VOICES.iter().map(|(_, label)| *label))
+        .map(slint::SharedString::from)
+        .collect();
+    settings.set_tts_voice_choices(ModelRc::new(VecModel::from(choices)));
+    let mix = ojp_core::tts::parse_mix(&setup.config.tts_options().voice);
+    settings.set_mix_v0(mix[0].0 as i32);
+    settings.set_mix_a0(mix[0].1 as f32);
+    settings.set_mix_v1(mix[1].0 as i32);
+    settings.set_mix_a1(mix[1].1 as f32);
+    settings.set_mix_v2(mix[2].0 as i32);
+    settings.set_mix_a2(mix[2].1 as f32);
+    settings.set_tts_speeds(ModelRc::new(VecModel::from(
+        ojp_core::tts::SPEEDS.iter().map(|(_, label)| slint::SharedString::from(*label)).collect::<Vec<_>>(),
+    )));
+    settings.set_tts_speed(ojp_core::tts::speed_index(setup.config.tts.speed) as i32);
+    if let Some(apply) = setup.set_light_status_bar {
+        // Dark icons on a light theme.
+        settings.on_dark_changed(move |dark| apply(!dark));
+    }
     if let Some(apply) = setup.set_dynamic_colors {
         apply(setup.config.ui.dynamic_colors);
     }
@@ -112,6 +138,10 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
         let send = send.clone();
         move |id| send(Request::DeleteChat(id.into()))
     });
+    settings.on_preview({
+        let send = send.clone();
+        move || send(Request::Preview)
+    });
     settings.on_changed({
         let weak = ui.as_weak();
         move || {
@@ -121,6 +151,13 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
                 theme: s.get_theme(),
                 dynamic_colors: s.get_dynamic_colors(),
                 main_enabled: s.get_main_enabled(),
+                tts_enabled: s.get_tts_enabled(),
+                tts_mix: [
+                    (s.get_mix_v0() as usize, s.get_mix_a0().round() as u32),
+                    (s.get_mix_v1() as usize, s.get_mix_a1().round() as u32),
+                    (s.get_mix_v2() as usize, s.get_mix_a2().round() as u32),
+                ],
+                tts_speed: s.get_tts_speed(),
             });
         }
     });
@@ -134,8 +171,58 @@ fn render(text: &str) -> StyledText {
     StyledText::from_markdown(&text).unwrap_or_else(|_| StyledText::from_plain_text(&text))
 }
 
+thread_local! {
+    /// Typeset formulas by LaTeX source (None = it didn't typeset), so
+    /// re-rendering a streaming reply doesn't redo finished formulas.
+    static FORMULAS: std::cell::RefCell<std::collections::HashMap<String, Option<slint::Image>>> = Default::default();
+}
+
+fn formula_image(latex: &str) -> Option<slint::Image> {
+    FORMULAS.with_borrow_mut(|cache| {
+        cache
+            .entry(latex.to_string())
+            .or_insert_with(|| {
+                let r = ojp_core::math::render(latex, 18.0)?;
+                let pixels = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(&r.rgba, r.width, r.height);
+                Some(slint::Image::from_rgba8(pixels))
+            })
+            .clone()
+    })
+}
+
+/// The pieces of a reply with typeset display math, or none if it has no
+/// (complete, valid) display math and `rendered` is all there is.
+fn blocks(text: &str) -> ModelRc<Block> {
+    use ojp_core::math::Segment;
+    let segments = ojp_core::math::split(text);
+    let mut blocks = Vec::new();
+    let mut any_image = false;
+    for segment in segments {
+        match segment {
+            Segment::Text(t) if t.trim().is_empty() => {}
+            Segment::Text(t) => blocks.push(Block { text: render(&t), image: Default::default(), is_math: false }),
+            Segment::Display(latex) => match formula_image(&latex) {
+                Some(image) => {
+                    any_image = true;
+                    blocks.push(Block { text: Default::default(), image, is_math: true });
+                }
+                // Didn't typeset: show the Unicode approximation instead.
+                None => blocks.push(Block {
+                    text: render(&format!("$${latex}$$")),
+                    image: Default::default(),
+                    is_math: false,
+                }),
+            },
+        }
+    }
+    if !any_image {
+        blocks.clear();
+    }
+    ModelRc::new(VecModel::from(blocks))
+}
+
 fn reply(text: &str, meta: &str) -> Message {
-    Message { text: text.into(), rendered: render(text), meta: meta.into(), ..Default::default() }
+    Message { text: text.into(), rendered: render(text), blocks: blocks(text), meta: meta.into(), ..Default::default() }
 }
 
 fn to_message(m: &StoredMessage) -> Message {
@@ -156,6 +243,7 @@ fn edit_last(ui: &slint::Weak<AppWindow>, edit: impl FnOnce(&mut Message) + Send
         {
             edit(&mut message);
             message.rendered = render(&message.text);
+            message.blocks = blocks(&message.text);
             messages.set_row_data(last, message);
         }
     });
@@ -349,8 +437,14 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
     let mut chat = StoredChat::new();
     show_chat(&ui, &store, &chat);
     let mut engine = load_engine(&setup, &ui);
+    // Loaded the first time a reply is spoken, dropped when speech is turned off.
+    let mut tts: Option<ojp_core::tts::Tts> = None;
 
     for request in rx {
+        // Whatever is being said stops when the user does anything.
+        if let Some(tts) = &tts {
+            tts.stop();
+        }
         match request {
             Request::Download(index, include_main) => {
                 if !include_main
@@ -404,12 +498,18 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 }
                 show_chat(&ui, &store, &chat);
             }
-            Request::Settings { theme, dynamic_colors, main_enabled } => {
+            Request::Settings { theme, dynamic_colors, main_enabled, tts_enabled, tts_mix, tts_speed } => {
+                let voice_id = ojp_core::tts::mix_string(&tts_mix);
+                let voice_id = voice_id.as_str();
+                let speed = ojp_core::tts::SPEEDS.get(tts_speed as usize).map_or(1.0, |(v, _)| *v);
                 let theme = ["system", "light", "dark"].get(theme as usize).copied().unwrap_or("system");
                 let path = &setup.config_path;
                 let saved = storage::set_str(path, "ui", "theme", theme)
                     .and_then(|_| storage::set_bool(path, "ui", "dynamic_colors", dynamic_colors))
-                    .and_then(|_| storage::set_bool(path, "models", "main_enabled", main_enabled));
+                    .and_then(|_| storage::set_bool(path, "models", "main_enabled", main_enabled))
+                    .and_then(|_| storage::set_bool(path, "tts", "enabled", tts_enabled))
+                    .and_then(|_| storage::set_str(path, "tts", "voice", voice_id))
+                    .and_then(|_| storage::set_f64(path, "tts", "speed", speed as f64));
                 if let Err(e) = saved {
                     push_message(&ui, format!("Couldn't save settings: {e:#}"), "settings");
                 }
@@ -417,13 +517,40 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                     apply(dynamic_colors);
                 }
                 let main_changed = main_enabled != setup.config.models.main_enabled;
+                let tts_changed = tts_enabled != setup.config.tts.enabled;
                 let _ = reload_config(&mut setup);
+                if let Some(tts) = &tts
+                    && !tts_changed
+                {
+                    tts.set_voice(voice_id);
+                    tts.set_speed(speed);
+                }
+                if tts_changed {
+                    tts = None;
+                    if tts_enabled && !enable_tts(&mut setup, &ui, &mut tts) {
+                        let _ = storage::set_bool(&setup.config_path, "tts", "enabled", false);
+                        let _ = reload_config(&mut setup);
+                    }
+                }
                 if main_changed {
                     // Free the old models before loading the new set.
                     drop(engine.take());
                     engine = load_engine(&setup, &ui);
                     if let Some(engine) = engine.as_mut() {
                         engine.set_history(chat.messages.iter().map(|m| (m.from_user, m.text.clone())));
+                    }
+                }
+            }
+            Request::Preview => {
+                if setup.config.tts.enabled {
+                    if tts.is_none() {
+                        enable_tts(&mut setup, &ui, &mut tts);
+                    }
+                    if let Some(tts) = &tts {
+                        // Not the persona's name: Kokoro slurs "Jarvis" into the words around it.
+                        tts.set_voice(&ojp_core::tts::mix_string(&ojp_core::tts::parse_mix(&setup.config.tts_options().voice)));
+                        tts.set_speed(setup.config.tts.speed);
+                        tts.speak("Hello. I am your AI assistant. This is how I sound.");
                     }
                 }
             }
@@ -464,8 +591,47 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 }
                 refresh_list(&ui, &store, &chat);
                 set_state(&ui, false, None);
+                if setup.config.tts.enabled {
+                    if tts.is_none() {
+                        // Loaded at startup was skipped; do it now.
+                        enable_tts(&mut setup, &ui, &mut tts);
+                    }
+                    if let (Some(tts), Some(reply)) = (&tts, chat.messages.last()) {
+                        tts.speak(&reply.text);
+                    }
+                }
             }
         }
+    }
+}
+
+/// Turn speech on: download the voice if needed, then load it into `tts`.
+/// Reports problems in the chat and returns false if it couldn't.
+fn enable_tts(setup: &mut Setup, ui: &slint::Weak<AppWindow>, tts: &mut Option<ojp_core::tts::Tts>) -> bool {
+    let fail = |ui: &slint::Weak<AppWindow>, why: String| {
+        push_message(ui, format!("Couldn't turn on speech: {why}"), "voice");
+        let weak = ui.clone();
+        let _ = weak.upgrade_in_event_loop(|ui| ui.global::<Settings>().set_tts_enabled(false));
+        false
+    };
+    let items = download::tts_missing(&setup.config);
+    if !items.is_empty() {
+        set_state(ui, true, Some("Downloading the voice…".into()));
+        let ok = download_all(&items, ui);
+        set_state(ui, false, Some(if ok { "Ready".into() } else { "Download failed".into() }));
+        if !ok {
+            return fail(ui, "the voice download failed (try again from Settings)".into());
+        }
+    }
+    set_state(ui, true, Some("Loading the voice…".into()));
+    let result = ojp_core::tts::Tts::start(setup.config.tts_options());
+    set_state(ui, false, Some("Ready".into()));
+    match result {
+        Ok(started) => {
+            *tts = Some(started);
+            true
+        }
+        Err(e) => fail(ui, format!("{e:#}")),
     }
 }
 

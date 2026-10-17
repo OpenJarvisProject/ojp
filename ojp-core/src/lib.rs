@@ -9,10 +9,12 @@ pub mod config;
 pub mod download;
 pub mod engine;
 pub mod format;
+pub mod math;
 pub mod model;
 pub mod router;
 pub mod storage;
 pub mod tools;
+pub mod tts;
 
 pub use config::Config;
 pub use engine::{Engine, Event};

@@ -548,6 +548,19 @@ public class SlintAndroidJavaHelper {
         return insets;
     }
 
+    // OJP patch: dark status-bar icons for light themes.
+    public void set_light_status_bar(final boolean light) {
+        mActivity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                android.view.View decor = mActivity.getWindow().getDecorView();
+                int flags = decor.getSystemUiVisibility();
+                int bit = android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                decor.setSystemUiVisibility(light ? (flags | bit) : (flags & ~bit));
+            }
+        });
+    }
+
     public void show_keyboard() {
         mActivity.runOnUiThread(new Runnable() {
             @Override

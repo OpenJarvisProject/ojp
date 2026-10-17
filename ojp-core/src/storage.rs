@@ -57,6 +57,10 @@ pub fn set_bool(config_path: &Path, table: &str, key: &str, value: bool) -> Resu
 }
 
 /// Set `[table] key = "<string>"` in config.toml, preserving the rest.
+pub fn set_f64(config_path: &Path, table: &str, key: &str, value: f64) -> Result<()> {
+    set_config_value(config_path, table, key, toml_edit::value(value))
+}
+
 pub fn set_str(config_path: &Path, table: &str, key: &str, value: &str) -> Result<()> {
     set_config_value(config_path, table, key, toml_edit::value(value))
 }

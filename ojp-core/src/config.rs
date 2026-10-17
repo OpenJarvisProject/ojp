@@ -44,6 +44,18 @@ n_ctx = 4096
 # mistral, gemma, phi3.
 chat_template = "chatml"
 
+[tts]
+# Speak replies aloud. Also a switch in the app's settings; the voice files
+# (about 340 MB) are downloaded the first time you turn it on.
+enabled = false
+# Overrides the persona's voice (a Kokoro id such as "bm_george", "bm_lewis",
+# "af_heart" or "bf_emma"); empty = use [persona] voice.
+voice = ""
+# 1.0 = normal; lower is slower.
+speed = 1.0
+model = "models/tts/kokoro.onnx"
+voices = "models/tts/voices.bin"
+
 [ui]
 # "system", "light" or "dark".
 theme = "system"
@@ -65,6 +77,11 @@ router = "https://huggingface.co/OpenJarvisProject/Qwen2.5-0.5B-Instruct-OJP-GGU
 router_sha256 = "225dd294b01dab1cd24b5d404e12bc591dc9335d99f8a1f584e7b4c5bca86186"
 main = "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf"
 main_sha256 = "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e"
+# Kokoro-82M voice (the files the kokoro-micro crate ships with).
+tts_model = "https://github.com/8b-is/kokoro-tiny/raw/main/models/0.onnx"
+tts_model_sha256 = "7d5df8ecf7d4b1878015a32686053fd0eebe2bc377234608764cc0ef3636a6c5"
+tts_voices = "https://github.com/8b-is/kokoro-tiny/raw/main/models/0.bin"
+tts_voices_sha256 = "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d"
 "#;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -74,6 +91,31 @@ pub struct Config {
     pub models: Models,
     pub download: Download,
     pub ui: Ui,
+    pub tts: Tts,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct Tts {
+    pub enabled: bool,
+    pub voice: String,
+    pub speed: f32,
+    pub model: PathBuf,
+    pub voices: PathBuf,
+}
+
+impl Default for Tts {
+    fn default() -> Self {
+        Tts { enabled: false, voice: String::new(), speed: 1.0, model: "models/tts/kokoro.onnx".into(), voices: "models/tts/voices.bin".into() }
+    }
+}
+
+impl Config {
+    /// What the speech engine needs; the voice falls back to the persona's.
+    pub fn tts_options(&self) -> crate::tts::Options {
+        let voice = if self.tts.voice.is_empty() { self.persona.voice.clone() } else { self.tts.voice.clone() };
+        crate::tts::Options { model: self.tts.model.clone(), voices: self.tts.voices.clone(), voice, speed: self.tts.speed }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -129,11 +171,15 @@ pub struct Download {
     pub router_sha256: Option<String>,
     pub main: Option<String>,
     pub main_sha256: Option<String>,
+    pub tts_model: Option<String>,
+    pub tts_model_sha256: Option<String>,
+    pub tts_voices: Option<String>,
+    pub tts_voices_sha256: Option<String>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { persona: Persona::default(), models: Models::default(), download: Download::default(), ui: Ui::default() }
+        Config { persona: Persona::default(), models: Models::default(), download: Download::default(), ui: Ui::default(), tts: Tts::default() }
     }
 }
 
@@ -145,6 +191,10 @@ impl Default for Download {
             router_sha256: Some("225dd294b01dab1cd24b5d404e12bc591dc9335d99f8a1f584e7b4c5bca86186".into()),
             main: Some("https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf".into()),
             main_sha256: Some("6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e".into()),
+            tts_model: Some("https://github.com/8b-is/kokoro-tiny/raw/main/models/0.onnx".into()),
+            tts_model_sha256: Some("7d5df8ecf7d4b1878015a32686053fd0eebe2bc377234608764cc0ef3636a6c5".into()),
+            tts_voices: Some("https://github.com/8b-is/kokoro-tiny/raw/main/models/0.bin".into()),
+            tts_voices_sha256: Some("bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d".into()),
         }
     }
 }
@@ -219,6 +269,11 @@ impl Config {
         for model in [&mut self.models.router, &mut self.models.main].into_iter().flatten() {
             if model.is_relative() {
                 *model = base.join(&*model);
+            }
+        }
+        for file in [&mut self.tts.model, &mut self.tts.voices] {
+            if file.is_relative() {
+                *file = base.join(&*file);
             }
         }
     }

@@ -40,6 +40,24 @@ pub fn missing(config: &Config) -> Vec<Item> {
     items
 }
 
+/// The voice files, if not downloaded yet. Separate from [`missing`]:
+/// they are only fetched once the user turns speech on.
+pub fn tts_missing(config: &Config) -> Vec<Item> {
+    let d = &config.download;
+    let mut items = Vec::new();
+    for (url, sha256, dest) in [
+        (&d.tts_model, &d.tts_model_sha256, &config.tts.model),
+        (&d.tts_voices, &d.tts_voices_sha256, &config.tts.voices),
+    ] {
+        if let Some(url) = url
+            && !dest.exists()
+        {
+            items.push(Item { role: "voice", url: url.clone(), sha256: sha256.clone(), dest: dest.clone() });
+        }
+    }
+    items
+}
+
 /// Size in bytes, from a HEAD request (None if the server doesn't say).
 pub fn size(url: &str) -> Result<Option<u64>> {
     let response = ureq::head(url).call()?;

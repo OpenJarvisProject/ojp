@@ -97,7 +97,9 @@ impl Engine {
         let name = &config.persona.name;
         let system_prompt = format!(
             "You are {name}, a helpful personal assistant running locally on the user's own device. \
-             Answer accurately and concisely. If you don't know something, say so."
+             Answer accurately and concisely. If you don't know something, say so. \
+             Write math in LaTeX: put standalone equations on their own line between $$ and $$, \
+             and inline math between \\( and \\)."
         );
         // Warm-up, done while loading so the first message is fast: the
         // router evaluates its few-shot prompt, and whichever model answers

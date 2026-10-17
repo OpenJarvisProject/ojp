@@ -11,7 +11,7 @@
 
 mod androidwindowadapter;
 mod javahelper;
-pub use javahelper::set_dynamic_color;
+pub use javahelper::{set_dynamic_color, set_light_status_bar};
 mod vsync;
 
 #[cfg(all(not(feature = "aa-06"), feature = "aa-05"))]

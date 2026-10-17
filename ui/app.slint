@@ -1,7 +1,15 @@
 // Shared UI for the desktop (ojp) and Android (ojp-android) apps.
 // Pure view: state lives in Rust and is pushed in through the `Chat` and
 // `Settings` globals; user actions come back out through their callbacks.
-import { Button, CheckBox, ComboBox, LineEdit, Palette, ProgressIndicator, ScrollView, Switch } from "std-widgets.slint";
+import { Button, CheckBox, ComboBox, LineEdit, Palette, ProgressIndicator, ScrollView, Slider, Switch } from "std-widgets.slint";
+
+// One piece of an assistant reply that contains display math: formatted
+// text, or a typeset formula (black ink; tinted with the theme colour).
+export struct Block {
+    text: styled-text,
+    image: image,
+    is-math: bool,
+}
 
 export struct Message {
     from-user: bool,
@@ -10,6 +18,9 @@ export struct Message {
     // Assistant replies rendered from `text` (markdown; LaTeX math turned
     // into Unicode by ojp-core::format) by the Rust side.
     rendered: styled-text,
+    // Only when the reply has display math: the pieces to show instead of
+    // `rendered`.
+    blocks: [Block],
     // Small grey line under a reply: route, timing, notices.
     meta: string,
 }
@@ -60,10 +71,30 @@ export global Settings {
     in-out property <bool> dynamic-colors-supported;
     // Developer: false = router only, the main model is never loaded.
     in-out property <bool> main-enabled: true;
+    // Speak replies aloud. Only where the build has a voice.
+    in-out property <bool> tts-enabled: false;
+    in-out property <bool> tts-supported: false;
+    // Voice choices for the blend; index 0 of `tts-voice-choices` is "None".
+    in-out property <[string]> tts-voice-choices;
+    // Up to three voices blended: a choice and a strength 0..10 for each.
+    in-out property <int> mix-v0;
+    in-out property <float> mix-a0: 10;
+    in-out property <int> mix-v1;
+    in-out property <float> mix-a1;
+    in-out property <int> mix-v2;
+    in-out property <float> mix-a2;
+    out property <float> mix-total: (mix-v0 > 0 ? mix-a0 : 0) + (mix-v1 > 0 ? mix-a1 : 0) + (mix-v2 > 0 ? mix-a2 : 0);
+    // Play a sample in the current voice, speed and blend.
+    callback preview();
+    in-out property <[string]> tts-speeds;
+    in-out property <int> tts-speed;
     // Read-only details shown in the developer section.
     in-out property <string> info;
     // Any of the above changed by the user; the host saves and applies it.
     callback changed();
+    // The theme resolved to dark (true) or light (false); the host adapts
+    // the system status-bar icons.
+    callback dark-changed(bool);
 }
 
 component IconButton inherits Rectangle {
@@ -97,10 +128,35 @@ component Bubble inherits Rectangle {
             wrap: word-wrap;
             color: Palette.accent-foreground;
         }
-        if !message.from-user: StyledText {
+        if !message.from-user && message.blocks.length == 0: StyledText {
             text: message.rendered;
             default-color: Palette.foreground;
             link-color: Palette.accent-background;
+        }
+        if !message.from-user && message.blocks.length > 0: VerticalLayout {
+            spacing: 6px;
+            for block in message.blocks: VerticalLayout {
+                if !block.is-math: StyledText {
+                    text: block.text;
+                    default-color: Palette.foreground;
+                    link-color: Palette.accent-background;
+                }
+                if block.is-math: Rectangle {
+                    // Rendered at twice the logical size; shrinks (keeping
+                    // its proportions) if the bubble is narrower.
+                    property <length> shown-width: min(block.image.width * 0.5px, self.width);
+                    height: self.shown-width * block.image.height / max(block.image.width, 1);
+                    Image {
+                        x: 0px;
+                        y: 0px;
+                        width: parent.shown-width;
+                        height: parent.height;
+                        source: block.image;
+                        colorize: Palette.foreground;
+                        image-fit: contain;
+                    }
+                }
+            }
         }
         if message.meta != "": Text {
             text: message.meta;
@@ -114,6 +170,8 @@ component Bubble inherits Rectangle {
 
 component ChatPage inherits Rectangle {
     callback open-menu;
+    // The chat list is always visible beside the chat, so no menu button.
+    in property <bool> docked;
     background: Palette.background;
 
     function submit() {
@@ -128,7 +186,7 @@ component ChatPage inherits Rectangle {
             padding: 8px;
             spacing: 4px;
             vertical-stretch: 0;
-            IconButton {
+            if !root.docked: IconButton {
                 icon: @image-url("../assets/menu.png");
                 clicked => { root.open-menu(); }
             }
@@ -346,6 +404,46 @@ component Sidebar inherits Rectangle {
     }
 }
 
+// One voice of the blend: which voice and how strong.
+component MixRow inherits VerticalLayout {
+    in property <string> title;
+    in property <[string]> choices;
+    in property <float> total;
+    in-out property <int> voice;
+    in-out property <float> amount;
+    callback edited();
+    spacing: 4px;
+    HorizontalLayout {
+        spacing: 12px;
+        Text {
+            text: root.title;
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+        }
+        ComboBox {
+            horizontal-stretch: 0;
+            model: root.choices;
+            current-index <=> root.voice;
+            selected => { root.edited(); }
+        }
+    }
+    if root.voice > 0: HorizontalLayout {
+        spacing: 12px;
+        Slider {
+            minimum: 0;
+            maximum: 10;
+            value <=> root.amount;
+            released => { root.edited(); }
+        }
+        Text {
+            width: 44px;
+            text: root.total > 0 ? "\{Math.round(100 * root.amount / root.total)}%" : "0%";
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+    }
+}
+
 component SettingRow inherits HorizontalLayout {
     in property <string> title;
     in property <string> description;
@@ -420,6 +518,61 @@ component SettingsPage inherits Rectangle {
                     toggled => { Settings.changed(); }
                 }
 
+                if Settings.tts-supported: SettingRow {
+                    title: "Speak replies";
+                    description: "Read answers aloud. The first time, the voice (about 340 MB) is downloaded.";
+                    checked <=> Settings.tts-enabled;
+                    toggled => { Settings.changed(); }
+                }
+                if Settings.tts-supported && Settings.tts-enabled: Text {
+                    text: "Voice mix: blend up to three voices; strengths are shared out between them.";
+                    wrap: word-wrap;
+                    font-size: 0.8rem;
+                    opacity: 0.65;
+                }
+                if Settings.tts-supported && Settings.tts-enabled: MixRow {
+                    title: "Voice 1";
+                    choices: Settings.tts-voice-choices;
+                    total: Settings.mix-total;
+                    voice <=> Settings.mix-v0;
+                    amount <=> Settings.mix-a0;
+                    edited => { Settings.changed(); }
+                }
+                if Settings.tts-supported && Settings.tts-enabled: MixRow {
+                    title: "Voice 2";
+                    choices: Settings.tts-voice-choices;
+                    total: Settings.mix-total;
+                    voice <=> Settings.mix-v1;
+                    amount <=> Settings.mix-a1;
+                    edited => { Settings.changed(); }
+                }
+                if Settings.tts-supported && Settings.tts-enabled: MixRow {
+                    title: "Voice 3";
+                    choices: Settings.tts-voice-choices;
+                    total: Settings.mix-total;
+                    voice <=> Settings.mix-v2;
+                    amount <=> Settings.mix-a2;
+                    edited => { Settings.changed(); }
+                }
+                if Settings.tts-supported && Settings.tts-enabled: HorizontalLayout {
+                    spacing: 12px;
+                    Text {
+                        text: "Speaking speed";
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    ComboBox {
+                        horizontal-stretch: 0;
+                        model: Settings.tts-speeds;
+                        current-index <=> Settings.tts-speed;
+                        selected => { Settings.changed(); }
+                    }
+                }
+                if Settings.tts-supported && Settings.tts-enabled: Button {
+                    text: "Play a sample";
+                    clicked => { Settings.preview(); }
+                }
+
                 Rectangle { height: 1px; background: Palette.border; opacity: 0.4; }
 
                 Text { text: "Developer"; font-weight: 700; color: Palette.accent-background; }
@@ -444,13 +597,23 @@ export component AppWindow inherits Window {
     // App name; the assistant's own name (persona) is shown in the header.
     title: "OpenJarvis";
     icon: @image-url("../assets/openjarvis-256.png");
-    preferred-width: 440px;
-    preferred-height: 760px;
+    // A normal desktop window by default; phones ignore the preferred size.
+    preferred-width: 980px;
+    preferred-height: 680px;
+    min-width: 320px;
+    min-height: 420px;
     background: Palette.background;
 
+    // Wide windows keep the chat list docked on the left instead of in the
+    // swipe-open drawer.
+    property <bool> wide: root.width >= 720px;
+    property <length> docked-width: 300px;
+
     property <int> theme: Settings.theme;
-    init => { root.apply-theme(); }
+    property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    init => { root.apply-theme(); Settings.dark-changed(root.dark); }
     changed theme => { root.apply-theme(); }
+    changed dark => { Settings.dark-changed(root.dark); }
     function apply-theme() {
         Palette.color-scheme = root.theme == 1 ? ColorScheme.light : root.theme == 2 ? ColorScheme.dark : ColorScheme.unknown;
     }
@@ -483,7 +646,7 @@ export component AppWindow inherits Window {
         y: root.safe-area-insets.top;
         width: root.width - root.safe-area-insets.left - root.safe-area-insets.right;
         height: root.height - root.safe-area-insets.top - max(root.safe-area-insets.bottom, root.virtual-keyboard-size.height);
-        enabled: !root.show-settings;
+        enabled: !root.show-settings && !root.wide;
         // Swipe right (left edge to the right) opens the chat list; swipe
         // left closes it, like a drawer.
         handle-swipe-right: !root.drawer-open;
@@ -495,19 +658,22 @@ export component AppWindow inherits Window {
         }
 
         ChatPage {
+            x: root.wide ? root.docked-width : 0px;
+            width: parent.width - self.x;
+            docked: root.wide;
             open-menu => { root.drawer-open = true; }
         }
 
-        if root.drawer-pos > 0: Rectangle {
+        if root.drawer-pos > 0 && !root.wide: Rectangle {
             background: #000;
             opacity: 0.45 * root.drawer-pos / root.drawer-width;
             TouchArea {
                 clicked => { root.drawer-open = false; }
             }
         }
-        if root.drawer-pos > 0: Sidebar {
-            x: root.drawer-pos - root.drawer-width;
-            width: root.drawer-width;
+        if root.drawer-pos > 0 || root.wide: Sidebar {
+            x: root.wide ? 0px : root.drawer-pos - root.drawer-width;
+            width: root.wide ? root.docked-width : root.drawer-width;
             height: parent.height;
             close => { root.drawer-open = false; }
             open-settings => {

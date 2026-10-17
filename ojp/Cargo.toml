@@ -10,10 +10,11 @@ name = "openjarvis"
 path = "src/main.rs"
 
 [features]
-default = ["vulkan"]
+default = ["vulkan", "tts"]
 # GPU offload via Vulkan. Build with --no-default-features for CPU-only
 # (e.g. the aarch64 laptop build).
 vulkan = ["ojp-core/vulkan"]
+tts = ["ojp-core/tts"]
 
 [dependencies]
 ojp-core.workspace = true

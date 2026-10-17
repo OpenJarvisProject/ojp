@@ -74,6 +74,10 @@ bind_java_type! {
             name = "set_clipboard",
             sig = (text: JString),
         },
+        fn set_light_status_bar {
+            name = "set_light_status_bar",
+            sig = (light: jboolean),
+        },
         fn set_handle_color {
             name = "set_handle_color",
             sig = (color: jint),
@@ -538,6 +542,10 @@ impl JavaHelper {
         })
     }
 
+    pub fn set_light_status_bar(&self, light: bool) -> Result<(), jni::errors::Error> {
+        self.with_jni_env(|env, helper| helper.set_light_status_bar(env, light))
+    }
+
     pub fn set_handle_color(&self, color: Color) -> Result<(), jni::errors::Error> {
         self.with_jni_env(|env, helper| {
             helper.set_handle_color(env, color.as_argb_encoded() as i32)
@@ -879,6 +887,15 @@ pub fn set_dynamic_color(enabled: bool) {
         if let Some(w) = CURRENT_WINDOW.with_borrow(|x| x.upgrade()) {
             let ctx = i_slint_core::window::WindowInner::from_pub(&w.window).context();
             ctx.set_accent_color(effective_accent_color(&w.java_helper));
+        }
+    });
+}
+
+/// OJP patch: use dark status-bar icons (for light themes) or light ones.
+pub fn set_light_status_bar(light: bool) {
+    let _ = i_slint_core::api::invoke_from_event_loop(move || {
+        if let Some(w) = CURRENT_WINDOW.with_borrow(|x| x.upgrade()) {
+            let _ = w.java_helper.set_light_status_bar(light);
         }
     });
 }

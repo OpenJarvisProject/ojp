@@ -8,8 +8,19 @@ edition.workspace = true
 default = []
 # GPU offload through Vulkan (desktop). Without it inference is CPU-only.
 vulkan = ["llama-crab/vulkan"]
+# Spoken replies (Kokoro via ONNX Runtime on the CPU, played with rodio).
+tts = ["dep:kokoro-micro", "dep:tokio", "dep:rodio"]
 
 [dependencies]
+# Typeset display math ($$ ... $$) to images; pure Rust, fonts embedded.
+ratex-render = { version = "0.1.15", features = ["embed-fonts"] }
+ratex-layout = "0.1.15"
+ratex-parser = "0.1.15"
+ratex-types = "0.1.15"
+png = "0.17"
+kokoro-micro = { version = "1.3", optional = true }
+tokio = { version = "1", features = ["rt"], optional = true }
+rodio = { version = "0.20", default-features = false, optional = true }
 llama-crab-sys = { version = "0.1", default-features = false }
 llama-crab = { version = "0.1", default-features = false, features = ["common"] }
 anyhow.workspace = true

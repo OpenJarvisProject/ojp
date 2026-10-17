@@ -36,3 +36,9 @@ the ScrollView without its press and didn't scroll; slow drags worked.
 The press is now forwarded at once (`ForwardAndInterceptGrab`): children
 get the whole gesture, and the handler still intercepts once a horizontal
 swipe passes its threshold.
+
+## Android: status-bar icon colour follows the theme
+
+`i-slint-backend-android-activity/lib.rs`, `javahelper.rs`, and
+`SlintAndroidJavaHelper.java`: `set_light_status_bar(bool)` toggles
+`SYSTEM_UI_FLAG_LIGHT_STATUS_BAR` so light themes get dark status-bar icons.
