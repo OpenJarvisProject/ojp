@@ -4302,7 +4302,7 @@ dependencies = [
 
 [[package]]
 name = "ojp"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "anyhow",
  "fontique",
@@ -4313,7 +4313,7 @@ dependencies = [
 
 [[package]]
 name = "ojp-android"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "anyhow",
  "i-slint-backend-android-activity",
@@ -4325,7 +4325,7 @@ dependencies = [
 
 [[package]]
 name = "ojp-core"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "anyhow",
  "kokoro-micro",

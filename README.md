@@ -1,7 +1,7 @@
 # ojp
 
 The OpenJarvisProject assistant: a local, offline-first "Jarvis" for Linux
-and Android. You can type to it or (soon) talk to it. Every device runs its
+and Android. You can type to it, and on the desktop it can speak its answers. Every device runs its
 own models, and nothing leaves the device unless you configure a remote
 model server yourself.
 
@@ -73,11 +73,23 @@ pronunciation = "zelya"
 voice = "female"
 ```
 
+## Speech (desktop)
+
+Settings has **Speak replies**, off by default. Turning it on downloads the
+Kokoro-82M voice (about 340 MB, SHA-256 checked), then lets you blend up to
+three voices, set the speed, and play a sample. It runs on the CPU. Speech
+engines are swappable (`docs/tts-engines.md`); the experimental
+MOSS-TTS-Nano engine needs `scripts/setup-moss.sh` (about 1.5 GB, Python).
+To speak in a voice of your own: record 10-20 seconds of clean speech, run
+`scripts/make-reference.py recording.wav` (add `--feminize` to shift a male
+voice with Praat), and pick "MOSS voice: My own reference clip". Use only
+voices you have the right to use.
+
 ## Building
 
 ```bash
 cargo build --release                 # desktop (x86_64, Vulkan GPU offload)
-cargo build --release -p ojp --no-default-features   # CPU-only
+cargo build --release -p ojp --no-default-features --features tts   # CPU-only (drop `--features tts` for no speech)
 ./target/release/openjarvis           # the app (scripts/install-linux.sh installs it)
 ./target/release/ojp-cli chat         # same engine in the terminal
 ```
@@ -100,6 +112,9 @@ aarch64 Linux and the Android APK: see `scripts/` and `ojp-android/android/`.
 | Prompt caching (router examples, chat history) | done |
 | Android app, Digital assistant role | done (emulator-verified) |
 | Rename the app to the assistant's name (e.g. Zelia) | planned |
-| Speech-to-text, text-to-speech (swappable voices), wake word ("hey zelia") | planned next |
+| Text-to-speech, desktop: Kokoro voices with a three-voice mixer, speed, sample button (off by default) | done |
+| Typeset display math ($$ ... $$) | done |
+| Experimental MOSS voice and your own reference clip (`docs/tts-engines.md`) | done, needs `scripts/setup-moss.sh` |
+| Text-to-speech on Android; speech-to-text; wake word ("hey zelia") | planned next |
 
 The old `ojp-cli route-eval` / benchmark harness is still in `ojp-core`.
