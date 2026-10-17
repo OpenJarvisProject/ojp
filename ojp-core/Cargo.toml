@@ -10,6 +10,7 @@ default = []
 vulkan = ["llama-crab/vulkan"]
 
 [dependencies]
+llama-crab-sys = { version = "0.1", default-features = false }
 llama-crab = { version = "0.1", default-features = false, features = ["common"] }
 anyhow.workspace = true
 serde = { version = "1", features = ["derive"] }

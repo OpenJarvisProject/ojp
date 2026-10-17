@@ -65,13 +65,27 @@ impl Model {
     /// Save the KV cache (all sequences) and the token lists describing it,
     /// so a later start can skip re-evaluating the same warm-up prompts.
     pub fn save_cache(&mut self, path: &Path) -> Result<()> {
-        let state = self.llama.context().state_to_bytes()?;
+        // One state blob per sequence (llama_state_seq_*): the whole-context
+        // state restores the two sequences' cells wrongly, which made the
+        // first request after a restart misroute when it matched the warm-up.
         let tokens: Vec<Vec<i32>> = self.cached.iter().map(|seq| seq.iter().map(|t| t.raw()).collect()).collect();
         let header = serde_json::to_vec(&tokens)?;
-        let mut out = Vec::with_capacity(8 + header.len() + state.len());
+        let mut out = Vec::new();
         out.extend_from_slice(&(header.len() as u64).to_le_bytes());
         out.extend_from_slice(&header);
-        out.extend_from_slice(&state);
+        let ctx = self.llama.context().raw_handle();
+        for seq in [Seq::Route, Seq::Chat] {
+            // SAFETY: ctx is valid for the call; the buffer has the size llama.cpp asked for.
+            let blob = unsafe {
+                let size = llama_crab_sys::llama_state_seq_get_size(ctx, seq as i32);
+                let mut buf = vec![0_u8; size];
+                let written = llama_crab_sys::llama_state_seq_get_data(ctx, buf.as_mut_ptr(), size, seq as i32);
+                buf.truncate(written);
+                buf
+            };
+            out.extend_from_slice(&(blob.len() as u64).to_le_bytes());
+            out.extend_from_slice(&blob);
+        }
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
@@ -87,13 +101,28 @@ impl Model {
     pub fn load_cache(&mut self, path: &Path) -> Result<()> {
         let result = (|| -> Result<()> {
             let bytes = std::fs::read(path)?;
-            let len = u64::from_le_bytes(bytes.get(..8).context("short cache file")?.try_into()?) as usize;
+            let read_len = |at: usize| -> Result<usize> {
+                Ok(u64::from_le_bytes(bytes.get(at..at + 8).context("short cache file")?.try_into()?) as usize)
+            };
+            let len = read_len(0)?;
             let header = bytes.get(8..8 + len).context("short cache file")?;
             let tokens: Vec<Vec<i32>> = serde_json::from_slice(header)?;
             if tokens.len() != SEQS {
                 bail!("cache has {} sequences, expected {SEQS}", tokens.len());
             }
-            self.llama.context().load_state(&bytes[8 + len..])?;
+            let ctx = self.llama.context().raw_handle();
+            let mut at = 8 + len;
+            for seq in [Seq::Route, Seq::Chat] {
+                let size = read_len(at)?;
+                let blob = bytes.get(at + 8..at + 8 + size).context("short cache file")?;
+                at += 8 + size;
+                let _ = self.llama.context().seq_rm(seq as i32, -1, -1);
+                // SAFETY: ctx is valid and blob is a slice of the stated length.
+                let loaded = unsafe { llama_crab_sys::llama_state_seq_set_data(ctx, blob.as_ptr(), blob.len(), seq as i32) };
+                if loaded == 0 && !tokens[seq as usize].is_empty() {
+                    bail!("llama.cpp rejected the saved state");
+                }
+            }
             for (seq, toks) in self.cached.iter_mut().zip(tokens) {
                 *seq = toks.into_iter().map(LlamaToken::from).collect();
             }

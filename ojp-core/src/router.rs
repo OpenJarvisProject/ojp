@@ -16,7 +16,7 @@ use crate::model::{Model, Seq};
 /// baseline are scored on the same prompt (one variable: the grammar).
 /// Part of the warm-up cache key (engine.rs): bump when SYSTEM_PROMPT or
 /// FEW_SHOT change so stale caches are never reused.
-pub const PROMPT_VERSION: u32 = 1;
+pub const PROMPT_VERSION: u32 = 2;
 
 const SYSTEM_PROMPT: &str = "Classify the user's request into exactly one category and reply with ONLY the category name.\n\
 answer_directly: casual chat or a simple fact.\n\
