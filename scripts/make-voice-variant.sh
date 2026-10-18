@@ -3,6 +3,8 @@
 # timbre of a Kokoro voice or blend. Uses Seed-VC (GPL-3.0, zero-shot voice
 # conversion) as an offline tool; nothing from it ships with the app.
 #   scripts/make-voice-variant.sh RECORDING NAME "af_heart.6+af_bella.4"
+#   scripts/make-voice-variant.sh RECORDING NAME path/to/target.wav   # any clip of the timbre you want
+#                                  (e.g. one from scripts/design-voice.sh)
 # Needs: the MOSS environment (scripts/setup-moss.sh), ffmpeg, a built
 # `cargo build --release -p ojp-core --features tts --example tts_wav`, and
 # Seed-VC in $SEEDVC (default /media/ojp-seedvc: repo/ + a Python 3.10 venv/
@@ -19,9 +21,13 @@ DATA=${XDG_DATA_HOME:-$HOME/.local/share}/ojp
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
-# 1. A short clip of the target timbre, spoken by Kokoro.
+# 1. A short clip of the target timbre: your own file, or spoken by Kokoro.
+if [[ -f "$BLEND" ]]; then
+    cp "$BLEND" "$WORK/target.wav"
+else
 ./target/release/examples/tts_wav "$DATA/models/tts/kokoro.onnx" "$DATA/models/tts/voices.bin" "$WORK/target.wav" \
     "This is a calm, clear sample of a woman speaking in a natural voice. She takes her time, and she speaks gently, with a warm tone. The sentence is long enough to be a good reference for the conversion." "$BLEND" >/dev/null
+fi
 # 2. Your speech, mono, silence trimmed, a few seconds of it.
 ffmpeg -v error -y -i "$REC" -ac 1 -ar 22050 \
     -af "silenceremove=start_periods=1:start_threshold=-45dB,atrim=0:$SECONDS_OF_SPEECH" "$WORK/source.wav"
