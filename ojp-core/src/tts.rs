@@ -137,7 +137,7 @@ pub struct Options {
     pub speed: f32,
     /// Where `scripts/setup-moss.sh` put the MOSS environment.
     pub moss_dir: PathBuf,
-    /// MOSS: a recording to imitate instead of a built-in voice.
+    /// MOSS: the recording the "Custom" voice imitates, if not `reference.wav`.
     pub moss_reference: Option<PathBuf>,
 }
 
@@ -167,25 +167,62 @@ impl Engine {
 }
 
 /// MOSS-TTS-Nano's bundled English voices (short reference recordings the
-/// model imitates; its sample of a real public figure is left out), then
-/// "Custom": the user's own reference clip (`<moss dir>/reference.wav`, made
-/// with scripts/make-reference.py, or `[tts] moss_reference`).
-pub const MOSS_VOICES: &[(&str, &str)] = &[
-    ("Ava", "Ava"),
-    ("Bella", "Bella"),
-    ("Adam", "Adam"),
-    ("Nathan", "Nathan"),
-    (CUSTOM_VOICE, "My own reference clip"),
-];
+/// model imitates; its sample of a real public figure is left out).
+pub const MOSS_VOICES: &[(&str, &str)] = &[("Ava", "Ava"), ("Bella", "Bella"), ("Adam", "Adam"), ("Nathan", "Nathan")];
 
-/// The MOSS voice id that means "use the reference clip".
+/// The MOSS voice id that means "use `reference.wav`".
 pub const CUSTOM_VOICE: &str = "Custom";
 
-pub fn moss_voice_index(voice: &str) -> usize {
-    MOSS_VOICES.iter().position(|(v, _)| *v == voice).unwrap_or(1)
+/// Prefix of the voice ids for clips in `<moss dir>/references/`.
+pub const REFERENCE_PREFIX: &str = "ref:";
+
+/// Every MOSS voice the user can pick as (id, label): the bundled ones, then
+/// "My own reference clip" (`<moss dir>/reference.wav`, made by
+/// scripts/make-reference.py), then each `<moss dir>/references/<name>.wav`.
+pub fn moss_voice_list(moss_dir: &std::path::Path) -> Vec<(String, String)> {
+    let mut voices: Vec<(String, String)> = MOSS_VOICES.iter().map(|(i, l)| (i.to_string(), l.to_string())).collect();
+    if moss_dir.join("reference.wav").exists() {
+        voices.push((CUSTOM_VOICE.into(), "My own reference clip".into()));
+    }
+    let mut names: Vec<String> = std::fs::read_dir(moss_dir.join("references"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let path = e.path();
+            (path.extension()? == "wav").then(|| path.file_stem().map(|s| s.to_string_lossy().into_owned()))?
+        })
+        .collect();
+    names.sort();
+    voices.extend(names.into_iter().map(|n| (format!("{REFERENCE_PREFIX}{n}"), format!("Mine: {n}"))));
+    voices
+}
+
+/// Index of `voice` in `voices` (the Bella entry if it isn't there).
+pub fn moss_voice_index(voices: &[(String, String)], voice: &str) -> usize {
+    voices.iter().position(|(v, _)| v == voice).unwrap_or(1)
+}
+
+/// The recording to imitate for a MOSS voice id, if it names one.
+pub fn moss_reference_path(moss_dir: &std::path::Path, voice: &str) -> Option<PathBuf> {
+    if voice == CUSTOM_VOICE {
+        Some(moss_dir.join("reference.wav"))
+    } else {
+        voice.strip_prefix(REFERENCE_PREFIX).map(|name| moss_dir.join("references").join(format!("{name}.wav")))
+    }
 }
 
 impl Options {
+    /// The recording a MOSS `voice` imitates, if it names one.
+    pub fn reference_for(&self, voice: &str) -> Option<PathBuf> {
+        if voice == CUSTOM_VOICE
+            && let Some(path) = &self.moss_reference
+        {
+            return Some(path.clone());
+        }
+        moss_reference_path(&self.moss_dir, voice)
+    }
+
     pub fn files_present(&self) -> bool {
         match self.engine {
             Engine::Kokoro => self.model.exists() && self.voices.exists(),
@@ -196,7 +233,7 @@ impl Options {
     #[cfg_attr(not(feature = "tts"), allow(dead_code))]
     fn voice_id(&self) -> &str {
         match self.engine {
-            Engine::Moss => MOSS_VOICES[moss_voice_index(&self.voice)].0,
+            Engine::Moss => &self.voice,
             Engine::Kokoro if self.voice.is_empty() || self.voice == "default" => DEFAULT_VOICE,
             Engine::Kokoro => &self.voice,
         }
@@ -328,7 +365,8 @@ mod imp {
         /// Load the model and open the audio output; fails (with a message
         /// for the user) if either isn't possible. Blocks while loading.
         pub fn start(options: Options) -> Result<Tts> {
-            if let Some(reference) = &options.moss_reference
+            if options.engine == super::Engine::Moss
+                && let Some(reference) = options.reference_for(&options.voice)
                 && !reference.exists()
             {
                 anyhow::bail!(
@@ -401,7 +439,7 @@ mod imp {
 
     /// The MOSS Python process (scripts/moss_server.py), talking over pipes.
     struct Sidecar {
-        reference: Option<String>,
+        options: Options,
         child: std::process::Child,
         stdin: std::process::ChildStdin,
         stdout: std::io::BufReader<std::process::ChildStdout>,
@@ -427,8 +465,7 @@ mod imp {
                 let _ = child.kill();
                 anyhow::bail!("MOSS didn't start (run scripts/setup-moss.sh again?)");
             }
-            let reference = options.moss_reference.as_ref().map(|p| p.to_string_lossy().into_owned());
-            Ok(Sidecar { reference, child, stdin, stdout })
+            Ok(Sidecar { options: options.clone(), child, stdin, stdout })
         }
 
     }
@@ -436,10 +473,8 @@ mod imp {
     impl SpeechEngine for Sidecar {
         fn synthesize(&mut self, text: &str, voice: &str, _speed: f32) -> Result<(Vec<f32>, u32)> {
             use std::io::{BufRead, Read, Write};
-            let request = format!(
-                "{}\n",
-                serde_json::json!({ "text": text, "voice": voice, "reference": self.reference })
-            );
+            let reference = self.options.reference_for(voice).map(|p| p.to_string_lossy().into_owned());
+            let request = format!("{}\n", serde_json::json!({ "text": text, "voice": voice, "reference": reference }));
             self.stdin.write_all(request.as_bytes())?;
             self.stdin.flush()?;
             let mut header = String::new();

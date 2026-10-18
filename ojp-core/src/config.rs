@@ -56,8 +56,9 @@ speed = 1.0
 # "kokoro" (built in) or "moss" (experimental: MOSS-TTS-Nano through a
 # Python sidecar; set it up with scripts/setup-moss.sh).
 engine = "kokoro"
-# MOSS voice: Ava, Bella, Adam, Nathan, or Custom (your own reference clip,
-# see moss_reference below).
+# MOSS voice: Ava, Bella, Adam, Nathan, Custom (your own reference clip, see
+# moss_reference below), or ref:<name> for <moss_dir>/references/<name>.wav.
+# Settings lists whichever of these exist.
 moss_voice = "Bella"
 # The recording that moss_voice = "Custom" imitates (WAV, a few seconds to
 # half a minute of clean speech; use only voices you have the right to use).
@@ -155,13 +156,7 @@ impl Config {
             voice,
             speed: self.tts.speed,
             moss_dir: self.tts.moss_dir.clone(),
-            moss_reference: (engine == crate::tts::Engine::Moss && self.tts.moss_voice == crate::tts::CUSTOM_VOICE).then(|| {
-                if self.tts.moss_reference.is_empty() {
-                    self.tts.moss_dir.join("reference.wav")
-                } else {
-                    PathBuf::from(&self.tts.moss_reference)
-                }
-            }),
+            moss_reference: (!self.tts.moss_reference.is_empty()).then(|| PathBuf::from(&self.tts.moss_reference)),
         }
     }
 }

@@ -98,9 +98,14 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     )));
     settings.set_tts_engine(ojp_core::tts::Engine::from_id(&setup.config.tts.engine).index() as i32);
     settings.set_tts_moss_voices(ModelRc::new(VecModel::from(
-        ojp_core::tts::MOSS_VOICES.iter().map(|(_, label)| slint::SharedString::from(*label)).collect::<Vec<_>>(),
+        ojp_core::tts::moss_voice_list(&setup.config.tts.moss_dir)
+            .into_iter()
+            .map(|(_, label)| slint::SharedString::from(label))
+            .collect::<Vec<_>>(),
     )));
-    settings.set_tts_moss_voice(ojp_core::tts::moss_voice_index(&setup.config.tts.moss_voice) as i32);
+    settings.set_tts_moss_voice(
+        ojp_core::tts::moss_voice_index(&ojp_core::tts::moss_voice_list(&setup.config.tts.moss_dir), &setup.config.tts.moss_voice) as i32,
+    );
     if let Some(apply) = setup.set_light_status_bar {
         // Dark icons on a light theme.
         settings.on_dark_changed(move |dark| apply(!dark));
@@ -513,7 +518,8 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 let voice_id = voice_id.as_str();
                 let speed = ojp_core::tts::SPEEDS.get(tts_speed as usize).map_or(1.0, |(v, _)| *v);
                 let engine_id = ojp_core::tts::Engine::ALL.get(tts_engine as usize).map_or("kokoro", |(_, id, _)| *id);
-                let moss_voice = ojp_core::tts::MOSS_VOICES.get(tts_moss_voice as usize).map_or("Bella", |(id, _)| *id);
+                let moss_voices = ojp_core::tts::moss_voice_list(&setup.config.tts.moss_dir);
+                let moss_voice = moss_voices.get(tts_moss_voice as usize).map_or("Bella", |(id, _)| id.as_str());
                 let theme = ["system", "light", "dark"].get(theme as usize).copied().unwrap_or("system");
                 let path = &setup.config_path;
                 let saved = storage::set_str(path, "ui", "theme", theme)
