@@ -78,19 +78,25 @@ for line in sys.stdin:
         text = str(request["text"]).strip()
         if not text:
             raise ValueError("empty text")
+        # Optional sampling overrides (lower temperatures = steadier pronunciation).
+        defaults = runtime.manifest["generation_defaults"]
+        for key in ("text_temperature", "text_top_p", "text_top_k", "audio_temperature", "audio_top_p", "audio_top_k", "audio_repetition_penalty"):
+            if key in request:
+                defaults[key] = type(defaults[key])(request[key]) if key in defaults else request[key]
         reference = request.get("reference") or None  # a clip to imitate instead of a built-in voice
         result = runtime.synthesize(
             text=text,
             voice=str(request.get("voice") or "Bella"),
             prompt_audio_path=reference,
             output_audio_path=os.path.join(scratch, "out.wav"),
-            sample_mode="fixed",
+            sample_mode=request.get("sample_mode", "fixed"),
             do_sample=True,
             streaming=True,
             max_new_frames=375,
             voice_clone_max_text_tokens=75,
             enable_wetext=False,
             enable_normalize_tts_text=False,
+            seed=request.get("seed"),
         )
         wave = np.asarray(result["waveform"], dtype=np.float32)
         if wave.ndim == 2:
