@@ -63,6 +63,7 @@ pub fn clarity(samples: &mut [f32], rate: u32, strength: f32) {
     let makeup = 10f32.powf(2.0 * s / 20.0);
     let attack = (-1.0 / (0.008 * r)).exp();
     let release = (-1.0 / (0.120 * r)).exp();
+    let rms_in = rms(samples);
     let mut env = 0.0_f32;
     for sample in samples.iter_mut() {
         let mut x = *sample;
@@ -73,8 +74,24 @@ pub fn clarity(samples: &mut [f32], rate: u32, strength: f32) {
         env = if level > env { attack * env + (1.0 - attack) * level } else { release * env + (1.0 - release) * level };
         let env_db = 20.0 * env.max(1e-6).log10();
         let gain_db = if env_db > threshold_db { (threshold_db - env_db) * (1.0 - 1.0 / ratio) } else { 0.0 };
-        *sample = (x * 10f32.powf(gain_db / 20.0) * makeup).clamp(-0.99, 0.99);
+        *sample = x * 10f32.powf(gain_db / 20.0) * makeup;
     }
+    // Keep the loudness the engine produced: the compressor and the lifts
+    // would otherwise make the result quieter (or louder) than the original,
+    // and a loudness change hides what the filter does to the sound.
+    let rms_out = rms(samples);
+    if rms_out > 1e-6 {
+        let gain = (rms_in / rms_out).clamp(0.25, 4.0);
+        for sample in samples.iter_mut() {
+            let y = *sample * gain;
+            // Soft limiter above 0.9 instead of hard clipping.
+            *sample = if y.abs() > 0.9 { y.signum() * (0.9 + 0.09 * ((y.abs() - 0.9) / 0.09).tanh()) } else { y };
+        }
+    }
+}
+
+fn rms(x: &[f32]) -> f32 {
+    (x.iter().map(|v| v * v).sum::<f32>() / x.len().max(1) as f32).sqrt()
 }
 
 #[cfg(test)]
@@ -87,10 +104,6 @@ mod tests {
             .collect()
     }
 
-    fn rms(x: &[f32]) -> f32 {
-        (x.iter().map(|v| v * v).sum::<f32>() / x.len() as f32).sqrt()
-    }
-
     #[test]
     fn zero_strength_changes_nothing() {
         let mut x = tone(440.0, 24_000, 0.2, 0.3);
@@ -99,21 +112,39 @@ mod tests {
         assert_eq!(x, before);
     }
 
+    /// Magnitude of the `freq` component of `x` (a single-bin DFT).
+    fn component(x: &[f32], freq: f32, rate: u32) -> f32 {
+        let (mut re, mut im) = (0.0_f32, 0.0_f32);
+        for (i, v) in x.iter().enumerate() {
+            let phase = std::f32::consts::TAU * freq * i as f32 / rate as f32;
+            re += v * phase.cos();
+            im += v * phase.sin();
+        }
+        (re * re + im * im).sqrt() / x.len() as f32
+    }
+
     #[test]
-    fn presence_band_is_lifted_more_than_the_low_band() {
-        // Compare gain on 200 Hz vs 3.5 kHz at the same input level.
-        let (mut low, mut mid) = (tone(200.0, 24_000, 0.5, 0.05), tone(3500.0, 24_000, 0.5, 0.05));
-        let (low_in, mid_in) = (rms(&low), rms(&mid));
-        clarity(&mut low, 24_000, 1.0);
-        clarity(&mut mid, 24_000, 1.0);
-        let (low_gain, mid_gain) = (rms(&low) / low_in, rms(&mid) / mid_in);
-        assert!(mid_gain > low_gain * 1.2, "mid {mid_gain} low {low_gain}");
+    fn presence_band_is_lifted_relative_to_the_low_band() {
+        let mut x: Vec<f32> = tone(200.0, 24_000, 0.5, 0.1).iter().zip(tone(3500.0, 24_000, 0.5, 0.1)).map(|(a, b)| a + b).collect();
+        let before = component(&x, 3500.0, 24_000) / component(&x, 200.0, 24_000);
+        clarity(&mut x, 24_000, 1.0);
+        let after = component(&x, 3500.0, 24_000) / component(&x, 200.0, 24_000);
+        assert!(after > before * 1.2, "ratio before {before}, after {after}");
+    }
+
+    #[test]
+    fn loudness_is_kept() {
+        let mut x: Vec<f32> = tone(300.0, 24_000, 0.5, 0.2).iter().zip(tone(3500.0, 24_000, 0.5, 0.05)).map(|(a, b)| a + b).collect();
+        let before = rms(&x);
+        clarity(&mut x, 24_000, 0.65);
+        let change_db = 20.0 * (rms(&x) / before).log10();
+        assert!(change_db.abs() < 1.0, "{change_db} dB");
     }
 
     #[test]
     fn output_never_clips() {
         let mut x = tone(1000.0, 24_000, 0.3, 0.98);
         clarity(&mut x, 24_000, 1.0);
-        assert!(x.iter().all(|v| v.abs() <= 0.99));
+        assert!(x.iter().all(|v| v.abs() <= 0.99), "peak {}", x.iter().fold(0.0_f32, |m, v| m.max(v.abs())));
     }
 }
