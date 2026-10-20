@@ -86,6 +86,8 @@ export global Settings {
     out property <float> mix-total: (mix-v0 > 0 ? mix-a0 : 0) + (mix-v1 > 0 ? mix-a1 : 0) + (mix-v2 > 0 ? mix-a2 : 0);
     // Play a sample in the current voice, speed and blend.
     callback preview();
+    in-out property <[string]> tts-clarities;
+    in-out property <int> tts-clarity;
     in-out property <[string]> tts-engines;
     in-out property <int> tts-engine;
     in-out property <[string]> tts-moss-voices;
@@ -599,6 +601,26 @@ component SettingsPage inherits Rectangle {
                         current-index <=> Settings.tts-speed;
                         selected => { Settings.changed(); }
                     }
+                }
+                if Settings.tts-supported && Settings.tts-enabled: HorizontalLayout {
+                    spacing: 12px;
+                    Text {
+                        text: "Voice clarity";
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    ComboBox {
+                        horizontal-stretch: 0;
+                        model: Settings.tts-clarities;
+                        current-index <=> Settings.tts-clarity;
+                        selected => { Settings.changed(); }
+                    }
+                }
+                if Settings.tts-supported && Settings.tts-enabled: Text {
+                    text: "Sharpens consonants so speech sounds less slurred. Lower it if it sounds too crisp.";
+                    wrap: word-wrap;
+                    font-size: 0.8rem;
+                    opacity: 0.65;
                 }
                 if Settings.tts-supported && Settings.tts-enabled: Button {
                     text: "Play a sample";

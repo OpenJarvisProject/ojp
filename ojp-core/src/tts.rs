@@ -139,6 +139,18 @@ pub struct Options {
     pub moss_dir: PathBuf,
     /// MOSS: the recording the "Custom" voice imitates, if not `reference.wav`.
     pub moss_reference: Option<PathBuf>,
+    /// How much to sharpen consonants, 0.0 (off) to 1.0; see [`crate::dsp::clarity`].
+    pub clarity: f32,
+}
+
+/// The clarity levels offered in settings.
+pub const CLARITIES: &[(f32, &str)] = &[(0.0, "Off"), (0.4, "Light"), (0.65, "Medium"), (1.0, "Strong")];
+
+/// Index into [`CLARITIES`] closest to `clarity`.
+pub fn clarity_index(clarity: f32) -> usize {
+    (0..CLARITIES.len())
+        .min_by(|&a, &b| (CLARITIES[a].0 - clarity).abs().total_cmp(&(CLARITIES[b].0 - clarity).abs()))
+        .unwrap_or(2)
 }
 
 /// Which speech engine to use.
@@ -355,6 +367,7 @@ mod imp {
         Stop,
         Voice(String),
         Speed(f32),
+        Clarity(f32),
     }
 
     pub struct Tts {
@@ -410,6 +423,11 @@ mod imp {
         /// Speak faster or slower from now on (1.0 = normal).
         pub fn set_speed(&self, speed: f32) {
             let _ = self.tx.send(Cmd::Speed(speed));
+        }
+
+        /// Sharpen consonants by this much from now on (0.0 = off).
+        pub fn set_clarity(&self, clarity: f32) {
+            let _ = self.tx.send(Cmd::Clarity(clarity));
         }
 
         /// Cut off whatever is playing or queued.
@@ -533,6 +551,7 @@ mod imp {
         };
         let mut voice = options.voice_id().to_string();
         let mut speed = options.speed;
+        let mut clarity = options.clarity;
         let mut pending: std::collections::VecDeque<String> = Default::default();
         loop {
             // Take commands: block when idle, otherwise just poll.
@@ -541,6 +560,7 @@ mod imp {
                 Some(Cmd::Speak(text)) => pending.extend(sentences(&text)),
                 Some(Cmd::Voice(v)) => voice = v,
                 Some(Cmd::Speed(v)) => speed = v,
+                Some(Cmd::Clarity(v)) => clarity = v,
                 Some(Cmd::Stop) => {
                     pending.clear();
                     sink.stop();
@@ -554,9 +574,10 @@ mod imp {
             if sink.len() < 2
                 && let Some(sentence) = pending.pop_front()
             {
-                if let Ok((samples, rate)) = backend.synthesize(&sentence, &voice, speed)
+                if let Ok((mut samples, rate)) = backend.synthesize(&sentence, &voice, speed)
                     && samples.len() > 100
                 {
+                    crate::dsp::clarity(&mut samples, rate, clarity);
                     sink.append(rodio::buffer::SamplesBuffer::new(1, rate, samples));
                 }
             } else {
@@ -581,6 +602,7 @@ mod imp {
         pub fn speak(&self, _: &str) {}
         pub fn set_voice(&self, _: &str) {}
         pub fn set_speed(&self, _: f32) {}
+        pub fn set_clarity(&self, _: f32) {}
         pub fn stop(&self) {}
     }
 }

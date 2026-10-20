@@ -26,7 +26,7 @@ enum Request {
     /// current location for a negative index; the bool is "include the
     /// main model".
     Download(i32, bool),
-    Settings { theme: i32, dynamic_colors: bool, main_enabled: bool, tts_enabled: bool, tts_mix: ojp_core::tts::MixSlots, tts_speed: i32, tts_engine: i32, tts_moss_voice: i32 },
+    Settings { theme: i32, dynamic_colors: bool, main_enabled: bool, tts_enabled: bool, tts_mix: ojp_core::tts::MixSlots, tts_speed: i32, tts_engine: i32, tts_moss_voice: i32, tts_clarity: i32 },
     /// Play a sample in the current settings.
     Preview,
 }
@@ -93,6 +93,10 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
         ojp_core::tts::SPEEDS.iter().map(|(_, label)| slint::SharedString::from(*label)).collect::<Vec<_>>(),
     )));
     settings.set_tts_speed(ojp_core::tts::speed_index(setup.config.tts.speed) as i32);
+    settings.set_tts_clarities(ModelRc::new(VecModel::from(
+        ojp_core::tts::CLARITIES.iter().map(|(_, label)| slint::SharedString::from(*label)).collect::<Vec<_>>(),
+    )));
+    settings.set_tts_clarity(ojp_core::tts::clarity_index(setup.config.tts.clarity) as i32);
     settings.set_tts_engines(ModelRc::new(VecModel::from(
         ojp_core::tts::Engine::ALL.iter().map(|(_, _, label)| slint::SharedString::from(*label)).collect::<Vec<_>>(),
     )));
@@ -173,6 +177,7 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
                 tts_speed: s.get_tts_speed(),
                 tts_engine: s.get_tts_engine(),
                 tts_moss_voice: s.get_tts_moss_voice(),
+                tts_clarity: s.get_tts_clarity(),
             });
         }
     });
@@ -513,10 +518,11 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 }
                 show_chat(&ui, &store, &chat);
             }
-            Request::Settings { theme, dynamic_colors, main_enabled, tts_enabled, tts_mix, tts_speed, tts_engine, tts_moss_voice } => {
+            Request::Settings { theme, dynamic_colors, main_enabled, tts_enabled, tts_mix, tts_speed, tts_engine, tts_moss_voice, tts_clarity } => {
                 let voice_id = ojp_core::tts::mix_string(&tts_mix);
                 let voice_id = voice_id.as_str();
                 let speed = ojp_core::tts::SPEEDS.get(tts_speed as usize).map_or(1.0, |(v, _)| *v);
+                let clarity = ojp_core::tts::CLARITIES.get(tts_clarity as usize).map_or(0.65, |(v, _)| *v);
                 let engine_id = ojp_core::tts::Engine::ALL.get(tts_engine as usize).map_or("kokoro", |(_, id, _)| *id);
                 let moss_voices = ojp_core::tts::moss_voice_list(&setup.config.tts.moss_dir);
                 let moss_voice = moss_voices.get(tts_moss_voice as usize).map_or("Bella", |(id, _)| id.as_str());
@@ -528,6 +534,7 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                     .and_then(|_| storage::set_bool(path, "tts", "enabled", tts_enabled))
                     .and_then(|_| storage::set_str(path, "tts", "voice", voice_id))
                     .and_then(|_| storage::set_f64(path, "tts", "speed", speed as f64))
+                    .and_then(|_| storage::set_f64(path, "tts", "clarity", clarity as f64))
                     .and_then(|_| storage::set_str(path, "tts", "engine", engine_id))
                     .and_then(|_| storage::set_str(path, "tts", "moss_voice", moss_voice));
                 if let Err(e) = saved {
@@ -544,6 +551,7 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 {
                     tts.set_voice(&setup.config.tts_options().voice);
                     tts.set_speed(speed);
+                    tts.set_clarity(clarity);
                 }
                 if tts_changed {
                     tts = None;
@@ -570,6 +578,7 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                         // Not the persona's name: Kokoro slurs "Jarvis" into the words around it.
                         tts.set_voice(&setup.config.tts_options().voice);
                         tts.set_speed(setup.config.tts.speed);
+                        tts.set_clarity(setup.config.tts.clarity);
                         tts.speak("Hello. I am your AI assistant. This is how I sound.");
                     }
                 }

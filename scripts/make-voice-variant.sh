@@ -31,9 +31,13 @@ fi
 # 2. Your speech, mono, silence trimmed, a few seconds of it.
 ffmpeg -v error -y -i "$REC" -ac 1 -ar 22050 \
     -af "silenceremove=start_periods=1:start_threshold=-45dB,atrim=0:$SECONDS_OF_SPEECH" "$WORK/source.wav"
-# 3. Convert (no f0 conditioning: that is for singing).
+# 3. Convert. By default without f0 conditioning (meant for singing); with SEEDVC_F0=1 the
+#    source's pitch contour is followed and shifted into the target's range, which keeps
+#    more of an expressive performance.
 (cd "$SEEDVC/repo" && HF_HOME="$SEEDVC/hf" ../venv/bin/python inference.py --source "$WORK/source.wav" \
-    --target "$WORK/target.wav" --output "$WORK/out" --diffusion-steps 25 --fp16 False --f0-condition False >/dev/null 2>&1)
+    --target "$WORK/target.wav" --output "$WORK/out" --diffusion-steps 25 --fp16 False \
+    --f0-condition "$([[ -n "${SEEDVC_F0:-}" ]] && echo True || echo False)" \
+    --auto-f0-adjust "$([[ -n "${SEEDVC_F0:-}" ]] && echo True || echo False)" >/dev/null 2>&1)
 # 4. Level it and store it as a reference clip.
 mkdir -p "$MOSS/references"
 "$MOSS/venv/bin/python" scripts/make-reference.py "$WORK"/out/*.wav --out "$MOSS/references/$NAME.wav"

@@ -53,6 +53,9 @@ enabled = false
 voice = ""
 # 1.0 = normal; lower is slower.
 speed = 1.0
+# How much to sharpen consonants, 0.0 (off) to 1.0 (strong). 0.65 is a good
+# default; lower it if speech sounds too crisp.
+clarity = 0.65
 # "kokoro" (built in) or "moss" (experimental: MOSS-TTS-Nano through a
 # Python sidecar; set it up with scripts/setup-moss.sh).
 engine = "kokoro"
@@ -115,6 +118,7 @@ pub struct Tts {
     pub speed: f32,
     pub model: PathBuf,
     pub voices: PathBuf,
+    pub clarity: f32,
     pub engine: String,
     pub moss_voice: String,
     pub moss_dir: PathBuf,
@@ -129,6 +133,7 @@ impl Default for Tts {
             speed: 1.0,
             model: "models/tts/kokoro.onnx".into(),
             voices: "models/tts/voices.bin".into(),
+            clarity: 0.65,
             engine: "kokoro".into(),
             moss_voice: "Bella".into(),
             moss_dir: PathBuf::new(),
@@ -155,6 +160,7 @@ impl Config {
             voices: self.tts.voices.clone(),
             voice,
             speed: self.tts.speed,
+            clarity: self.tts.clarity,
             moss_dir: self.tts.moss_dir.clone(),
             moss_reference: (!self.tts.moss_reference.is_empty()).then(|| PathBuf::from(&self.tts.moss_reference)),
         }

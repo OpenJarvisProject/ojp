@@ -6,6 +6,7 @@
 //! degrades gracefully instead of taking the rest down; see engine.rs.
 pub mod chats;
 pub mod config;
+pub mod dsp;
 pub mod download;
 pub mod engine;
 pub mod format;
