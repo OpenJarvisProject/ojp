@@ -337,6 +337,7 @@ fn spoken_math(text: &str) -> String {
 /// ~60 characters long where possible (at most ~220): Kokoro slurs and
 /// rushes very short inputs like "Hello." or "I am Jarvis.", so short
 /// sentences are spoken together with the next one.
+#[cfg_attr(not(feature = "tts"), allow(dead_code))]
 fn sentences(text: &str) -> Vec<String> {
     const MIN: usize = 60;
     let mut out = Vec::new();

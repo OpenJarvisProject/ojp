@@ -22,6 +22,7 @@ use serde_json::{Value, json};
 use crate::config::Config;
 use crate::model::{Model, Seq};
 use crate::router::{Route, Router};
+use crate::tools;
 
 const MAX_TOKENS: usize = 512;
 /// System prompt + this many most recent messages are sent each turn, so
@@ -114,9 +115,12 @@ impl Engine {
             }
         };
         if let Some(model) = router_llm.as_mut() {
-            let path = cache_path(config, config.models.router.as_deref(), &[&chat_prompt, &format!("{router_only}")]);
+            let tool_prompt = tools::system_prompt();
+            let path = cache_path(config, config.models.router.as_deref(), &[&chat_prompt, &format!("{router_only}"), &tool_prompt]);
             if path.as_ref().is_none_or(|p| model.load_cache(p).is_err()) {
                 let _ = router.classify(model, "hello");
+                // Evaluates the tool prompt once so the first tool call is fast.
+                let _ = tools::ask(model, template, "what time is it");
                 if router_only {
                     warm_chat(model);
                 }
@@ -126,9 +130,14 @@ impl Engine {
             }
         }
         if let Some(Main::Local(model)) = main.as_mut() {
-            let path = cache_path(config, config.models.main.as_deref(), &[&chat_prompt]);
+            // The main model also routes and picks tools when it is loaded (it is
+            // much better at both than the small router), so warm those prompts too.
+            let tool_prompt = tools::system_prompt();
+            let path = cache_path(config, config.models.main.as_deref(), &[&chat_prompt, &tool_prompt, "routes+tools"]);
             if path.as_ref().is_none_or(|p| model.load_cache(p).is_err()) {
                 warm_chat(model);
+                let _ = router.classify(model, "hello");
+                let _ = tools::ask(model, template, "what time is it");
                 if let Some(p) = &path {
                     let _ = model.save_cache(p);
                 }
@@ -164,9 +173,7 @@ impl Engine {
         self.history.push(ChatMessage::new(Role::User, request));
 
         let reply = if route == Route::DeviceControl {
-            let text = self.device_control(request);
-            on_event(Event::Token(text.clone()));
-            text
+            self.use_tool(request, on_event)?
         } else {
             self.answer(on_event)?
         };
@@ -176,8 +183,10 @@ impl Engine {
 
     fn route(&mut self, request: &str, on_event: &mut dyn FnMut(Event)) -> Route {
         let start = Instant::now();
+        // The in-process main model, when loaded, is far more accurate than the
+        // 0.5B router (measured with `ojp-cli route-eval` and `tool-eval`).
         let classifier = match (&mut self.router_llm, &mut self.main) {
-            (Some(model), _) | (None, Some(Main::Local(model))) => model,
+            (_, Some(Main::Local(model))) | (Some(model), _) => model,
             (None, _) => return Route::AnswerDirectly,
         };
         let route = match self.router.classify(classifier, request) {
@@ -191,15 +200,47 @@ impl Engine {
         route
     }
 
-    fn device_control(&mut self, request: &str) -> String {
+    /// Run a tool for `request` and produce the reply. An action answers with
+    /// its own confirmation; a lookup is phrased by the answering model from
+    /// the looked-up facts (shown as-is if that fails).
+    fn use_tool(&mut self, request: &str, on_event: &mut dyn FnMut(Event)) -> Result<String> {
+        let outcome = self.device_control(request);
+        let text = match outcome {
+            Err(e) => format!("Couldn't do that: {e:#}"),
+            Ok(o) if o.kind == tools::Kind::Read => {
+                let last = self.history.len() - 1;
+                self.history[last] = ChatMessage::new(
+                    Role::User,
+                    format!(
+                        "{request}\n\n[Looked up on this computer: {}]\nAnswer in one or two short sentences using only that.",
+                        o.text
+                    ),
+                );
+                let phrased = self.answer(on_event);
+                self.history[last] = ChatMessage::new(Role::User, request);
+                return Ok(match phrased {
+                    Ok(t) if !t.trim().is_empty() => t,
+                    _ => {
+                        on_event(Event::Token(o.text.clone()));
+                        o.text
+                    }
+                });
+            }
+            Ok(o) => o.text,
+        };
+        on_event(Event::Token(text.clone()));
+        Ok(text)
+    }
+
+    fn device_control(&mut self, request: &str) -> Result<tools::Outcome> {
         if cfg!(target_os = "android") {
-            return "Device control isn't available on Android yet.".into();
+            bail!("device control isn't available on Android yet");
         }
         let model = match (&mut self.router_llm, &mut self.main) {
-            (Some(model), _) | (None, Some(Main::Local(model))) => model,
-            (None, _) => return "Device control needs a local model.".into(),
+            (_, Some(Main::Local(model))) | (Some(model), _) => model,
+            (None, _) => bail!("device control needs a local model"),
         };
-        crate::tools::handle(model, self.template, request).unwrap_or_else(|e| format!("Couldn't do that: {e:#}"))
+        tools::handle(model, self.template, request)
     }
 
     fn messages(&self) -> Vec<ChatMessage> {

@@ -16,12 +16,16 @@ use std::path::Path;
 /// every message; each kind of prompt now keeps its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Seq {
-    /// Routing and tool calls (short, mostly fixed prompts).
+    /// Routing (a short, mostly fixed prompt).
     Route = 0,
     /// Chat answers (system prompt + history).
     Chat = 1,
+    /// Tool calls: a long fixed prompt (tool list and examples) that must not
+    /// be evicted by the router's different prompt on every message.
+    Tool = 2,
 }
-const SEQS: usize = 2;
+const SEQS: usize = 3;
+const ALL_SEQS: [Seq; SEQS] = [Seq::Route, Seq::Chat, Seq::Tool];
 
 pub struct Model {
     llama: Llama,
@@ -74,7 +78,7 @@ impl Model {
         out.extend_from_slice(&(header.len() as u64).to_le_bytes());
         out.extend_from_slice(&header);
         let ctx = self.llama.context().raw_handle();
-        for seq in [Seq::Route, Seq::Chat] {
+        for seq in ALL_SEQS {
             // SAFETY: ctx is valid for the call; the buffer has the size llama.cpp asked for.
             let blob = unsafe {
                 let size = llama_crab_sys::llama_state_seq_get_size(ctx, seq as i32);
@@ -112,7 +116,7 @@ impl Model {
             }
             let ctx = self.llama.context().raw_handle();
             let mut at = 8 + len;
-            for seq in [Seq::Route, Seq::Chat] {
+            for seq in ALL_SEQS {
                 let size = read_len(at)?;
                 let blob = bytes.get(at + 8..at + 8 + size).context("short cache file")?;
                 at += 8 + size;
@@ -129,7 +133,7 @@ impl Model {
             Ok(())
         })();
         if result.is_err() {
-            for seq in [Seq::Route, Seq::Chat] {
+            for seq in ALL_SEQS {
                 self.reset(seq);
             }
         }

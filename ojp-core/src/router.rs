@@ -16,17 +16,17 @@ use crate::model::{Model, Seq};
 /// baseline are scored on the same prompt (one variable: the grammar).
 /// Part of the warm-up cache key (engine.rs): bump when SYSTEM_PROMPT or
 /// FEW_SHOT change so stale caches are never reused.
-pub const PROMPT_VERSION: u32 = 2;
+pub const PROMPT_VERSION: u32 = 3;
 
 const SYSTEM_PROMPT: &str = "Classify the user's request into exactly one category and reply with ONLY the category name.\n\
 answer_directly: casual chat or a simple fact.\n\
 coding: writing, fixing, or explaining code.\n\
 reasoning: multi-step problems, planning, analysis, or math word problems.\n\
-device_control: controlling apps, settings, timers, volume, or hardware on this computer.";
+device_control: controlling apps, settings, timers, volume, music or hardware on this computer; looking up live facts on this computer (time, battery, files, clipboard, notes); exact arithmetic; saving notes.";
 
 /// Worked examples shown to the model as prior turns. Disjoint from both
 /// the dev and test case sets in main.rs.
-const FEW_SHOT: [(&str, Route); 8] = [
+const FEW_SHOT: [(&str, Route); 20] = [
     ("Hi there!", Route::AnswerDirectly),
     ("What is the boiling point of water?", Route::AnswerDirectly),
     ("Write a function to check if a number is prime in JavaScript.", Route::Coding),
@@ -35,6 +35,18 @@ const FEW_SHOT: [(&str, Route); 8] = [
     ("If 3 workers build a wall in 6 hours, how long do 2 workers take?", Route::Reasoning),
     ("Pause the music.", Route::DeviceControl),
     ("Turn on Wi-Fi.", Route::DeviceControl),
+    ("Is my battery low?", Route::DeviceControl),
+    ("What's 84 divided by 7?", Route::DeviceControl),
+    ("Locate my invoices folder.", Route::DeviceControl),
+    ("Jot down that the meeting moved to 3pm.", Route::DeviceControl),
+    ("What is 56 times 12?", Route::DeviceControl),
+    ("Add 1,250 and 3,475.", Route::DeviceControl),
+    ("Tell me the time.", Route::DeviceControl),
+    ("Which song is on?", Route::DeviceControl),
+    ("What's the capital of Canada?", Route::AnswerDirectly),
+    ("Who painted the Mona Lisa?", Route::AnswerDirectly),
+    ("How do I reverse a string in Python?", Route::Coding),
+    ("Why is my JavaScript promise returning undefined?", Route::Coding),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
