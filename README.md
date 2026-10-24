@@ -73,6 +73,18 @@ pronunciation = "zelya"
 voice = "female"
 ```
 
+## What it can do (typed)
+
+Type in plain words, or use commands (`/help` lists them). It sets timers and
+reminders that survive closing the app, controls volume and music, opens apps
+and sites, keeps notes, does exact arithmetic, looks up the time, battery,
+disk, clipboard and files, reads and searches your files, and can do several
+steps in a row. Anything that changes something (writing a file, running a
+terminal command) is described first and waits for your "yes". Reading is
+limited to your home folder and never touches keys, passwords or browser data.
+Web search and page reading are off until you set `internet = true` under
+`[tools]`; addresses on your own machine or network are always refused.
+
 ## Speech (desktop)
 
 Settings has **Speak replies**, off by default. Turning it on downloads the

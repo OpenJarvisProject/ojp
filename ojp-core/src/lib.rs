@@ -16,6 +16,7 @@ pub mod reminders;
 pub mod router;
 pub mod storage;
 pub mod tools;
+pub mod tools_ext;
 pub mod tts;
 
 pub use config::Config;

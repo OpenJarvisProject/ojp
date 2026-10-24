@@ -72,6 +72,12 @@ moss_dir = ""
 model = "models/tts/kokoro.onnx"
 voices = "models/tts/voices.bin"
 
+[tools]
+# Let the assistant search the web and read web pages. Off by default: it
+# means pages you never asked for can reach the model. Addresses on your own
+# machine or network are always refused.
+internet = false
+
 [ui]
 # "system", "light" or "dark".
 theme = "system"
@@ -108,6 +114,13 @@ pub struct Config {
     pub download: Download,
     pub ui: Ui,
     pub tts: Tts,
+    pub tools: ToolsConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+pub struct ToolsConfig {
+    pub internet: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -228,7 +241,7 @@ pub struct Download {
 
 impl Default for Config {
     fn default() -> Self {
-        Config { persona: Persona::default(), models: Models::default(), download: Download::default(), ui: Ui::default(), tts: Tts::default() }
+        Config { persona: Persona::default(), models: Models::default(), download: Download::default(), ui: Ui::default(), tts: Tts::default(), tools: ToolsConfig::default() }
     }
 }
 

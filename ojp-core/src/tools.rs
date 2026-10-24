@@ -11,7 +11,7 @@
 //!
 //! OJP_TOOLS_DRY_RUN=1 prints each action instead of running it (read-only
 //! lookups still run).
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
@@ -21,6 +21,7 @@ use llama_crab::{ChatMessage, LlamaSampler, Role};
 use serde_json::Value;
 
 use crate::model::{Model, Seq};
+use crate::tools_ext as ext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -28,6 +29,15 @@ pub enum Kind {
     Read,
     /// Does something; the tool's own confirmation is the answer.
     Act,
+}
+
+/// Whether a tool may run on the model's say-so.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Risk {
+    /// Fine to run directly.
+    Safe,
+    /// Changes something that matters: the user is asked first.
+    Confirm,
 }
 
 enum ArgKind {
@@ -46,30 +56,44 @@ struct Tool {
     doc: &'static str,
     args: &'static [Arg],
     kind: Kind,
+    risk: Risk,
+    /// Explores (lists, searches, reads): what it finds may call for another step.
+    explore: bool,
     run: fn(&Value) -> Result<String>,
 }
 
 const REGISTRY: &[Tool] = &[
-    Tool { name: "set_timer", doc: "start a countdown timer that rings after some minutes", args: &[Arg { name: "minutes", kind: ArgKind::Int { max: 999 } }], kind: Kind::Act, run: |a| set_timer(int(a, "minutes")?) },
-    Tool { name: "remind", doc: "remind the user about something after some minutes", args: &[Arg { name: "minutes", kind: ArgKind::Int { max: 999 } }, Arg { name: "text", kind: ArgKind::Text { max: 100 } }], kind: Kind::Act, run: |a| remind(int(a, "minutes")?, text(a, "text")?) },
-    Tool { name: "volume", doc: "set the speaker volume, 0-100", args: &[Arg { name: "level", kind: ArgKind::Int { max: 100 } }], kind: Kind::Act, run: |a| volume(int(a, "level")?) },
-    Tool { name: "mute", doc: "turn the speaker sound off or on (muting)", args: &[Arg { name: "state", kind: ArgKind::Choice(&["on", "off"]) }], kind: Kind::Act, run: |a| mute(text(a, "state")?) },
-    Tool { name: "media", doc: "play, pause or skip the music or video player (not the volume)", args: &[Arg { name: "action", kind: ArgKind::Choice(&["play_pause", "next", "previous"]) }], kind: Kind::Act, run: |a| media(text(a, "action")?) },
-    Tool { name: "open_app", doc: "launch an installed application by name", args: &[Arg { name: "name", kind: ArgKind::Text { max: 40 } }], kind: Kind::Act, run: |a| open_app(text(a, "name")?) },
-    Tool { name: "open_url", doc: "open a web address in the browser", args: &[Arg { name: "url", kind: ArgKind::Text { max: 200 } }], kind: Kind::Act, run: |a| open_url(text(a, "url")?) },
-    Tool { name: "note_add", doc: "save a short note", args: &[Arg { name: "text", kind: ArgKind::Text { max: 200 } }], kind: Kind::Act, run: |a| note_add(text(a, "text")?) },
-    Tool { name: "calculate", doc: "exact arithmetic, e.g. 7^3+4*7*2-3 (use * / ^ sqrt() sin() ln() pi)", args: &[Arg { name: "expression", kind: ArgKind::Text { max: 120 } }], kind: Kind::Read, run: |a| calculate(text(a, "expression")?) },
-    Tool { name: "get_time", doc: "the current time, date or day of the week", args: &[], kind: Kind::Read, run: |_| get_time() },
-    Tool { name: "system_status", doc: "battery, memory, disk space, load and uptime", args: &[], kind: Kind::Read, run: |_| system_status() },
-    Tool { name: "now_playing", doc: "which song or video is playing (not the time)", args: &[], kind: Kind::Read, run: |_| now_playing() },
-    Tool { name: "clipboard", doc: "read the text on the clipboard", args: &[], kind: Kind::Read, run: |_| clipboard() },
-    Tool { name: "find_files", doc: "find files in the home folder by part of the name", args: &[Arg { name: "query", kind: ArgKind::Text { max: 60 } }], kind: Kind::Read, run: |a| find_files(text(a, "query")?) },
-    Tool { name: "reminders_list", doc: "show the pending timers and reminders", args: &[], kind: Kind::Read, run: |_| reminders_list() },
-    Tool { name: "notes_list", doc: "show the saved notes", args: &[], kind: Kind::Read, run: |_| notes_list() },
+    Tool { name: "set_timer", doc: "start a countdown timer that rings after some minutes", args: &[Arg { name: "minutes", kind: ArgKind::Int { max: 999 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| set_timer(int(a, "minutes")?) },
+    Tool { name: "remind", doc: "remind the user about something after some minutes", args: &[Arg { name: "minutes", kind: ArgKind::Int { max: 999 } }, Arg { name: "text", kind: ArgKind::Text { max: 100 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| remind(int(a, "minutes")?, text(a, "text")?) },
+    Tool { name: "volume", doc: "set the speaker volume, 0-100", args: &[Arg { name: "level", kind: ArgKind::Int { max: 100 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| volume(int(a, "level")?) },
+    Tool { name: "mute", doc: "turn the speaker sound off or on (muting)", args: &[Arg { name: "state", kind: ArgKind::Choice(&["on", "off"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| mute(text(a, "state")?) },
+    Tool { name: "media", doc: "play, pause or skip the music or video player (not the volume)", args: &[Arg { name: "action", kind: ArgKind::Choice(&["play_pause", "next", "previous"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| media(text(a, "action")?) },
+    Tool { name: "open_app", doc: "launch an installed application by name", args: &[Arg { name: "name", kind: ArgKind::Text { max: 40 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| open_app(text(a, "name")?) },
+    Tool { name: "open_url", doc: "show the user a web page in their browser (to read a page yourself, use web_fetch)", args: &[Arg { name: "url", kind: ArgKind::Text { max: 200 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| open_url(text(a, "url")?) },
+    Tool { name: "note_add", doc: "save a short note", args: &[Arg { name: "text", kind: ArgKind::Text { max: 200 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| note_add(text(a, "text")?) },
+    Tool { name: "calculate", doc: "exact arithmetic, e.g. 7^3+4*7*2-3 (use * / ^ sqrt() sin() ln() pi)", args: &[Arg { name: "expression", kind: ArgKind::Text { max: 120 } }], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |a| calculate(text(a, "expression")?) },
+    Tool { name: "get_time", doc: "the current time, date or day of the week", args: &[], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |_| get_time() },
+    Tool { name: "system_status", doc: "battery, memory, disk space, load and uptime", args: &[], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |_| system_status() },
+    Tool { name: "now_playing", doc: "which song or video is playing (not the time)", args: &[], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |_| now_playing() },
+    Tool { name: "clipboard", doc: "read the text on the clipboard", args: &[], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |_| clipboard() },
+    Tool { name: "find_files", doc: "find files by part of their NAME (not what is inside them)", args: &[Arg { name: "query", kind: ArgKind::Text { max: 60 } }], kind: Kind::Read, risk: Risk::Safe, explore: true, run: |a| find_files(text(a, "query")?) },
+    Tool { name: "reminders_list", doc: "show the pending timers and reminders", args: &[], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |_| reminders_list() },
+    Tool { name: "list_dir", doc: "list the files in a folder (~ is the home folder)", args: &[Arg { name: "path", kind: ArgKind::Text { max: 150 } }], kind: Kind::Read, risk: Risk::Safe, explore: true, run: |a| ext::list_dir(text(a, "path")?) },
+    Tool { name: "search_text", doc: "search INSIDE the user's files for words; use it for questions about their own information such as money, plans, passwords or dates", args: &[Arg { name: "query", kind: ArgKind::Text { max: 80 } }], kind: Kind::Read, risk: Risk::Safe, explore: true, run: |a| ext::search_text(text(a, "query")?) },
+    Tool { name: "read_file", doc: "read a text file", args: &[Arg { name: "path", kind: ArgKind::Text { max: 150 } }], kind: Kind::Read, risk: Risk::Safe, explore: true, run: |a| ext::read_file(text(a, "path")?) },
+    Tool { name: "write_file", doc: "create or replace a text file (asks the user first)", args: &[Arg { name: "path", kind: ArgKind::Text { max: 150 } }, Arg { name: "text", kind: ArgKind::Text { max: 1500 } }], kind: Kind::Act, risk: Risk::Confirm, explore: false, run: |a| ext::write_file(text(a, "path")?, text(a, "text")?) },
+    Tool { name: "run_command", doc: "run a terminal command (asks the user first)", args: &[Arg { name: "command", kind: ArgKind::Text { max: 250 } }], kind: Kind::Act, risk: Risk::Confirm, explore: false, run: |a| ext::run_command(text(a, "command")?) },
+    Tool { name: "web_search", doc: "search the web (needs internet access to be on)", args: &[Arg { name: "query", kind: ArgKind::Text { max: 120 } }], kind: Kind::Read, risk: Risk::Safe, explore: true, run: |a| ext::web_search(text(a, "query")?) },
+    Tool { name: "web_fetch", doc: "read the text of a web page so you can tell the user what it says (needs internet access)", args: &[Arg { name: "url", kind: ArgKind::Text { max: 300 } }], kind: Kind::Read, risk: Risk::Safe, explore: true, run: |a| ext::web_fetch(text(a, "url")?) },
+    Tool { name: "notes_list", doc: "show the saved notes", args: &[], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |_| notes_list() },
 ];
 
 /// The tool-use instructions given to the model, generated from the registry.
 pub fn system_prompt() -> String {
+    system_prompt_for(false)
+}
+
+fn system_prompt_for(with_done: bool) -> String {
     let mut s = String::from("You control this computer through tools. Available tools:\n");
     for t in REGISTRY {
         let args: Vec<String> = t
@@ -83,6 +107,9 @@ pub fn system_prompt() -> String {
             .collect();
         s.push_str(&format!("- {}({})  // {}\n", t.name, args.join(", "), t.doc));
     }
+    if with_done {
+        s.push_str("- done()  // use this when nothing more is needed\n");
+    }
     s.push_str(
         "Respond with ONLY a JSON array of 1 to 3 tool calls, in the order to do them, like \
          [{\"tool\": \"<name>\", \"args\": {...}}], and nothing else. Use more than one call only when the \
@@ -92,8 +119,8 @@ pub fn system_prompt() -> String {
 }
 
 /// The GBNF grammar accepting exactly the registry's call shapes.
-fn grammar() -> String {
-    let alternatives: Vec<String> = REGISTRY
+fn grammar(with_done: bool) -> String {
+    let mut alternatives: Vec<String> = REGISTRY
         .iter()
         .map(|t| {
             let args: Vec<String> = t
@@ -115,6 +142,9 @@ fn grammar() -> String {
             format!("\"{}\\\", \\\"args\\\": {{\" {}", t.name, body)
         })
         .collect();
+    if with_done {
+        alternatives.push("\"done\\\", \\\"args\\\": {\"".to_string());
+    }
     format!(
         "root ::= \"[\" one ( \", \" one ){{0,2}} \"]\"\none ::= \"{{\\\"tool\\\": \\\"\" call \"}}}}\"\ncall ::= ( {} )\nint ::= [0-9] | [1-9] [0-9] | [1-9] [0-9] [0-9]\n",
         alternatives.join("\n         | ")
@@ -143,6 +173,14 @@ const EXAMPLES: &[(&str, &str)] = &[
     ("What reminders do I have?", r#"[{"tool": "reminders_list", "args": {}}]"#),
     ("Open the browser and set a timer for 5 minutes.", r#"[{"tool": "open_app", "args": {"name": "browser"}}, {"tool": "set_timer", "args": {"minutes": 5}}]"#),
     ("Mute the sound and tell me the time.", r#"[{"tool": "mute", "args": {"state": "on"}}, {"tool": "get_time", "args": {}}]"#),
+    ("What files are in my Documents folder?", r#"[{"tool": "list_dir", "args": {"path": "~/Documents"}}]"#),
+    ("Show me what's inside notes.txt in my Documents.", r#"[{"tool": "read_file", "args": {"path": "~/Documents/notes.txt"}}]"#),
+    ("Save the text hello into hi.txt in my Documents folder.", r#"[{"tool": "write_file", "args": {"path": "~/Documents/hi.txt", "text": "hello"}}]"#),
+    ("Run ls in my Downloads folder.", r#"[{"tool": "run_command", "args": {"command": "ls ~/Downloads"}}]"#),
+    ("Check my files and tell me what my wifi password is.", r#"[{"tool": "search_text", "args": {"query": "wifi password"}}]"#),
+    ("Which of my files mentions the passport number?", r#"[{"tool": "search_text", "args": {"query": "passport number"}}]"#),
+    ("Search the web for rust tutorials.", r#"[{"tool": "web_search", "args": {"query": "rust tutorials"}}]"#),
+    ("Read the page at https://example.org.", r#"[{"tool": "web_fetch", "args": {"url": "https://example.org"}}]"#),
     ("Show me what I wrote down.", r#"[{"tool": "notes_list", "args": {}}]"#),
 ];
 
@@ -164,33 +202,97 @@ pub struct Run {
     pub error: Option<anyhow::Error>,
 }
 
-/// Ask the model for tool calls, then run them.
-pub fn handle(model: &mut Model, template: BuiltinTemplate, request: &str) -> Result<Run> {
-    let calls = ask(model, template, request)?;
-    Ok(run_calls(&calls))
+/// One round of an agent task: the calls the model made and what came back.
+pub struct Step {
+    pub calls: Vec<Value>,
+    pub results: Vec<String>,
 }
 
-/// Ask the model for one to three tool calls (grammar-constrained).
+/// Ask the model for the first one to three tool calls (grammar-constrained).
 pub fn ask(model: &mut Model, template: BuiltinTemplate, request: &str) -> Result<Vec<Value>> {
-    let mut messages = vec![ChatMessage::new(Role::System, system_prompt())];
+    plan(model, template, request, &[])
+}
+
+/// Ask the model what to do next, given what earlier steps found. After the
+/// first step it may also answer `done`.
+pub fn plan(model: &mut Model, template: BuiltinTemplate, request: &str, steps: &[Step]) -> Result<Vec<Value>> {
+    let with_done = !steps.is_empty();
+    let mut messages = vec![ChatMessage::new(Role::System, system_prompt_for(with_done))];
     for (user, calls) in EXAMPLES {
         messages.push(ChatMessage::new(Role::User, *user));
         messages.push(ChatMessage::new(Role::Assistant, *calls));
     }
+    // One worked example of a task that takes several rounds.
+    const NEXT: &str = "If the request needs another step, give the next call; otherwise answer [{\"tool\": \"done\", \"args\": {}}].";
+    for (role, text) in [
+        (Role::User, "Find my groceries list and read it to me.".to_string()),
+        (Role::Assistant, r#"[{"tool": "find_files", "args": {"query": "groceries"}}]"#.to_string()),
+        (Role::User, format!("Results:\n1 match(es):\n~/Documents/groceries.txt\n{NEXT}")),
+        (Role::Assistant, r#"[{"tool": "read_file", "args": {"path": "~/Documents/groceries.txt"}}]"#.to_string()),
+        (Role::User, format!("Results:\n~/Documents/groceries.txt:\nmilk, eggs, bread\n{NEXT}")),
+        (Role::Assistant, r#"[{"tool": "done", "args": {}}]"#.to_string()),
+    ] {
+        messages.push(ChatMessage::new(role, text));
+    }
     messages.push(ChatMessage::new(Role::User, request));
+    for step in steps {
+        messages.push(ChatMessage::new(Role::Assistant, Value::Array(step.calls.clone()).to_string()));
+        let results: Vec<String> = step.results.iter().map(|r| clip_result(r)).collect();
+        messages.push(ChatMessage::new(
+            Role::User,
+            format!("Results:\n{}\n{NEXT}", results.join("\n")),
+        ));
+    }
     let prompt = render_builtin(template, &messages, &[], true);
     // SAFETY: llama_sampler_init_grammar parses the grammar during the call.
-    let grammar = unsafe { LlamaSampler::grammar(model.llama().model(), &grammar(), "root") }.context("tool grammar rejected")?;
+    let grammar = unsafe { LlamaSampler::grammar(model.llama().model(), &grammar(with_done), "root") }.context("tool grammar rejected")?;
     let greedy = LlamaSampler::greedy().context("greedy sampler")?;
     let mut sampler = LlamaSampler::chain(vec![grammar, greedy], true).context("sampler chain")?;
-    let text = model.complete(Seq::Tool, &prompt, &mut sampler, 160, &mut |_| {})?;
+    let text = model.complete(Seq::Tool, &prompt, &mut sampler, 200, &mut |_| {})?;
     match serde_json::from_str::<Value>(text.trim()) {
         Ok(Value::Array(calls)) if !calls.is_empty() => Ok(calls),
         _ => bail!("tool calls didn't parse: {text:?}"),
     }
 }
 
-/// Run calls one after another; stops at the first that fails.
+/// A result trimmed to what fits in the next prompt.
+fn clip_result(text: &str) -> String {
+    let t: String = text.chars().take(1200).collect();
+    if text.chars().count() > 1200 { format!("{t}…") } else { t }
+}
+
+/// Is this the "nothing more to do" call?
+pub fn is_done(call: &Value) -> bool {
+    call["tool"] == "done"
+}
+
+fn find(call: &Value) -> Option<&'static Tool> {
+    let name = call["tool"].as_str()?;
+    REGISTRY.iter().find(|t| t.name == name)
+}
+
+/// Does this call explore (list, search, read), so its result may call for another step?
+pub fn is_explore(call: &Value) -> bool {
+    find(call).is_some_and(|t| t.explore)
+}
+
+/// If this call changes something that matters, a plain-words description of
+/// what it would do, to show the user before asking. `Err` if it can't be done at all.
+pub fn needs_confirmation(call: &Value) -> Option<Result<String>> {
+    let tool = find(call)?;
+    if tool.risk != Risk::Confirm {
+        return None;
+    }
+    let args = &call["args"];
+    Some(match tool.name {
+        "write_file" => ext::write_plan(args["path"].as_str().unwrap_or(""), args["text"].as_str().unwrap_or("")),
+        "run_command" => Ok(format!("run this command in your home folder: {}", args["command"].as_str().unwrap_or(""))),
+        other => Ok(format!("use {other}")),
+    })
+}
+
+/// Run calls one after another; stops at the first that fails. Calls that
+/// need the user's OK are refused here (see [`run_confirmed`]).
 pub fn run_calls(calls: &[Value]) -> Run {
     let mut outcomes = Vec::new();
     for call in calls {
@@ -202,8 +304,34 @@ pub fn run_calls(calls: &[Value]) -> Run {
     Run { outcomes, error: None }
 }
 
-/// Run a parsed call `{"tool": ..., "args": {...}}`.
+/// Run a parsed call `{"tool": ..., "args": {...}}`. Calls that change
+/// something that matters are refused: they go through the user first.
 pub fn run_call(call: &Value) -> Result<Outcome> {
+    if find(call).is_some_and(|t| t.risk == Risk::Confirm) {
+        bail!("that needs your OK first");
+    }
+    run_trusted(call)
+}
+
+/// Run a call the user has agreed to (or typed themselves).
+pub fn run_confirmed(call: &Value) -> Result<Outcome> {
+    run_trusted(call)
+}
+
+/// Run calls the user typed as commands: they asked for exactly that, so no
+/// second question is needed. Stops at the first failure.
+pub fn run_typed(calls: &[Value]) -> Run {
+    let mut outcomes = Vec::new();
+    for call in calls {
+        match run_trusted(call) {
+            Ok(o) => outcomes.push(o),
+            Err(e) => return Run { outcomes, error: Some(e) },
+        }
+    }
+    Run { outcomes, error: None }
+}
+
+fn run_trusted(call: &Value) -> Result<Outcome> {
     eprintln!("[tool call: {call}]");
     let name = call["tool"].as_str().context("no tool name")?;
     let tool = REGISTRY.iter().find(|t| t.name == name).with_context(|| format!("unknown tool {name:?}"))?;
@@ -248,6 +376,13 @@ const COMMANDS: &[(&str, &str, Option<&str>)] = &[
     ("playing", "now_playing", None),
     ("clipboard", "clipboard", None),
     ("find", "find_files", None),
+    ("ls", "list_dir", None),
+    ("read", "read_file", None),
+    ("write", "write_file", None),
+    ("run", "run_command", None),
+    ("search", "web_search", None),
+    ("grep", "search_text", None),
+    ("fetch", "web_fetch", None),
 ];
 
 /// The list of typed commands, for `/help`.
@@ -280,6 +415,7 @@ pub fn command(line: &str) -> Option<Result<Vec<Value>, String>> {
         return Some(Err(format!("I don't know the command /{word}. Type /help to see them.")));
     };
     let tool = REGISTRY.iter().find(|t| t.name == tool_name)?;
+    let arg = if tool_name == "list_dir" && arg.is_empty() { "~" } else { arg };
     let mut args = serde_json::Map::new();
     if let Some(value) = fixed {
         args.insert(tool.args[0].name.into(), Value::String(value.into()));
@@ -614,7 +750,7 @@ fn find_files(query: &str) -> Result<String> {
             "-o", "-iname", &pattern, "-print",
         ],
     )?;
-    let hits: Vec<&str> = out.lines().take(8).collect();
+    let hits: Vec<String> = out.lines().take(8).map(|l| ext::shorten(Path::new(l))).collect();
     if hits.is_empty() {
         return Ok(format!("No files matching {query:?} in your home folder."));
     }
@@ -905,7 +1041,7 @@ mod tests {
 
     #[test]
     fn every_tool_is_in_the_prompt_and_grammar() {
-        let (prompt, grammar) = (system_prompt(), grammar());
+        let (prompt, grammar) = (system_prompt(), grammar(false));
         for name in names() {
             assert!(prompt.contains(&format!("- {name}(")), "{name} missing from the prompt");
             assert!(grammar.contains(&format!("\"{name}\\\", \\\"args\\\"")), "{name} missing from the grammar");

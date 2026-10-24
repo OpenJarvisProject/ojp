@@ -39,6 +39,28 @@ pub enum Event {
     Notice(String),
 }
 
+/// Something the assistant wants to do but is waiting for permission to do.
+struct Pending {
+    call: serde_json::Value,
+}
+
+/// How a reply to "shall I go ahead?" reads.
+#[derive(Debug, PartialEq, Eq)]
+enum Answer {
+    Yes,
+    No,
+    Other,
+}
+
+fn interpret(reply: &str) -> Answer {
+    let r = reply.trim().trim_end_matches(['.', '!']).to_lowercase();
+    match r.as_str() {
+        "yes" | "y" | "yeah" | "yep" | "yup" | "ok" | "okay" | "sure" | "do it" | "go ahead" | "go" | "confirm" | "allow" | "please do" | "yes please" | "proceed" => Answer::Yes,
+        "no" | "n" | "nope" | "nah" | "cancel" | "stop" | "don't" | "dont" | "no thanks" | "no thank you" | "abort" => Answer::No,
+        _ => Answer::Other,
+    }
+}
+
 enum Main {
     Local(Model),
     Remote { base_url: String, model: String },
@@ -51,6 +73,8 @@ pub struct Engine {
     template: BuiltinTemplate,
     system_prompt: String,
     history: Vec<ChatMessage>,
+    /// An action waiting for the user's yes or no.
+    pending: Option<Pending>,
     /// What loaded, and what was skipped and why, for display.
     pub status: Vec<String>,
 }
@@ -94,6 +118,7 @@ impl Engine {
         }
 
         let template = config.template()?;
+        crate::tools_ext::set_policy(crate::tools_ext::Policy { internet: config.tools.internet });
         // Announce timers and reminders that come due (and any missed while closed).
         if !cfg!(target_os = "android") {
             crate::reminders::start_watcher();
@@ -153,6 +178,7 @@ impl Engine {
             router,
             template,
             history: Vec::new(),
+            pending: None,
             system_prompt,
             status,
         })
@@ -173,6 +199,31 @@ impl Engine {
 
     /// Handle one request; returns the full reply text.
     pub fn ask(&mut self, request: &str, on_event: &mut dyn FnMut(Event)) -> Result<String> {
+        // The user is answering "shall I go ahead?"
+        if let Some(pending) = self.pending.take() {
+            match interpret(request) {
+                Answer::Yes => {
+                    let text = match tools::run_confirmed(&pending.call) {
+                        Ok(o) => o.text,
+                        Err(e) => format!("Couldn't do that: {e:#}"),
+                    };
+                    on_event(Event::Notice(format!("tool: {}", tools::describe_call(&pending.call))));
+                    on_event(Event::Token(text.clone()));
+                    self.history.push(ChatMessage::new(Role::User, request));
+                    self.history.push(ChatMessage::new(Role::Assistant, text.clone()));
+                    return Ok(text);
+                }
+                Answer::No => {
+                    let text = "Okay, I won't do that.".to_string();
+                    on_event(Event::Token(text.clone()));
+                    self.history.push(ChatMessage::new(Role::User, request));
+                    self.history.push(ChatMessage::new(Role::Assistant, text.clone()));
+                    return Ok(text);
+                }
+                // Something else: the earlier question is dropped and this is a new request.
+                Answer::Other => on_event(Event::Notice("dropped the earlier action you hadn't confirmed".into())),
+            }
+        }
         // Typed commands ("/volume 40", "/calc 17*23", "/help") skip the models
         // entirely, so they are instant and always do exactly what they say.
         if let Some(parsed) = tools::command(request) {
@@ -217,7 +268,7 @@ impl Engine {
         let text = match parsed {
             Err(message) => message,
             Ok(calls) => {
-                let run = tools::run_calls(&calls);
+                let run = tools::run_typed(&calls);
                 for o in &run.outcomes {
                     on_event(Event::Notice(format!("command: {}", tools::describe_call(&o.call))));
                 }
@@ -232,24 +283,64 @@ impl Engine {
         text
     }
 
-    /// Run the tools for `request` and produce the reply. Actions answer with
-    /// their own confirmations; lookups are phrased by the answering model
-    /// from the looked-up facts (shown as-is if that fails).
+    /// Work out and run what `request` needs, step by step: the model picks
+    /// calls, sees what they found, and may pick more (up to five rounds), or
+    /// stop. Anything that changes something that matters waits for a yes.
+    /// Actions answer with their own confirmations; lookups are phrased by the
+    /// answering model from the findings (shown as-is if that fails).
     fn use_tool(&mut self, request: &str, on_event: &mut dyn FnMut(Event)) -> Result<String> {
-        let run = match self.device_control(request) {
-            Ok(run) => run,
-            Err(e) => {
-                let text = format!("Couldn't do that: {e:#}");
-                on_event(Event::Token(text.clone()));
-                return Ok(text);
+        const MAX_STEPS: usize = 5;
+        let mut steps: Vec<tools::Step> = Vec::new();
+        let mut acts: Vec<String> = Vec::new();
+        let mut facts: Vec<String> = Vec::new();
+        let mut failure: Option<String> = None;
+        let mut ask_first: Option<String> = None;
+
+        'steps: for _ in 0..MAX_STEPS {
+            let calls = match self.plan_step(request, &steps) {
+                Ok(c) => c,
+                Err(e) if steps.is_empty() => {
+                    let text = format!("Couldn't do that: {e:#}");
+                    on_event(Event::Token(text.clone()));
+                    return Ok(text);
+                }
+                Err(_) => break,
+            };
+            let mut results = Vec::new();
+            let mut explored = false;
+            for call in calls.iter().filter(|c| !tools::is_done(c)) {
+                if let Some(plan) = tools::needs_confirmation(call) {
+                    match plan {
+                        Ok(what) => {
+                            self.pending = Some(Pending { call: call.clone() });
+                            ask_first = Some(format!("I'd like to {what}. Shall I go ahead? (yes / no)"));
+                        }
+                        Err(e) => failure = Some(format!("I can't do that: {e:#}")),
+                    }
+                    break 'steps;
+                }
+                match tools::run_call(call) {
+                    Ok(o) => {
+                        on_event(Event::Notice(format!("tool: {}", tools::describe_call(&o.call))));
+                        explored |= tools::is_explore(&o.call);
+                        results.push(o.text.clone());
+                        match o.kind {
+                            tools::Kind::Act => acts.push(o.text),
+                            tools::Kind::Read => facts.push(o.text),
+                        }
+                    }
+                    Err(e) => {
+                        failure = Some(format!("Couldn't do that: {e:#}"));
+                        break 'steps;
+                    }
+                }
             }
-        };
-        for o in &run.outcomes {
-            on_event(Event::Notice(format!("tool: {}", tools::describe_call(&o.call))));
+            let finished = calls.iter().any(tools::is_done);
+            steps.push(tools::Step { calls, results });
+            if finished || !explored {
+                break;
+            }
         }
-        let acts: Vec<&str> = run.outcomes.iter().filter(|o| o.kind == tools::Kind::Act).map(|o| o.text.as_str()).collect();
-        let facts: Vec<&str> = run.outcomes.iter().filter(|o| o.kind == tools::Kind::Read).map(|o| o.text.as_str()).collect();
-        let failure = run.error.as_ref().map(|e| format!("Couldn't do the rest: {e:#}"));
 
         let mut text = if facts.is_empty() {
             acts.join(" ")
@@ -258,44 +349,39 @@ impl Engine {
             let done = if acts.is_empty() { String::new() } else { format!("Already done: {}\n", acts.join(" ")) };
             self.history[last] = ChatMessage::new(
                 Role::User,
-                format!(
-                    "{request}\n\n{done}[Looked up on this computer: {}]\nAnswer in one or two short sentences using only that.",
-                    facts.join("\n")
-                ),
+                format!("{request}\n\n{done}[Looked up on this computer: {}]\nAnswer in one or two short sentences using only that.", facts.join("\n")),
             );
             let phrased = self.answer(on_event);
             self.history[last] = ChatMessage::new(Role::User, request);
             match phrased {
-                Ok(t) if !t.trim().is_empty() => return Ok(self.with_failure(t, failure, on_event)),
+                Ok(t) if !t.trim().is_empty() => return Ok(self.finish(t, failure, ask_first, on_event)),
                 _ => {
-                    let shown = format!("{}{}", acts.join(" "), if acts.is_empty() { facts.join("\n") } else { format!(" {}", facts.join("\n")) });
+                    let shown = if acts.is_empty() { facts.join("\n") } else { format!("{} {}", acts.join(" "), facts.join("\n")) };
                     on_event(Event::Token(shown.clone()));
                     shown
                 }
             }
         };
-        if text.is_empty() && failure.is_none() {
+        if text.is_empty() && failure.is_none() && ask_first.is_none() {
             text = "Done.".into();
-        }
-        if !text.is_empty() {
+        } else if !text.is_empty() {
             on_event(Event::Token(text.clone()));
         }
-        Ok(self.with_failure(text, failure, on_event))
+        Ok(self.finish(text, failure, ask_first, on_event))
     }
 
-    /// Append the "couldn't do the rest" line (if any) to a reply.
-    fn with_failure(&self, text: String, failure: Option<String>, on_event: &mut dyn FnMut(Event)) -> String {
-        match failure {
-            None => text,
-            Some(f) => {
-                let line = if text.is_empty() { f } else { format!("\n{f}") };
-                on_event(Event::Token(line.clone()));
-                format!("{text}{line}")
-            }
+    /// Add the failure and question lines (if any) after a reply.
+    fn finish(&self, text: String, failure: Option<String>, question: Option<String>, on_event: &mut dyn FnMut(Event)) -> String {
+        let mut text = text;
+        for extra in [failure, question].into_iter().flatten() {
+            let line = if text.is_empty() { extra } else { format!("\n{extra}") };
+            on_event(Event::Token(line.clone()));
+            text.push_str(&line);
         }
+        text
     }
 
-    fn device_control(&mut self, request: &str) -> Result<tools::Run> {
+    fn plan_step(&mut self, request: &str, steps: &[tools::Step]) -> Result<Vec<serde_json::Value>> {
         if cfg!(target_os = "android") {
             bail!("device control isn't available on Android yet");
         }
@@ -303,7 +389,7 @@ impl Engine {
             (_, Some(Main::Local(model))) | (Some(model), _) => model,
             (None, _) => bail!("device control needs a local model"),
         };
-        tools::handle(model, self.template, request)
+        tools::plan(model, self.template, request, steps)
     }
 
     fn messages(&self) -> Vec<ChatMessage> {
