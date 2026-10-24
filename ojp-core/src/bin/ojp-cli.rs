@@ -127,6 +127,25 @@ const TOOL_CASES_UNSEEN: &[(&str, &str, Check)] = &[
     ("Mute it.", "mute", Check::Arg("state", "on")),
 ];
 
+/// Requests with more than one step, and the new reminder tools: which tools,
+/// in which order. Written after the prompts were tuned; never tuned against.
+const TOOL_CASES_MULTI: &[(&str, &[&str])] = &[
+    ("Open Firefox and set a timer for 10 minutes.", &["open_app", "set_timer"]),
+    ("Mute the sound and tell me what time it is.", &["mute", "get_time"]),
+    ("Set the volume to 30 and then pause the music.", &["volume", "media"]),
+    ("Take a note that I need milk and remind me in 20 minutes.", &["note_add", "remind"]),
+    ("What's 12 times 12, and what time is it?", &["calculate", "get_time"]),
+    ("Open the calculator and mute my speakers.", &["open_app", "mute"]),
+    ("Skip to the next song and turn the volume to 25.", &["media", "volume"]),
+    ("Remind me to call Sam in 15 minutes.", &["remind"]),
+    ("Remind me about the oven in 12 minutes.", &["remind"]),
+    ("What reminders are pending?", &["reminders_list"]),
+    ("Do I have any timers running?", &["reminders_list"]),
+    ("Set the volume to 70.", &["volume"]),
+    ("Pause the video.", &["media"]),
+    ("How much is 81 divided by 9?", &["calculate"]),
+];
+
 /// Dev set: for iterating on the router prompt. Disjoint from the test
 /// set below, which is only used to report results, never to tune.
 const DEV_CASES: [(&str, Route); 24] = [
@@ -217,7 +236,7 @@ fn main() -> anyhow::Result<()> {
             for (request, tool, check) in cases {
                 let start = std::time::Instant::now();
                 let route_ok = router.classify(&mut model, request).map(|d| d.route == Route::DeviceControl).unwrap_or(false);
-                let call = ojp_core::tools::ask(&mut model, BuiltinTemplate::ChatMl, request);
+                let call = ojp_core::tools::ask(&mut model, BuiltinTemplate::ChatMl, request).map(|c| c.into_iter().next().unwrap_or_default());
                 total_ms += start.elapsed().as_millis();
                 let (tool_ok, detail) = match &call {
                     Err(e) => (false, format!("{e:#}")),
@@ -249,6 +268,19 @@ fn main() -> anyhow::Result<()> {
             for (tool, (ok, of)) in by_tool {
                 println!("  {tool:<14} {ok}/{of}");
             }
+            }
+            {
+                println!("\n=== MULTI-STEP and reminders (unseen) ===");
+                let mut ok = 0;
+                for (request, expected) in TOOL_CASES_MULTI {
+                    let got: Vec<String> = ojp_core::tools::ask(&mut model, BuiltinTemplate::ChatMl, request)
+                        .map(|calls| calls.iter().map(|c| c["tool"].as_str().unwrap_or("?").to_string()).collect())
+                        .unwrap_or_default();
+                    let pass = got.iter().map(String::as_str).eq(expected.iter().copied());
+                    ok += pass as usize;
+                    println!("{} {request}  ->  {got:?}", if pass { "PASS" } else { "FAIL" });
+                }
+                println!("right tools in the right order: {ok}/{}", TOOL_CASES_MULTI.len());
             }
         }
         Some("route-eval") => {

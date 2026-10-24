@@ -13,7 +13,6 @@
 //! lookups still run).
 use std::path::PathBuf;
 use std::process::Command;
-use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use llama_crab::chat::BuiltinTemplate;
@@ -51,7 +50,8 @@ struct Tool {
 }
 
 const REGISTRY: &[Tool] = &[
-    Tool { name: "set_timer", doc: "start a countdown timer", args: &[Arg { name: "minutes", kind: ArgKind::Int { max: 999 } }], kind: Kind::Act, run: |a| set_timer(int(a, "minutes")?) },
+    Tool { name: "set_timer", doc: "start a countdown timer that rings after some minutes", args: &[Arg { name: "minutes", kind: ArgKind::Int { max: 999 } }], kind: Kind::Act, run: |a| set_timer(int(a, "minutes")?) },
+    Tool { name: "remind", doc: "remind the user about something after some minutes", args: &[Arg { name: "minutes", kind: ArgKind::Int { max: 999 } }, Arg { name: "text", kind: ArgKind::Text { max: 100 } }], kind: Kind::Act, run: |a| remind(int(a, "minutes")?, text(a, "text")?) },
     Tool { name: "volume", doc: "set the speaker volume, 0-100", args: &[Arg { name: "level", kind: ArgKind::Int { max: 100 } }], kind: Kind::Act, run: |a| volume(int(a, "level")?) },
     Tool { name: "mute", doc: "turn the speaker sound off or on (muting)", args: &[Arg { name: "state", kind: ArgKind::Choice(&["on", "off"]) }], kind: Kind::Act, run: |a| mute(text(a, "state")?) },
     Tool { name: "media", doc: "play, pause or skip the music or video player (not the volume)", args: &[Arg { name: "action", kind: ArgKind::Choice(&["play_pause", "next", "previous"]) }], kind: Kind::Act, run: |a| media(text(a, "action")?) },
@@ -64,6 +64,7 @@ const REGISTRY: &[Tool] = &[
     Tool { name: "now_playing", doc: "which song or video is playing (not the time)", args: &[], kind: Kind::Read, run: |_| now_playing() },
     Tool { name: "clipboard", doc: "read the text on the clipboard", args: &[], kind: Kind::Read, run: |_| clipboard() },
     Tool { name: "find_files", doc: "find files in the home folder by part of the name", args: &[Arg { name: "query", kind: ArgKind::Text { max: 60 } }], kind: Kind::Read, run: |a| find_files(text(a, "query")?) },
+    Tool { name: "reminders_list", doc: "show the pending timers and reminders", args: &[], kind: Kind::Read, run: |_| reminders_list() },
     Tool { name: "notes_list", doc: "show the saved notes", args: &[], kind: Kind::Read, run: |_| notes_list() },
 ];
 
@@ -82,7 +83,11 @@ pub fn system_prompt() -> String {
             .collect();
         s.push_str(&format!("- {}({})  // {}\n", t.name, args.join(", "), t.doc));
     }
-    s.push_str("Respond with ONLY a JSON object like {\"tool\": \"<name>\", \"args\": {...}} and nothing else.");
+    s.push_str(
+        "Respond with ONLY a JSON array of 1 to 3 tool calls, in the order to do them, like \
+         [{\"tool\": \"<name>\", \"args\": {...}}], and nothing else. Use more than one call only when the \
+         request asks for more than one thing.",
+    );
     s
 }
 
@@ -111,7 +116,7 @@ fn grammar() -> String {
         })
         .collect();
     format!(
-        "root ::= \"{{\\\"tool\\\": \\\"\" call \"}}}}\"\ncall ::= ( {} )\nint ::= [0-9] | [1-9] [0-9] | [1-9] [0-9] [0-9]\n",
+        "root ::= \"[\" one ( \", \" one ){{0,2}} \"]\"\none ::= \"{{\\\"tool\\\": \\\"\" call \"}}}}\"\ncall ::= ( {} )\nint ::= [0-9] | [1-9] [0-9] | [1-9] [0-9] [0-9]\n",
         alternatives.join("\n         | ")
     )
 }
@@ -119,22 +124,26 @@ fn grammar() -> String {
 /// Worked examples shown to the model as earlier turns, one or two per tool.
 /// Kept apart from the phrasings in `ojp-cli tool-eval`, which only reports.
 const EXAMPLES: &[(&str, &str)] = &[
-    ("Set a timer for 20 minutes.", r#"{"tool": "set_timer", "args": {"minutes": 20}}"#),
-    ("Turn the sound up to 65.", r#"{"tool": "volume", "args": {"level": 65}}"#),
-    ("Silence the speakers.", r#"{"tool": "mute", "args": {"state": "on"}}"#),
-    ("Bring the sound back.", r#"{"tool": "mute", "args": {"state": "off"}}"#),
-    ("Play the next song.", r#"{"tool": "media", "args": {"action": "next"}}"#),
-    ("Hit pause on the video.", r#"{"tool": "media", "args": {"action": "play_pause"}}"#),
-    ("Open the file manager.", r#"{"tool": "open_app", "args": {"name": "file manager"}}"#),
-    ("Take me to wikipedia.org.", r#"{"tool": "open_url", "args": {"url": "https://wikipedia.org"}}"#),
-    ("Note to self: call mom on Sunday.", r#"{"tool": "note_add", "args": {"text": "call mom on Sunday"}}"#),
-    ("What is 45 plus 38?", r#"{"tool": "calculate", "args": {"expression": "45+38"}}"#),
-    ("What's the current time?", r#"{"tool": "get_time", "args": {}}"#),
-    ("Is my laptop charged?", r#"{"tool": "system_status", "args": {}}"#),
-    ("Which track is on?", r#"{"tool": "now_playing", "args": {}}"#),
-    ("What did I copy?", r#"{"tool": "clipboard", "args": {}}"#),
-    ("Locate my vacation photos.", r#"{"tool": "find_files", "args": {"query": "vacation"}}"#),
-    ("Show me what I wrote down.", r#"{"tool": "notes_list", "args": {}}"#),
+    ("Set a timer for 20 minutes.", r#"[{"tool": "set_timer", "args": {"minutes": 20}}]"#),
+    ("Turn the sound up to 65.", r#"[{"tool": "volume", "args": {"level": 65}}]"#),
+    ("Silence the speakers.", r#"[{"tool": "mute", "args": {"state": "on"}}]"#),
+    ("Bring the sound back.", r#"[{"tool": "mute", "args": {"state": "off"}}]"#),
+    ("Play the next song.", r#"[{"tool": "media", "args": {"action": "next"}}]"#),
+    ("Hit pause on the video.", r#"[{"tool": "media", "args": {"action": "play_pause"}}]"#),
+    ("Open the file manager.", r#"[{"tool": "open_app", "args": {"name": "file manager"}}]"#),
+    ("Take me to wikipedia.org.", r#"[{"tool": "open_url", "args": {"url": "https://wikipedia.org"}}]"#),
+    ("Note to self: call mom on Sunday.", r#"[{"tool": "note_add", "args": {"text": "call mom on Sunday"}}]"#),
+    ("What is 45 plus 38?", r#"[{"tool": "calculate", "args": {"expression": "45+38"}}]"#),
+    ("What's the current time?", r#"[{"tool": "get_time", "args": {}}]"#),
+    ("Is my laptop charged?", r#"[{"tool": "system_status", "args": {}}]"#),
+    ("Which track is on?", r#"[{"tool": "now_playing", "args": {}}]"#),
+    ("What did I copy?", r#"[{"tool": "clipboard", "args": {}}]"#),
+    ("Locate my vacation photos.", r#"[{"tool": "find_files", "args": {"query": "vacation"}}]"#),
+    ("Remind me to stretch in 30 minutes.", r#"[{"tool": "remind", "args": {"minutes": 30, "text": "stretch"}}]"#),
+    ("What reminders do I have?", r#"[{"tool": "reminders_list", "args": {}}]"#),
+    ("Open the browser and set a timer for 5 minutes.", r#"[{"tool": "open_app", "args": {"name": "browser"}}, {"tool": "set_timer", "args": {"minutes": 5}}]"#),
+    ("Mute the sound and tell me the time.", r#"[{"tool": "mute", "args": {"state": "on"}}, {"tool": "get_time", "args": {}}]"#),
+    ("Show me what I wrote down.", r#"[{"tool": "notes_list", "args": {}}]"#),
 ];
 
 /// What a tool call did.
@@ -147,18 +156,26 @@ pub struct Outcome {
     pub text: String,
 }
 
-/// Ask the model for a tool call, then run it.
-pub fn handle(model: &mut Model, template: BuiltinTemplate, request: &str) -> Result<Outcome> {
-    let call = ask(model, template, request)?;
-    run_call(&call)
+/// The result of running the calls for one request.
+pub struct Run {
+    /// Calls that ran, in order.
+    pub outcomes: Vec<Outcome>,
+    /// The first call that failed, after which nothing more was run.
+    pub error: Option<anyhow::Error>,
 }
 
-/// Ask the model for one tool call (grammar-constrained) and parse it.
-pub fn ask(model: &mut Model, template: BuiltinTemplate, request: &str) -> Result<Value> {
+/// Ask the model for tool calls, then run them.
+pub fn handle(model: &mut Model, template: BuiltinTemplate, request: &str) -> Result<Run> {
+    let calls = ask(model, template, request)?;
+    Ok(run_calls(&calls))
+}
+
+/// Ask the model for one to three tool calls (grammar-constrained).
+pub fn ask(model: &mut Model, template: BuiltinTemplate, request: &str) -> Result<Vec<Value>> {
     let mut messages = vec![ChatMessage::new(Role::System, system_prompt())];
-    for (user, call) in EXAMPLES {
+    for (user, calls) in EXAMPLES {
         messages.push(ChatMessage::new(Role::User, *user));
-        messages.push(ChatMessage::new(Role::Assistant, *call));
+        messages.push(ChatMessage::new(Role::Assistant, *calls));
     }
     messages.push(ChatMessage::new(Role::User, request));
     let prompt = render_builtin(template, &messages, &[], true);
@@ -166,8 +183,23 @@ pub fn ask(model: &mut Model, template: BuiltinTemplate, request: &str) -> Resul
     let grammar = unsafe { LlamaSampler::grammar(model.llama().model(), &grammar(), "root") }.context("tool grammar rejected")?;
     let greedy = LlamaSampler::greedy().context("greedy sampler")?;
     let mut sampler = LlamaSampler::chain(vec![grammar, greedy], true).context("sampler chain")?;
-    let text = model.complete(Seq::Tool, &prompt, &mut sampler, 96, &mut |_| {})?;
-    serde_json::from_str(text.trim()).with_context(|| format!("tool call didn't parse: {text:?}"))
+    let text = model.complete(Seq::Tool, &prompt, &mut sampler, 160, &mut |_| {})?;
+    match serde_json::from_str::<Value>(text.trim()) {
+        Ok(Value::Array(calls)) if !calls.is_empty() => Ok(calls),
+        _ => bail!("tool calls didn't parse: {text:?}"),
+    }
+}
+
+/// Run calls one after another; stops at the first that fails.
+pub fn run_calls(calls: &[Value]) -> Run {
+    let mut outcomes = Vec::new();
+    for call in calls {
+        match run_call(call) {
+            Ok(o) => outcomes.push(o),
+            Err(e) => return Run { outcomes, error: Some(e) },
+        }
+    }
+    Run { outcomes, error: None }
 }
 
 /// Run a parsed call `{"tool": ..., "args": {...}}`.
@@ -177,6 +209,115 @@ pub fn run_call(call: &Value) -> Result<Outcome> {
     let tool = REGISTRY.iter().find(|t| t.name == name).with_context(|| format!("unknown tool {name:?}"))?;
     let text = (tool.run)(&call["args"])?;
     Ok(Outcome { tool: tool.name, kind: tool.kind, call: call.clone(), text })
+}
+
+/// A short readable form of a call, e.g. `volume(level=40)`.
+pub fn describe_call(call: &Value) -> String {
+    let name = call["tool"].as_str().unwrap_or("?");
+    let args: Vec<String> = call["args"]
+        .as_object()
+        .map(|o| o.iter().map(|(k, v)| format!("{k}={}", v.as_str().map_or_else(|| v.to_string(), str::to_string))).collect())
+        .unwrap_or_default();
+    format!("{name}({})", args.join(", "))
+}
+
+// --- typed commands -------------------------------------------------------
+
+/// Typed shortcuts: (command, tool, fixed argument value if any).
+const COMMANDS: &[(&str, &str, Option<&str>)] = &[
+    ("timer", "set_timer", None),
+    ("remind", "remind", None),
+    ("reminders", "reminders_list", None),
+    ("volume", "volume", None),
+    ("vol", "volume", None),
+    ("mute", "mute", Some("on")),
+    ("unmute", "mute", Some("off")),
+    ("pause", "media", Some("play_pause")),
+    ("play", "media", Some("play_pause")),
+    ("next", "media", Some("next")),
+    ("prev", "media", Some("previous")),
+    ("previous", "media", Some("previous")),
+    ("open", "open_app", None),
+    ("url", "open_url", None),
+    ("note", "note_add", None),
+    ("notes", "notes_list", None),
+    ("calc", "calculate", None),
+    ("time", "get_time", None),
+    ("date", "get_time", None),
+    ("status", "system_status", None),
+    ("playing", "now_playing", None),
+    ("clipboard", "clipboard", None),
+    ("find", "find_files", None),
+];
+
+/// The list of typed commands, for `/help`.
+pub fn help() -> String {
+    let mut s = String::from("Type a request in plain words, or use a command:\n");
+    for t in REGISTRY {
+        let usage: Vec<String> = t.args.iter().map(|a| format!("<{}>", a.name)).collect();
+        let commands: Vec<&str> = COMMANDS.iter().filter(|c| c.1 == t.name).map(|c| c.0).collect();
+        let shown = commands.iter().map(|c| format!("/{c}")).collect::<Vec<_>>().join(" ");
+        let fixed = COMMANDS.iter().any(|c| c.1 == t.name && c.2.is_some());
+        let args = if fixed || usage.is_empty() { String::new() } else { format!(" {}", usage.join(" ")) };
+        s.push_str(&format!("{shown}{args}: {}\n", t.doc));
+    }
+    s.push_str("/help: this list");
+    s
+}
+
+/// Parse a typed command such as `/volume 40` into tool calls. `None` means
+/// the line is not a command. `Some(Err(text))` is a message to show: a usage
+/// hint, or the help text.
+pub fn command(line: &str) -> Option<Result<Vec<Value>, String>> {
+    let line = line.trim();
+    let rest = line.strip_prefix('/')?;
+    let (word, arg) = rest.split_once(char::is_whitespace).map_or((rest, ""), |(w, a)| (w, a.trim()));
+    let word = word.to_lowercase();
+    if word == "help" || word == "?" || word.is_empty() {
+        return Some(Err(help()));
+    }
+    let Some(&(_, tool_name, fixed)) = COMMANDS.iter().find(|c| c.0 == word) else {
+        return Some(Err(format!("I don't know the command /{word}. Type /help to see them.")));
+    };
+    let tool = REGISTRY.iter().find(|t| t.name == tool_name)?;
+    let mut args = serde_json::Map::new();
+    if let Some(value) = fixed {
+        args.insert(tool.args[0].name.into(), Value::String(value.into()));
+    } else if !tool.args.is_empty() {
+        // The last argument takes the rest of the line; earlier integers come first.
+        let mut remaining = arg;
+        for (i, a) in tool.args.iter().enumerate() {
+            let last = i + 1 == tool.args.len();
+            let (piece, after) = if last { (remaining, "") } else { remaining.split_once(char::is_whitespace).unwrap_or((remaining, "")) };
+            let piece = piece.trim();
+            let usage = || format!("Usage: /{word} {}", tool.args.iter().map(|a| format!("<{}>", a.name)).collect::<Vec<_>>().join(" "));
+            if piece.is_empty() {
+                return Some(Err(usage()));
+            }
+            let value = match &a.kind {
+                ArgKind::Int { max } => match piece.trim_end_matches(['m', '%']).parse::<u64>() {
+                    Ok(n) if n <= u64::from(*max) => Value::from(n),
+                    Ok(_) => return Some(Err(format!("{} must be at most {max}.", a.name))),
+                    Err(_) => return Some(Err(usage())),
+                },
+                ArgKind::Text { .. } => Value::String(piece.to_string()),
+                ArgKind::Choice(choices) => match choices.iter().find(|c| c.eq_ignore_ascii_case(piece)) {
+                    Some(c) => Value::String((*c).into()),
+                    None => return Some(Err(format!("{} must be one of: {}.", a.name, choices.join(", ")))),
+                },
+            };
+            args.insert(a.name.into(), value);
+            remaining = after;
+        }
+    }
+    // "/open https://..." means the web address, not an app.
+    let tool_name = if tool_name == "open_app" && (arg.starts_with("http://") || arg.starts_with("https://")) {
+        args = serde_json::Map::from_iter([("url".to_string(), Value::String(arg.to_string()))]);
+        "open_url"
+    } else {
+        tool_name
+    };
+    Some(Ok(vec![serde_json::json!({ "tool": tool_name, "args": args })]))
 }
 
 /// Names of all tools, for tests and `ojp-cli`.
@@ -245,28 +386,101 @@ fn set_timer(minutes: u64) -> Result<String> {
     if minutes == 0 {
         bail!("a timer needs at least one minute");
     }
-    // Lives only as long as this process; persistent timers belong in the
-    // daemon once there is one.
-    std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_secs(minutes * 60));
-        let _ = run("notify-send", &["Timer", &format!("Your {minutes}-minute timer is done.")]);
-    });
+    schedule(minutes, &format!("Your {minutes}-minute timer is done."))?;
     Ok(format!("Timer set for {minutes} minute{}.", if minutes == 1 { "" } else { "s" }))
+}
+
+fn remind(minutes: u64, what: &str) -> Result<String> {
+    if minutes == 0 {
+        bail!("a reminder needs at least one minute");
+    }
+    let what = what.trim();
+    if what.is_empty() {
+        bail!("remind you about what?");
+    }
+    schedule(minutes, what)?;
+    Ok(format!("I'll remind you to {what} in {minutes} minute{}.", if minutes == 1 { "" } else { "s" }))
+}
+
+/// Store a timer or reminder (kept even if the app is closed) and make sure
+/// the thread that announces them is running.
+fn schedule(minutes: u64, text: &str) -> Result<()> {
+    if dry_run() {
+        eprintln!("[dry run: reminder in {minutes} min: {text}]");
+        return Ok(());
+    }
+    crate::reminders::add(minutes, text)?;
+    crate::reminders::start_watcher();
+    Ok(())
+}
+
+fn reminders_list() -> Result<String> {
+    let list = crate::reminders::list();
+    if list.is_empty() {
+        return Ok("There are no pending timers or reminders.".into());
+    }
+    let now = crate::reminders::now();
+    let lines: Vec<String> = list.iter().map(|r| format!("{}: {}", crate::reminders::describe(r.due, now), r.text)).collect();
+    Ok(format!("{} pending:\n{}", list.len(), lines.join("\n")))
 }
 
 /// Launch an installed app by matching its .desktop entry's Name= (or file
 /// name) case-insensitively, so only real installed applications can start.
 fn open_app(name: &str) -> Result<String> {
     let wanted = name.trim().to_lowercase();
-    let entry = desktop_entries()
-        .into_iter()
-        .find(|(path, display)| {
-            display.to_lowercase() == wanted
-                || path.file_stem().is_some_and(|s| s.to_string_lossy().to_lowercase().ends_with(&wanted))
-        })
-        .with_context(|| format!("no installed app called {name:?}"))?;
+    let entries = desktop_entries();
+    let exact = entries.iter().find(|(path, display)| {
+        display.to_lowercase() == wanted
+            || path.file_stem().is_some_and(|s| s.to_string_lossy().to_lowercase().ends_with(&wanted))
+    });
+    let entry = match exact {
+        Some(e) => e,
+        // A looser match: the name appears inside the app's name ("code" -> "Visual Studio Code").
+        None => match entries.iter().filter(|(_, d)| d.to_lowercase().contains(&wanted)).collect::<Vec<_>>().as_slice() {
+            [only] => only,
+            [] => {
+                let words: Vec<&str> = wanted.split_whitespace().collect();
+                let mut near: Vec<&str> = entries
+                    .iter()
+                    .filter(|(_, d)| words.iter().any(|w| w.len() > 2 && d.to_lowercase().contains(w)))
+                    .map(|(_, d)| d.as_str())
+                    .collect();
+                // Typos: app names within a couple of letters of what was typed.
+                let slack = if wanted.len() > 7 { 3 } else { 2 };
+                near.extend(entries.iter().map(|(_, d)| d.as_str()).filter(|d| edit_distance(&d.to_lowercase(), &wanted) <= slack));
+                near.sort();
+                near.dedup();
+                near.truncate(5);
+                if near.is_empty() {
+                    bail!("I couldn't find an app called {name:?}. Use the name shown in your app menu.");
+                }
+                bail!("I couldn't find an app called {name:?}. Did you mean: {}?", near.join(", "));
+            }
+            many => {
+                let mut names: Vec<&str> = many.iter().map(|(_, d)| d.as_str()).collect();
+                names.sort();
+                names.dedup();
+                names.truncate(5);
+                bail!("{name:?} matches several apps: {}. Which one?", names.join(", "));
+            }
+        },
+    };
     run("gio", &["launch", &entry.0.to_string_lossy()])?;
     Ok(format!("Opening {}.", entry.1))
+}
+
+/// Levenshtein distance between two short strings.
+fn edit_distance(a: &str, b: &str) -> usize {
+    let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.iter().enumerate() {
+        let mut cur = vec![i + 1];
+        for (j, cb) in b.iter().enumerate() {
+            cur.push((prev[j] + usize::from(ca != cb)).min(prev[j + 1] + 1).min(cur[j] + 1));
+        }
+        prev = cur;
+    }
+    prev[b.len()]
 }
 
 /// Open a web address; only plain http(s) links without spaces.
@@ -531,11 +745,19 @@ impl Calc {
                 }
                 v /= d;
             } else if self.eat('%') {
-                let d = self.power()?;
-                if d == 0.0 {
-                    bail!("division by zero");
+                // "15% of 240" and "50%" are percentages; "17 % 5" is a remainder.
+                if self.peek() == Some(&Token::Ident("of".into())) {
+                    self.pos += 1;
+                    v = v / 100.0 * self.power()?;
+                } else if matches!(self.peek(), Some(Token::Num(_)) | Some(Token::Op('(')) | Some(Token::Ident(_))) {
+                    let d = self.power()?;
+                    if d == 0.0 {
+                        bail!("division by zero");
+                    }
+                    v %= d;
+                } else {
+                    v /= 100.0;
                 }
-                v %= d;
             } else if matches!(self.peek(), Some(Token::Num(_)) | Some(Token::Ident(_)) | Some(Token::Op('('))) {
                 v *= self.power()?; // "2(3+4)", "3 pi"
             } else {
@@ -665,6 +887,10 @@ mod tests {
         assert_eq!(calc("12 × 13"), "12 × 13 = 156");
         assert_eq!(calc("1/3"), "1/3 = 0.3333333333");
         assert_eq!(calc("17 % 5"), "17 % 5 = 2");
+        assert_eq!(calc("15% of 240"), "15% of 240 = 36");
+        assert_eq!(calc("15 % of 240 + 4"), "15 % of 240 + 4 = 40");
+        assert_eq!(calc("50%"), "50% = 0.5");
+        assert_eq!(calc("200 * 15%"), "200 * 15% = 30");
     }
 
     #[test]
@@ -689,14 +915,18 @@ mod tests {
 
     #[test]
     fn examples_are_valid_calls() {
-        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
-        unsafe { std::env::set_var("OJP_TOOLS_DRY_RUN", "1") };
-        for (request, call) in EXAMPLES {
-            let call: Value = serde_json::from_str(call).unwrap_or_else(|e| panic!("{request}: {e}"));
-            let tool = REGISTRY.iter().find(|t| t.name == call["tool"]).unwrap_or_else(|| panic!("{request}: unknown tool"));
-            assert_eq!(call["args"].as_object().unwrap().len(), tool.args.len(), "{request}");
+        for (request, calls) in EXAMPLES {
+            let calls: Value = serde_json::from_str(calls).unwrap_or_else(|e| panic!("{request}: {e}"));
+            let calls = calls.as_array().unwrap_or_else(|| panic!("{request}: not an array"));
+            assert!(!calls.is_empty() && calls.len() <= 3, "{request}");
+            for call in calls {
+                let tool = REGISTRY.iter().find(|t| t.name == call["tool"]).unwrap_or_else(|| panic!("{request}: unknown tool"));
+                assert_eq!(call["args"].as_object().unwrap().len(), tool.args.len(), "{request}");
+            }
         }
-        assert!(EXAMPLES.len() >= REGISTRY.len(), "every tool needs an example");
+        for t in REGISTRY {
+            assert!(EXAMPLES.iter().any(|(_, c)| c.contains(&format!("\"tool\": \"{}\"", t.name))), "{} needs an example", t.name);
+        }
     }
 
     #[test]
@@ -724,6 +954,9 @@ mod tests {
         assert_eq!((out.tool, out.kind, out.text.as_str()), ("calculate", Kind::Read, "6*7 = 42"));
         let out = run_call(&json!({"tool": "volume", "args": {"level": 30}})).unwrap();
         assert_eq!((out.kind, out.text.as_str()), (Kind::Act, "Volume set to 30%."));
+        let run = run_calls(&[json!({"tool": "calculate", "args": {"expression": "2+2"}}), json!({"tool": "nope", "args": {}}), json!({"tool": "get_time", "args": {}})]);
+        assert_eq!(run.outcomes.len(), 1, "stops at the first failure");
+        assert!(run.error.is_some());
         assert!(run_call(&json!({"tool": "format_disk", "args": {}})).is_err());
     }
 
@@ -742,5 +975,43 @@ mod tests {
         let list = notes_list().unwrap();
         assert!(list.starts_with("2 note(s)") && list.contains("buy oat milk") && list.contains("call the dentist"), "{list}");
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn typed_commands() {
+        let call = |line: &str| command(line).unwrap().unwrap()[0].clone();
+        assert_eq!(call("/volume 40"), json!({"tool": "volume", "args": {"level": 40}}));
+        assert_eq!(call("/vol 15%"), json!({"tool": "volume", "args": {"level": 15}}));
+        assert_eq!(call("/timer 10"), json!({"tool": "set_timer", "args": {"minutes": 10}}));
+        assert_eq!(call("/mute"), json!({"tool": "mute", "args": {"state": "on"}}));
+        assert_eq!(call("/unmute"), json!({"tool": "mute", "args": {"state": "off"}}));
+        assert_eq!(call("/pause"), json!({"tool": "media", "args": {"action": "play_pause"}}));
+        assert_eq!(call("/next"), json!({"tool": "media", "args": {"action": "next"}}));
+        assert_eq!(call("/calc 17 * 23"), json!({"tool": "calculate", "args": {"expression": "17 * 23"}}));
+        assert_eq!(call("/remind 30 stretch your legs"), json!({"tool": "remind", "args": {"minutes": 30, "text": "stretch your legs"}}));
+        assert_eq!(call("/open Visual Studio Code"), json!({"tool": "open_app", "args": {"name": "Visual Studio Code"}}));
+        assert_eq!(call("/open https://example.com"), json!({"tool": "open_url", "args": {"url": "https://example.com"}}));
+        assert_eq!(call("/time"), json!({"tool": "get_time", "args": {}}));
+        assert_eq!(call("/note buy oat milk"), json!({"tool": "note_add", "args": {"text": "buy oat milk"}}));
+        assert!(command("hello").is_none());
+        assert!(command("/volume").unwrap().unwrap_err().starts_with("Usage: /volume"));
+        assert!(command("/volume 500").unwrap().unwrap_err().contains("at most 100"));
+        assert!(command("/volume loud").unwrap().unwrap_err().starts_with("Usage"));
+        assert!(command("/frobnicate").unwrap().unwrap_err().contains("/help"));
+        assert!(command("/help").unwrap().unwrap_err().contains("/volume"));
+    }
+
+    #[test]
+    fn typos_are_measured() {
+        assert_eq!(edit_distance("firefox", "fierfox"), 2);
+        assert_eq!(edit_distance("brave", "brave"), 0);
+        assert_eq!(edit_distance("", "abc"), 3);
+    }
+
+    #[test]
+    fn every_tool_has_a_typed_command() {
+        for name in names() {
+            assert!(COMMANDS.iter().any(|c| c.1 == name), "{name} has no /command");
+        }
     }
 }

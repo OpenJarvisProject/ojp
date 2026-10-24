@@ -12,6 +12,7 @@ pub mod engine;
 pub mod format;
 pub mod math;
 pub mod model;
+pub mod reminders;
 pub mod router;
 pub mod storage;
 pub mod tools;

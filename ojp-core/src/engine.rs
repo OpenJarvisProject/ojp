@@ -94,6 +94,10 @@ impl Engine {
         }
 
         let template = config.template()?;
+        // Announce timers and reminders that come due (and any missed while closed).
+        if !cfg!(target_os = "android") {
+            crate::reminders::start_watcher();
+        }
         let router = Router::new(template);
         let name = &config.persona.name;
         let system_prompt = format!(
@@ -169,6 +173,14 @@ impl Engine {
 
     /// Handle one request; returns the full reply text.
     pub fn ask(&mut self, request: &str, on_event: &mut dyn FnMut(Event)) -> Result<String> {
+        // Typed commands ("/volume 40", "/calc 17*23", "/help") skip the models
+        // entirely, so they are instant and always do exactly what they say.
+        if let Some(parsed) = tools::command(request) {
+            let reply = self.run_command(parsed, on_event);
+            self.history.push(ChatMessage::new(Role::User, request));
+            self.history.push(ChatMessage::new(Role::Assistant, reply.clone()));
+            return Ok(reply);
+        }
         let route = self.route(request, on_event);
         self.history.push(ChatMessage::new(Role::User, request));
 
@@ -200,39 +212,90 @@ impl Engine {
         route
     }
 
-    /// Run a tool for `request` and produce the reply. An action answers with
-    /// its own confirmation; a lookup is phrased by the answering model from
-    /// the looked-up facts (shown as-is if that fails).
-    fn use_tool(&mut self, request: &str, on_event: &mut dyn FnMut(Event)) -> Result<String> {
-        let outcome = self.device_control(request);
-        let text = match outcome {
-            Err(e) => format!("Couldn't do that: {e:#}"),
-            Ok(o) if o.kind == tools::Kind::Read => {
-                let last = self.history.len() - 1;
-                self.history[last] = ChatMessage::new(
-                    Role::User,
-                    format!(
-                        "{request}\n\n[Looked up on this computer: {}]\nAnswer in one or two short sentences using only that.",
-                        o.text
-                    ),
-                );
-                let phrased = self.answer(on_event);
-                self.history[last] = ChatMessage::new(Role::User, request);
-                return Ok(match phrased {
-                    Ok(t) if !t.trim().is_empty() => t,
-                    _ => {
-                        on_event(Event::Token(o.text.clone()));
-                        o.text
-                    }
-                });
+    /// Run a typed command and show its result as-is.
+    fn run_command(&mut self, parsed: Result<Vec<serde_json::Value>, String>, on_event: &mut dyn FnMut(Event)) -> String {
+        let text = match parsed {
+            Err(message) => message,
+            Ok(calls) => {
+                let run = tools::run_calls(&calls);
+                for o in &run.outcomes {
+                    on_event(Event::Notice(format!("command: {}", tools::describe_call(&o.call))));
+                }
+                let mut lines: Vec<String> = run.outcomes.iter().map(|o| o.text.clone()).collect();
+                if let Some(e) = run.error {
+                    lines.push(format!("Couldn't do that: {e:#}"));
+                }
+                lines.join("\n")
             }
-            Ok(o) => o.text,
         };
         on_event(Event::Token(text.clone()));
-        Ok(text)
+        text
     }
 
-    fn device_control(&mut self, request: &str) -> Result<tools::Outcome> {
+    /// Run the tools for `request` and produce the reply. Actions answer with
+    /// their own confirmations; lookups are phrased by the answering model
+    /// from the looked-up facts (shown as-is if that fails).
+    fn use_tool(&mut self, request: &str, on_event: &mut dyn FnMut(Event)) -> Result<String> {
+        let run = match self.device_control(request) {
+            Ok(run) => run,
+            Err(e) => {
+                let text = format!("Couldn't do that: {e:#}");
+                on_event(Event::Token(text.clone()));
+                return Ok(text);
+            }
+        };
+        for o in &run.outcomes {
+            on_event(Event::Notice(format!("tool: {}", tools::describe_call(&o.call))));
+        }
+        let acts: Vec<&str> = run.outcomes.iter().filter(|o| o.kind == tools::Kind::Act).map(|o| o.text.as_str()).collect();
+        let facts: Vec<&str> = run.outcomes.iter().filter(|o| o.kind == tools::Kind::Read).map(|o| o.text.as_str()).collect();
+        let failure = run.error.as_ref().map(|e| format!("Couldn't do the rest: {e:#}"));
+
+        let mut text = if facts.is_empty() {
+            acts.join(" ")
+        } else {
+            let last = self.history.len() - 1;
+            let done = if acts.is_empty() { String::new() } else { format!("Already done: {}\n", acts.join(" ")) };
+            self.history[last] = ChatMessage::new(
+                Role::User,
+                format!(
+                    "{request}\n\n{done}[Looked up on this computer: {}]\nAnswer in one or two short sentences using only that.",
+                    facts.join("\n")
+                ),
+            );
+            let phrased = self.answer(on_event);
+            self.history[last] = ChatMessage::new(Role::User, request);
+            match phrased {
+                Ok(t) if !t.trim().is_empty() => return Ok(self.with_failure(t, failure, on_event)),
+                _ => {
+                    let shown = format!("{}{}", acts.join(" "), if acts.is_empty() { facts.join("\n") } else { format!(" {}", facts.join("\n")) });
+                    on_event(Event::Token(shown.clone()));
+                    shown
+                }
+            }
+        };
+        if text.is_empty() && failure.is_none() {
+            text = "Done.".into();
+        }
+        if !text.is_empty() {
+            on_event(Event::Token(text.clone()));
+        }
+        Ok(self.with_failure(text, failure, on_event))
+    }
+
+    /// Append the "couldn't do the rest" line (if any) to a reply.
+    fn with_failure(&self, text: String, failure: Option<String>, on_event: &mut dyn FnMut(Event)) -> String {
+        match failure {
+            None => text,
+            Some(f) => {
+                let line = if text.is_empty() { f } else { format!("\n{f}") };
+                on_event(Event::Token(line.clone()));
+                format!("{text}{line}")
+            }
+        }
+    }
+
+    fn device_control(&mut self, request: &str) -> Result<tools::Run> {
         if cfg!(target_os = "android") {
             bail!("device control isn't available on Android yet");
         }
