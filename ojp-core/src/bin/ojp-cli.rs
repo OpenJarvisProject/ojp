@@ -395,7 +395,8 @@ fn main() -> anyhow::Result<()> {
                     }
                     replies.push(engine.ask(step, &mut |_| {}).unwrap_or_else(|e| format!("ERROR {e:#}")));
                 }
-                let last = replies.last().cloned().unwrap_or_default().to_lowercase();
+                // Thousands separators are dropped so "$1,200" matches "1200".
+                let last = replies.last().cloned().unwrap_or_default().to_lowercase().replace(',', "");
                 let mut problems = Vec::new();
                 for want in sc.reply_has {
                     if !last.contains(&want.to_lowercase()) {
