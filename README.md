@@ -85,6 +85,32 @@ limited to your home folder and never touches keys, passwords or browser data.
 Web search and page reading are off until you set `internet = true` under
 `[tools]`; addresses on your own machine or network are always refused.
 
+## Memory
+
+It remembers what you tell it ("remember that I like green tea") in
+`memory.jsonl` next to the chats (owner-only permissions). Each memory is one
+JSON line: `{id, created, text, summary, tags}`. Tags come from a small
+canonical vocabulary, and near-synonyms are folded together (baking and
+cooking both become `cooking`) so tags don't multiply and old memories stay
+findable. Long memories get a one-line summary; only the summary is shown to
+the model unless the full text is needed, which saves tokens. Recall is BM25
+text search plus a tag boost. With 15 memories or fewer all are given to the
+model; beyond that it gets the best 6 and the newest 3. The memories go into
+the system prompt for that answer only: small models ignore them in the user
+message. Memories written after reading untrusted text (web pages, files)
+ask for confirmation first.
+
+## Model families
+
+Models are plain GGUF files, so any family llama.cpp supports works. Set
+`chat_template` to match: `chatml` (Qwen2.5), `chatml-nothink` (Qwen3.5,
+which thinks by default; the template pre-closes the think block), `llama3`,
+`mistral`, `gemma`, `phi3`. Qwen3.5 is a hybrid recurrent model whose memory
+can't be rewound, so the engine keeps a snapshot of the state where
+consecutive prompts diverge and restores it instead of trimming
+(`ojp-core/src/model.rs`); this is automatic. The bundled llama.cpp is
+vendored under `vendor/llama-crab-sys` (see `vendor/OJP-PATCHES.md`).
+
 ## Speech (desktop)
 
 Settings has **Speak replies**, off by default. Turning it on downloads the
