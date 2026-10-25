@@ -46,6 +46,8 @@ pub struct Model {
     logits_idx: i32,
     /// One sequence and a small context: a probe router that sits beside a main model.
     light: bool,
+    /// Whether the context is currently set to output hidden states (see `last_hidden`).
+    embeddings_on: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -81,9 +83,9 @@ impl Model {
         if let Some(ub) = ubatch.or(low_memory.then_some(128)) {
             params.context = params.context.with_n_ubatch(ub);
         }
-        if embeddings || std::env::var_os("OJP_EMBED").is_some() {
-            params.context = params.context.with_embeddings(true);
-        }
+        // Hidden states are switched on only around `last_hidden`: with them on, llama.cpp
+        // outputs every prompt token, which for a long prompt costs hundreds of MB.
+        let _ = embeddings;
         if low_memory || std::env::var_os("OJP_NO_REPACK").is_some() {
             params.model = params.model.with_use_extra_bufts(false);
         }
@@ -114,6 +116,7 @@ impl Model {
             checkpoint: Default::default(),
             logits_idx: 0,
             light,
+            embeddings_on: false,
         })
     }
 
@@ -300,6 +303,11 @@ impl Model {
         on_text: &mut dyn FnMut(&str),
     ) -> Result<String> {
         let seq = self.norm(seq);
+        // `last_hidden` turns this on itself, just before calling here.
+        let hidden_call = max_tokens == 0 && self.embeddings_on;
+        if !hidden_call {
+            self.set_embeddings(false);
+        }
         let tokens = self.llama.model().tokenize(prompt, true, true)?;
         if tokens.is_empty() {
             bail!("empty prompt");
@@ -338,9 +346,18 @@ impl Model {
     /// Evaluate `prompt` and return the final hidden state of its last token
     /// (needs the model loaded with OJP_EMBED set).
     pub fn last_hidden(&mut self, seq: Seq, prompt: &str) -> Result<Vec<f32>> {
+        self.set_embeddings(true);
         let mut sampler = LlamaSampler::greedy().context("greedy sampler")?;
         self.complete(seq, prompt, &mut sampler, 0, &mut |_| {})?;
         Ok(self.llama.context().embeddings_ith(self.logits_idx)?.to_vec())
+    }
+
+    fn set_embeddings(&mut self, on: bool) {
+        if self.embeddings_on != on {
+            // SAFETY: the context handle is valid for the lifetime of self.llama.
+            unsafe { llama_crab_sys::llama_set_embeddings(self.llama.context().raw_handle(), on) };
+            self.embeddings_on = on;
+        }
     }
 
     fn reset(&mut self, seq: Seq) {
