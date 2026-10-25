@@ -17,8 +17,13 @@ History: this repo grew out of the `core` repo, whose commits it keeps.
 ## How it works
 
 Each message is classified by a small **router** model into
-`answer_directly`, `coding`, `reasoning`, or `device_control`. A grammar
-restricts it to exactly one of those labels. Device control becomes a
+`answer_directly`, `coding`, `reasoning`, or `device_control`. With a **probe**
+file next to the router (`router.gguf.probe.json`, made by
+`scripts/make-router-probe.sh`) the router reads the model's internal state at
+the answer position and a tiny fitted classifier picks the label: about 98% on
+held-out requests, against 76-83% when the small model answers for itself, and
+faster because no worked examples or generated label are needed. Without a
+probe, a grammar restricts the model's own answer to exactly one of those labels. Device control becomes a
 grammar-constrained tool call (volume, timers, launching apps). Everything
 else goes to the **main** model, which is either an in-process GGUF or any
 OpenAI-compatible server (Ollama, llama-server, another of your devices).
@@ -156,3 +161,15 @@ aarch64 Linux and the Android APK: see `scripts/` and `ojp-android/android/`.
 | Text-to-speech on Android; speech-to-text; wake word ("hey zelia") | planned next |
 
 The old `ojp-cli route-eval` / benchmark harness is still in `ojp-core`.
+
+## Router probe
+
+`scripts/gen-router-data.py` writes `ojp-core/data/router-train.tsv` (hand-written
+seeds plus templated variety) and the held-out `router-xl.tsv`;
+`scripts/make-router-probe.sh <router.gguf> <template>` extracts the model's hidden
+state for each request (`ojp-cli route-feats`), fits a linear classifier
+(`scripts/fit-router-probe.py`, L2 chosen by 5-fold cross-validation), reports
+held-out accuracy and writes `<router.gguf>.probe.json`. The probe belongs to that
+exact file: refit it after any change to the model or its quantization. Router
+quantization barely matters for the probe (Q8_0 down to Q2_K all score 97-100%
+held-out), so the router file can be chosen for size.
