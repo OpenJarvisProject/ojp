@@ -60,7 +60,7 @@ impl Model {
         // cache evenly between the n_seq_max sequences.
         let mut params = LlamaParams::new(path).with_n_ctx(n_ctx * SEQS as u32).with_n_gpu_layers(gpu_layers);
         params.context = params.context.with_n_seq_max(SEQS as u32);
-        let llama = Llama::load(params).with_context(|| format!("loading {}", path.display()))?;
+        let mut llama = Llama::load(params).with_context(|| format!("loading {}", path.display()))?;
         let vocab = llama.model();
         let mut eog = vec![vocab.token_eos(), vocab.token_eot()];
         for marker in END_MARKERS {
@@ -71,7 +71,12 @@ impl Model {
                 eog.push(token);
             }
         }
-        let recurrent = vocab.is_recurrent() || vocab.is_hybrid();
+        let mut recurrent = vocab.is_recurrent() || vocab.is_hybrid();
+        if !recurrent {
+            // Not every delta-net/hybrid architecture reports itself as one (Qwen3.5
+            // doesn't), so probe: can the last token of a short prompt be dropped?
+            recurrent = !Model::can_rewind(&mut llama);
+        }
         Ok(Model {
             llama,
             cached: Default::default(),
@@ -81,6 +86,31 @@ impl Model {
             last_prompt: Default::default(),
             checkpoint: Default::default(),
         })
+    }
+
+    /// Whether the memory can drop a sequence's newest tokens.
+    fn can_rewind(llama: &mut Llama) -> bool {
+        let Ok(tokens) = llama.model().tokenize("hello there, how are you", false, false) else { return true };
+        if tokens.len() < 2 {
+            return true;
+        }
+        let mut batch = LlamaBatch::new(tokens.len(), 1);
+        for (i, &t) in tokens.iter().enumerate() {
+            if batch.add(t, i as i32, &[0], i + 1 == tokens.len()).is_err() {
+                return true;
+            }
+        }
+        if llama.context().decode(&batch).is_err() {
+            return true;
+        }
+        let ctx = llama.context().raw_handle();
+        // SAFETY: ctx is valid; the memory handle is only used within this call.
+        let ok = unsafe {
+            let mem = llama_crab_sys::llama_get_memory(ctx);
+            !mem.is_null() && llama_crab_sys::llama_memory_seq_rm(mem, 0, tokens.len() as i32 - 1, -1)
+        };
+        let _ = llama.context().seq_rm(0, -1, -1);
+        ok
     }
 
     pub fn llama(&self) -> &Llama {
@@ -106,11 +136,17 @@ impl Model {
 
     fn restore(&mut self, seq: Seq) -> bool {
         let Some(cp) = &self.checkpoint[seq as usize] else { return false };
+        if std::env::var_os("OJP_DEBUG_CACHE").is_some() {
+            eprintln!("cache: restoring checkpoint of {} tokens ({} bytes)", cp.tokens.len(), cp.state.len());
+        }
         let ctx = self.llama.context().raw_handle();
         let _ = self.llama.context().seq_rm(seq as i32, -1, -1);
         // SAFETY: ctx is valid and the blob is a slice of the stated length.
         let loaded = unsafe { llama_crab_sys::llama_state_seq_set_data(ctx, cp.state.as_ptr(), cp.state.len(), seq as i32) };
         if loaded == 0 {
+            if std::env::var_os("OJP_DEBUG_CACHE").is_some() {
+                eprintln!("cache: restore failed");
+            }
             self.checkpoint[seq as usize] = None;
             self.reset(seq);
             return false;
@@ -259,7 +295,8 @@ impl Model {
                     .as_ref()
                     .is_some_and(|cp| cp.tokens.len() < tokens.len() && tokens.starts_with(&cp.tokens));
                 if !(usable && self.restore(seq)) {
-                    self.reset(seq);
+                    let _ = self.llama.context().seq_rm(id, -1, -1);
+                    self.cached[seq as usize].clear();
                 }
                 self.cached[seq as usize].len()
             }
@@ -283,6 +320,9 @@ impl Model {
             self.last_prompt[seq as usize] = tokens.to_vec();
         }
 
+        if std::env::var_os("OJP_DEBUG_CACHE").is_some() {
+            eprintln!("cache: seq {id} prompt {} tokens, reusing {keep}, checkpoint_at {checkpoint_at:?}", tokens.len());
+        }
         let n_batch = self.llama.context().n_batch() as usize;
         let mut logits_idx = 0;
         let mut start = keep;
