@@ -81,9 +81,10 @@ pub struct Engine {
 impl Engine {
     pub fn new(config: &Config) -> Result<Engine> {
         let mut status = Vec::new();
+        let probe = config.models.router.as_ref().and_then(|r| crate::router::Probe::find(r, config.models.router_probe.as_deref()));
         let mut load = |role: &str, path: &Option<std::path::PathBuf>| -> Option<Model> {
             let path = path.as_ref()?;
-            match Model::load(path, config.models.n_ctx, config.models.gpu_layers, role == "router" || config.models.low_memory) {
+            match Model::load(path, config.models.n_ctx, config.models.gpu_layers, role == "router" || config.models.low_memory, role == "router" && probe.is_some()) {
                 Ok(model) => {
                     let name = path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into());
                     status.push(format!("{role}: {name}"));
@@ -122,7 +123,7 @@ impl Engine {
         if !cfg!(target_os = "android") {
             crate::reminders::start_watcher();
         }
-        let router = Router::new(template);
+        let router = Router::new(template).with_probe(probe);
         let name = &config.persona.name;
         let system_prompt = format!(
             "You are {name}, a helpful personal assistant running locally on the user's own device. \

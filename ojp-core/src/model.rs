@@ -42,6 +42,8 @@ pub struct Model {
     /// snapshot of the state at the longest prefix it shared with the one before.
     last_prompt: [Vec<LlamaToken>; SEQS],
     checkpoint: [Option<Checkpoint>; SEQS],
+    /// Index (in the last decoded batch) of the logits of the last prompt token.
+    logits_idx: i32,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -59,9 +61,10 @@ struct Checkpoint {
 const END_MARKERS: [&str; 6] = ["<|endoftext|>", "<|im_end|>", "<|eot_id|>", "<|end|>", "<end_of_turn>", "</s>"];
 
 impl Model {
+    /// `embeddings` keeps the last token's hidden state available (`last_hidden`).
     /// `low_memory` trades about 10% speed for a few hundred MB less RAM: no repacked
     /// weight copies and small scratch buffers.
-    pub fn load(path: &Path, n_ctx: u32, gpu_layers: i32, low_memory: bool) -> Result<Model> {
+    pub fn load(path: &Path, n_ctx: u32, gpu_layers: i32, low_memory: bool, embeddings: bool) -> Result<Model> {
         if !path.exists() {
             bail!("{} not found", path.display());
         }
@@ -72,6 +75,9 @@ impl Model {
         let ubatch = std::env::var("OJP_N_UBATCH").ok().and_then(|v| v.parse::<u32>().ok());
         if let Some(ub) = ubatch.or(low_memory.then_some(128)) {
             params.context = params.context.with_n_ubatch(ub);
+        }
+        if embeddings || std::env::var_os("OJP_EMBED").is_some() {
+            params.context = params.context.with_embeddings(true);
         }
         if low_memory || std::env::var_os("OJP_NO_REPACK").is_some() {
             params.model = params.model.with_use_extra_bufts(false);
@@ -101,6 +107,7 @@ impl Model {
             recurrent,
             last_prompt: Default::default(),
             checkpoint: Default::default(),
+            logits_idx: 0,
         })
     }
 
@@ -293,6 +300,30 @@ impl Model {
         result
     }
 
+    /// Evaluate `prompt` (reusing the cache) and return the model's raw logits
+    /// for the first token of each of `candidates`, without generating anything.
+    pub fn first_token_logits(&mut self, seq: Seq, prompt: &str, candidates: &[&str]) -> Result<Vec<f32>> {
+        let ids: Vec<usize> = candidates
+            .iter()
+            .map(|c| {
+                let toks = self.llama.model().tokenize(c, false, false)?;
+                toks.first().map(|t| t.raw() as usize).context("candidate tokenized to nothing")
+            })
+            .collect::<Result<_>>()?;
+        let mut sampler = LlamaSampler::greedy().context("greedy sampler")?;
+        self.complete(seq, prompt, &mut sampler, 0, &mut |_| {})?;
+        let logits = self.llama.context().logits_ith(self.logits_idx)?;
+        Ok(ids.iter().map(|&i| logits[i]).collect())
+    }
+
+    /// Evaluate `prompt` and return the final hidden state of its last token
+    /// (needs the model loaded with OJP_EMBED set).
+    pub fn last_hidden(&mut self, seq: Seq, prompt: &str) -> Result<Vec<f32>> {
+        let mut sampler = LlamaSampler::greedy().context("greedy sampler")?;
+        self.complete(seq, prompt, &mut sampler, 0, &mut |_| {})?;
+        Ok(self.llama.context().embeddings_ith(self.logits_idx)?.to_vec())
+    }
+
     fn reset(&mut self, seq: Seq) {
         let _ = self.llama.context().seq_rm(seq as i32, -1, -1);
         self.cached[seq as usize].clear();
@@ -382,6 +413,7 @@ impl Model {
             }
         }
 
+        self.logits_idx = logits_idx;
         let mut text = String::new();
         // Tokens sampled but not yet turned into text. A multi-byte UTF-8
         // character can be split across tokens, and decoding those alone

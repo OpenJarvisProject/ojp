@@ -1,0 +1,80 @@
+answer_directly	Morning! Did you sleep well?
+answer_directly	Who discovered penicillin?
+answer_directly	What's the tallest mountain in the world?
+answer_directly	Tell me something interesting about octopuses.
+answer_directly	What language do they speak in Brazil?
+answer_directly	Ok cool, thank you!
+answer_directly	How far away is the moon?
+answer_directly	What does 'carpe diem' mean?
+answer_directly	Can you cheer me up? I had a rough day.
+answer_directly	Who was the first person to walk on the moon?
+answer_directly	Why is the sky blue?
+answer_directly	What's a group of crows called?
+answer_directly	Do you like music?
+answer_directly	How many continents are there?
+answer_directly	What is the chemical symbol for gold?
+answer_directly	Hello again, how are you?
+answer_directly	Which planet is closest to the sun?
+answer_directly	What year did World War II end?
+answer_directly	Tell me a fun fact.
+answer_directly	What's the national animal of Scotland?
+coding	Write a Rust function that returns the largest element of a Vec.
+coding	What does the 'static lifetime mean in Rust?
+coding	My Python script says IndexError: list index out of range. Why?
+coding	How do I center a div with CSS?
+coding	Explain what this does: arr.map(x => x * 2).filter(Boolean)
+coding	Write a SQL query that returns the ten newest users.
+coding	Why does git say 'detached HEAD'?
+coding	Refactor this loop into a list comprehension.
+coding	How do I parse JSON in Go?
+coding	What's the difference between == and === in JavaScript?
+coding	Write a unit test for a function that adds two numbers in Python.
+coding	My React component re-renders forever, what's wrong?
+coding	How do I undo my last git commit but keep the changes?
+coding	Write a regex that matches an email address.
+coding	What does 'segmentation fault' mean in C?
+coding	Convert this for loop to a while loop in Java.
+coding	How do I make an HTTP request in Node.js?
+coding	Explain the difference between a mutex and a semaphore.
+coding	Write a Dockerfile for a small Flask app.
+coding	Why is my bash script printing 'command not found'?
+reasoning	Help me plan a week of meals that is cheap and healthy.
+reasoning	If a train leaves at 3pm going 60 mph and another leaves at 4pm going 80 mph, when does the second catch up?
+reasoning	Should I rent or buy a car if I drive about 5000 miles a year?
+reasoning	Compare the pros and cons of working remotely versus in an office.
+reasoning	I have three job offers; walk me through how to choose.
+reasoning	How should I split a $2000 bonus between debt, savings and fun?
+reasoning	A farmer has 17 sheep and all but 9 run away. How many are left? Explain.
+reasoning	Design a weekly workout schedule for a beginner with only 3 free days.
+reasoning	What are the trade-offs between learning guitar and piano as an adult?
+reasoning	Work out how many hours I need to study per day to finish 600 pages in 20 days.
+reasoning	Help me think through whether to move to another city for a new job.
+reasoning	Estimate how many golf balls fit in a school bus.
+reasoning	Break down the steps to launch a small online store.
+reasoning	If I save $300 a month with 4% yearly interest, roughly how much do I have after five years?
+reasoning	Analyze why a bakery might lose money even with a lot of customers.
+reasoning	Plan a two-week trip across Italy on a moderate budget.
+reasoning	How do I prioritize between five tasks that are all urgent?
+reasoning	Two coins add up to 30 cents and one is not a nickel. What are they?
+reasoning	Which is a better investment for ten years, an index fund or paying off my mortgage early? Think it through.
+reasoning	Figure out a fair way to split chores among four roommates.
+device_control	Set a timer for 20 minutes.
+device_control	Turn the brightness up.
+device_control	Remind me to call mom at 6 pm.
+device_control	Skip to the next song.
+device_control	What time is it in Tokyo right now?
+device_control	Open the calculator app.
+device_control	How much disk space do I have left?
+device_control	What's 17 percent of 340?
+device_control	Save a note: buy batteries.
+device_control	Read me my todo.txt file.
+device_control	What's on my clipboard?
+device_control	Run the command ls -la in my home folder.
+device_control	Search the web for the weather in Denver.
+device_control	Turn off Bluetooth.
+device_control	Remember that my sister's birthday is in May.
+device_control	Forget my old phone number.
+device_control	Is my laptop plugged in?
+device_control	Delete the note about groceries.
+device_control	What are my reminders?
+device_control	Increase the volume by ten.

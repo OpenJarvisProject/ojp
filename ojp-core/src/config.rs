@@ -37,6 +37,10 @@ main = "models/main.gguf"
 # Layers to offload to the GPU (0 = CPU only, 99 = everything).
 gpu_layers = 0
 n_ctx = 4096
+# The router's accuracy comes from a tiny classifier fitted on the router model's
+# hidden state (scripts/make-router-probe.sh). By default it is looked up next to
+# the router as <router file>.probe.json; set this to use another file.
+# router_probe = "models/router.gguf.probe.json"
 # Use less RAM for the main model (about 250 MB less for a 0.8B) at about 10%
 # slower answers: no repacked weight copies, smaller scratch buffers. The small
 # router always runs this way, since it is meant to stay light.
@@ -217,6 +221,7 @@ pub struct Models {
     /// Base directory for relative model paths (default: the data dir).
     pub location: Option<PathBuf>,
     pub router: Option<PathBuf>,
+    pub router_probe: Option<PathBuf>,
     pub main: Option<PathBuf>,
     pub main_url: Option<String>,
     pub main_model: Option<String>,
@@ -284,6 +289,7 @@ impl Default for Models {
             main_enabled: true,
             location: None,
             router: Some("models/router.gguf".into()),
+            router_probe: None,
             main: Some("models/main.gguf".into()),
             main_url: None,
             main_model: None,
@@ -335,7 +341,7 @@ impl Config {
 
     fn resolve_paths(&mut self, data_dir: &Path) {
         let base = self.models.location.clone().unwrap_or_else(|| data_dir.to_path_buf());
-        for model in [&mut self.models.router, &mut self.models.main].into_iter().flatten() {
+        for model in [&mut self.models.router, &mut self.models.main, &mut self.models.router_probe].into_iter().flatten() {
             if model.is_relative() {
                 *model = base.join(&*model);
             }

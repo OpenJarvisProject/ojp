@@ -97,17 +97,75 @@ pub struct Decision {
 pub struct Router {
     grammar: String,
     template: Template,
+    probe: Option<Probe>,
+}
+
+/// A linear classifier on the router model's hidden state at the answer
+/// position. Fitted offline (scripts/fit-router-probe.py) for one exact model
+/// file; on held-out requests it routes far better than the small model's own
+/// answer (about 98% against 76-83%) and needs no worked examples in the
+/// prompt, so a request costs one short prompt instead of generating a label.
+pub struct Probe {
+    weights: Vec<Vec<f32>>, // [route][dim], in Route::ALL order
+    bias: Vec<f32>,
+}
+
+impl Probe {
+    pub fn load(path: &std::path::Path) -> Result<Probe> {
+        let v: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
+        let labels: Vec<&str> = v["labels"].as_array().context("probe has no labels")?.iter().filter_map(|l| l.as_str()).collect();
+        let want: Vec<&str> = Route::ALL.iter().map(|r| r.label()).collect();
+        if labels != want {
+            bail!("probe labels {labels:?} don't match the routes");
+        }
+        let weights: Vec<Vec<f32>> = serde_json::from_value(v["weights"].clone())?;
+        let bias: Vec<f32> = serde_json::from_value(v["bias"].clone())?;
+        if weights.len() != 4 || bias.len() != 4 || weights.iter().any(|w| w.len() != weights[0].len()) {
+            bail!("probe has the wrong shape");
+        }
+        Ok(Probe { weights, bias })
+    }
+
+    /// The explicit path if given, else `<router file>.probe.json` when it exists.
+    pub fn find(router: &std::path::Path, explicit: Option<&std::path::Path>) -> Option<Probe> {
+        let path = match explicit {
+            Some(p) => p.to_path_buf(),
+            None => {
+                let mut name = router.as_os_str().to_owned();
+                name.push(".probe.json");
+                name.into()
+            }
+        };
+        Probe::load(&path).ok()
+    }
+
+    fn classify(&self, hidden: &[f32]) -> Option<Route> {
+        if hidden.len() != self.weights[0].len() {
+            return None;
+        }
+        let score = |i: usize| self.bias[i] + self.weights[i].iter().zip(hidden).map(|(w, h)| w * h).sum::<f32>();
+        (0..4).max_by(|&a, &b| score(a).total_cmp(&score(b))).map(|i| Route::ALL[i])
+    }
 }
 
 impl Router {
     pub fn new(template: Template) -> Self {
         let alternatives: Vec<String> = Route::ALL.iter().map(|r| format!("\"{}\"", r.label())).collect();
         let grammar = format!("root ::= {}\n", alternatives.join(" | "));
-        Router { grammar, template }
+        Router { grammar, template, probe: None }
     }
 
-    pub fn classify(&self, model: &mut Model, request: &str) -> Result<Decision> {
-        let start = Instant::now();
+    pub fn with_probe(mut self, probe: Option<Probe>) -> Self {
+        self.probe = probe;
+        self
+    }
+
+    fn short_prompt(&self, request: &str) -> String {
+        let messages = [ChatMessage::new(Role::System, SYSTEM_PROMPT), ChatMessage::new(Role::User, request)];
+        self.template.render(&messages, true)
+    }
+
+    fn build_prompt(&self, request: &str) -> String {
         let mut messages = vec![ChatMessage::new(Role::System, SYSTEM_PROMPT)];
         // Few-shot is the default: on the dev set it lifted 0.5B from 6/24
         // to 16/24 and 1.5B from 17/24 to 19/24. OJP_ROUTER_FEWSHOT=0 turns
@@ -119,7 +177,34 @@ impl Router {
             }
         }
         messages.push(ChatMessage::new(Role::User, request));
-        let prompt = self.template.render(&messages, true);
+        self.template.render(&messages, true)
+    }
+
+    /// Raw first-token logits of the four labels, in `Route::ALL` order
+    /// (for calibration experiments).
+    pub fn scores(&self, model: &mut Model, request: &str) -> Result<Vec<f32>> {
+        let labels: Vec<&str> = Route::ALL.iter().map(|r| r.label()).collect();
+        model.first_token_logits(Seq::Route, &self.build_prompt(request), &labels)
+    }
+
+    /// Hidden state at the answer position, for probe experiments. `short` drops
+    /// the few-shot examples.
+    pub fn features(&self, model: &mut Model, request: &str, short: bool) -> Result<Vec<f32>> {
+        if short {
+            return model.last_hidden(Seq::Route, &self.short_prompt(request));
+        }
+        model.last_hidden(Seq::Route, &self.build_prompt(request))
+    }
+
+    pub fn classify(&self, model: &mut Model, request: &str) -> Result<Decision> {
+        let start = Instant::now();
+        if let Some(probe) = &self.probe
+            && let Ok(hidden) = model.last_hidden(Seq::Route, &self.short_prompt(request))
+            && let Some(route) = probe.classify(&hidden)
+        {
+            return Ok(Decision { route, elapsed: start.elapsed() });
+        }
+        let prompt = self.build_prompt(request);
 
         // Grammar first, then greedy: greedy picks the most likely token
         // among those the grammar still allows.
@@ -149,5 +234,36 @@ impl Router {
             bail!("router produced {label:?}, which the grammar should have made impossible");
         };
         Ok(Decision { route, elapsed: start.elapsed() })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn probe_picks_the_highest_scoring_route() {
+        let probe = Probe {
+            weights: vec![vec![1.0, 0.0], vec![0.0, 1.0], vec![-1.0, 0.0], vec![0.0, -1.0]],
+            bias: vec![0.0; 4],
+        };
+        assert_eq!(probe.classify(&[2.0, 0.5]), Some(Route::AnswerDirectly));
+        assert_eq!(probe.classify(&[0.1, 3.0]), Some(Route::Coding));
+        assert_eq!(probe.classify(&[-4.0, 0.0]), Some(Route::Reasoning));
+        assert_eq!(probe.classify(&[0.0, -2.0]), Some(Route::DeviceControl));
+        assert_eq!(probe.classify(&[1.0]), None, "wrong hidden size falls back");
+    }
+
+    #[test]
+    fn probe_file_must_use_the_route_labels() {
+        let dir = std::env::temp_dir().join(format!("ojp-probe-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let ok = dir.join("ok.json");
+        std::fs::write(&ok, r#"{"labels":["answer_directly","coding","reasoning","device_control"],"weights":[[1],[2],[3],[4]],"bias":[0,0,0,0]}"#).unwrap();
+        assert!(Probe::load(&ok).is_ok());
+        let bad = dir.join("bad.json");
+        std::fs::write(&bad, r#"{"labels":["a","b","c","d"],"weights":[[1],[2],[3],[4]],"bias":[0,0,0,0]}"#).unwrap();
+        assert!(Probe::load(&bad).is_err());
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

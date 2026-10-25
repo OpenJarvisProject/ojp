@@ -46,7 +46,7 @@ fn load(model_path: &str) -> anyhow::Result<Llama> {
 
 /// Same env knobs as `load`, through ojp-core's prompt-caching Model.
 fn load_cached(model_path: &str) -> anyhow::Result<ojp_core::model::Model> {
-    ojp_core::model::Model::load(model_path.as_ref(), env_or("OJP_N_CTX", 2048), env_or("OJP_GPU_LAYERS", 0), std::env::var_os("OJP_LOW_MEMORY").is_some())
+    ojp_core::model::Model::load(model_path.as_ref(), env_or("OJP_N_CTX", 2048), env_or("OJP_GPU_LAYERS", 0), std::env::var_os("OJP_LOW_MEMORY").is_some(), std::env::var_os("OJP_ROUTER_PROBE").is_some())
 }
 
 
@@ -174,6 +174,157 @@ const DEV_CASES: [(&str, Route); 24] = [
     ("Lower the screen brightness to 30 percent.", Route::DeviceControl),
     ("Close all Firefox windows.", Route::DeviceControl),
     ("Connect to my Bluetooth headphones.", Route::DeviceControl),
+];
+
+/// Tuning pool for router calibration (distinct from the few-shot examples,
+/// the dev/test sets and XL_CASES): 15 per route.
+const TRAIN_CASES: [(&str, Route); 60] = [
+    ("Hey Jarvis, good evening.", Route::AnswerDirectly),
+    ("What is the largest ocean on Earth?", Route::AnswerDirectly),
+    ("Who invented the telephone?", Route::AnswerDirectly),
+    ("What's your favorite color?", Route::AnswerDirectly),
+    ("How many days are in a leap year?", Route::AnswerDirectly),
+    ("Tell me about the Roman Empire in a sentence.", Route::AnswerDirectly),
+    ("What is the speed of light?", Route::AnswerDirectly),
+    ("Are you there?", Route::AnswerDirectly),
+    ("Which country has the most people?", Route::AnswerDirectly),
+    ("What do pandas eat?", Route::AnswerDirectly),
+    ("Say something nice.", Route::AnswerDirectly),
+    ("What's the plural of 'mouse'?", Route::AnswerDirectly),
+    ("What is photosynthesis?", Route::AnswerDirectly),
+    ("Who is the author of 1984?", Route::AnswerDirectly),
+    ("Good night!", Route::AnswerDirectly),
+    ("How do I loop over a dictionary in Python?", Route::Coding),
+    ("Write a C function that swaps two integers.", Route::Coding),
+    ("What does the 'async' keyword do in JavaScript?", Route::Coding),
+    ("Why do I get 'cannot borrow as mutable' in Rust?", Route::Coding),
+    ("Give me a Python one-liner to flatten a nested list.", Route::Coding),
+    ("What is a closure in programming?", Route::Coding),
+    ("Fix this: print('hello' + 5)", Route::Coding),
+    ("How do I set up a virtual environment in Python?", Route::Coding),
+    ("Write a Java class for a bank account.", Route::Coding),
+    ("What's the time complexity of binary search?", Route::Coding),
+    ("How can I sort an array of objects by a field in TypeScript?", Route::Coding),
+    ("Explain how pointers work in C.", Route::Coding),
+    ("Write a shell one-liner to count lines in all .py files.", Route::Coding),
+    ("Why does my CSS grid overflow its container?", Route::Coding),
+    ("What is the difference between a process and a thread?", Route::Coding),
+    ("Help me decide whether to take a pay cut for a job I love.", Route::Reasoning),
+    ("If I walk 3 km in 40 minutes, how long will 10 km take at that pace?", Route::Reasoning),
+    ("Plan a birthday party for twelve kids on a small budget.", Route::Reasoning),
+    ("What are the pros and cons of electric cars?", Route::Reasoning),
+    ("I need to choose a college major; how should I think about it?", Route::Reasoning),
+    ("Three friends split a bill of $87 with 15% tip, how much does each pay? Show the steps.", Route::Reasoning),
+    ("Create a schedule to learn French in six months.", Route::Reasoning),
+    ("How would you figure out why my car uses so much gas?", Route::Reasoning),
+    ("Should a small company outsource customer support? Weigh it up.", Route::Reasoning),
+    ("A recipe serves 4 and uses 3 eggs; how many eggs for 14 people?", Route::Reasoning),
+    ("Think through how to reduce my monthly expenses by 20 percent.", Route::Reasoning),
+    ("Estimate how long it would take to read 30 books this year.", Route::Reasoning),
+    ("What is the best way to prepare for a job interview in a week?", Route::Reasoning),
+    ("Compare renting a studio versus sharing a two-bedroom flat.", Route::Reasoning),
+    ("Work out a plan to pay off $6000 of credit card debt in a year.", Route::Reasoning),
+    ("Wake me up at 6:30 tomorrow.", Route::DeviceControl),
+    ("Pause the video.", Route::DeviceControl),
+    ("Set the volume to 20 percent.", Route::DeviceControl),
+    ("Open Firefox.", Route::DeviceControl),
+    ("What's the battery level?", Route::DeviceControl),
+    ("Take a note: dentist on Friday.", Route::DeviceControl),
+    ("Look up today's news online.", Route::DeviceControl),
+    ("What's 245 plus 389?", Route::DeviceControl),
+    ("Show me my notes.", Route::DeviceControl),
+    ("List what is in my Documents folder.", Route::DeviceControl),
+    ("Turn off the Wi-Fi.", Route::DeviceControl),
+    ("Remember that I take my coffee black.", Route::DeviceControl),
+    ("Delete the file called old.txt.", Route::DeviceControl),
+    ("What is playing right now?", Route::DeviceControl),
+    ("What time is it?", Route::DeviceControl),
+];
+
+/// Larger held-out set (never used for tuning): 20 per route, written after the
+/// few-shot examples and the dev set were frozen. The 24-case sets move by
+/// about three cases from run to run; this one is for telling variants apart.
+const XL_CASES: [(&str, Route); 80] = [
+    ("Morning! Did you sleep well?", Route::AnswerDirectly),
+    ("Who discovered penicillin?", Route::AnswerDirectly),
+    ("What's the tallest mountain in the world?", Route::AnswerDirectly),
+    ("Tell me something interesting about octopuses.", Route::AnswerDirectly),
+    ("What language do they speak in Brazil?", Route::AnswerDirectly),
+    ("Ok cool, thank you!", Route::AnswerDirectly),
+    ("How far away is the moon?", Route::AnswerDirectly),
+    ("What does 'carpe diem' mean?", Route::AnswerDirectly),
+    ("Can you cheer me up? I had a rough day.", Route::AnswerDirectly),
+    ("Who was the first person to walk on the moon?", Route::AnswerDirectly),
+    ("Why is the sky blue?", Route::AnswerDirectly),
+    ("What's a group of crows called?", Route::AnswerDirectly),
+    ("Do you like music?", Route::AnswerDirectly),
+    ("How many continents are there?", Route::AnswerDirectly),
+    ("What is the chemical symbol for gold?", Route::AnswerDirectly),
+    ("Hello again, how are you?", Route::AnswerDirectly),
+    ("Which planet is closest to the sun?", Route::AnswerDirectly),
+    ("What year did World War II end?", Route::AnswerDirectly),
+    ("Tell me a fun fact.", Route::AnswerDirectly),
+    ("What's the national animal of Scotland?", Route::AnswerDirectly),
+    ("Write a Rust function that returns the largest element of a Vec.", Route::Coding),
+    ("What does the 'static lifetime mean in Rust?", Route::Coding),
+    ("My Python script says IndexError: list index out of range. Why?", Route::Coding),
+    ("How do I center a div with CSS?", Route::Coding),
+    ("Explain what this does: arr.map(x => x * 2).filter(Boolean)", Route::Coding),
+    ("Write a SQL query that returns the ten newest users.", Route::Coding),
+    ("Why does git say 'detached HEAD'?", Route::Coding),
+    ("Refactor this loop into a list comprehension.", Route::Coding),
+    ("How do I parse JSON in Go?", Route::Coding),
+    ("What's the difference between == and === in JavaScript?", Route::Coding),
+    ("Write a unit test for a function that adds two numbers in Python.", Route::Coding),
+    ("My React component re-renders forever, what's wrong?", Route::Coding),
+    ("How do I undo my last git commit but keep the changes?", Route::Coding),
+    ("Write a regex that matches an email address.", Route::Coding),
+    ("What does 'segmentation fault' mean in C?", Route::Coding),
+    ("Convert this for loop to a while loop in Java.", Route::Coding),
+    ("How do I make an HTTP request in Node.js?", Route::Coding),
+    ("Explain the difference between a mutex and a semaphore.", Route::Coding),
+    ("Write a Dockerfile for a small Flask app.", Route::Coding),
+    ("Why is my bash script printing 'command not found'?", Route::Coding),
+    ("Help me plan a week of meals that is cheap and healthy.", Route::Reasoning),
+    ("If a train leaves at 3pm going 60 mph and another leaves at 4pm going 80 mph, when does the second catch up?", Route::Reasoning),
+    ("Should I rent or buy a car if I drive about 5000 miles a year?", Route::Reasoning),
+    ("Compare the pros and cons of working remotely versus in an office.", Route::Reasoning),
+    ("I have three job offers; walk me through how to choose.", Route::Reasoning),
+    ("How should I split a $2000 bonus between debt, savings and fun?", Route::Reasoning),
+    ("A farmer has 17 sheep and all but 9 run away. How many are left? Explain.", Route::Reasoning),
+    ("Design a weekly workout schedule for a beginner with only 3 free days.", Route::Reasoning),
+    ("What are the trade-offs between learning guitar and piano as an adult?", Route::Reasoning),
+    ("Work out how many hours I need to study per day to finish 600 pages in 20 days.", Route::Reasoning),
+    ("Help me think through whether to move to another city for a new job.", Route::Reasoning),
+    ("Estimate how many golf balls fit in a school bus.", Route::Reasoning),
+    ("Break down the steps to launch a small online store.", Route::Reasoning),
+    ("If I save $300 a month with 4% yearly interest, roughly how much do I have after five years?", Route::Reasoning),
+    ("Analyze why a bakery might lose money even with a lot of customers.", Route::Reasoning),
+    ("Plan a two-week trip across Italy on a moderate budget.", Route::Reasoning),
+    ("How do I prioritize between five tasks that are all urgent?", Route::Reasoning),
+    ("Two coins add up to 30 cents and one is not a nickel. What are they?", Route::Reasoning),
+    ("Which is a better investment for ten years, an index fund or paying off my mortgage early? Think it through.", Route::Reasoning),
+    ("Figure out a fair way to split chores among four roommates.", Route::Reasoning),
+    ("Set a timer for 20 minutes.", Route::DeviceControl),
+    ("Turn the brightness up.", Route::DeviceControl),
+    ("Remind me to call mom at 6 pm.", Route::DeviceControl),
+    ("Skip to the next song.", Route::DeviceControl),
+    ("What time is it in Tokyo right now?", Route::DeviceControl),
+    ("Open the calculator app.", Route::DeviceControl),
+    ("How much disk space do I have left?", Route::DeviceControl),
+    ("What's 17 percent of 340?", Route::DeviceControl),
+    ("Save a note: buy batteries.", Route::DeviceControl),
+    ("Read me my todo.txt file.", Route::DeviceControl),
+    ("What's on my clipboard?", Route::DeviceControl),
+    ("Run the command ls -la in my home folder.", Route::DeviceControl),
+    ("Search the web for the weather in Denver.", Route::DeviceControl),
+    ("Turn off Bluetooth.", Route::DeviceControl),
+    ("Remember that my sister's birthday is in May.", Route::DeviceControl),
+    ("Forget my old phone number.", Route::DeviceControl),
+    ("Is my laptop plugged in?", Route::DeviceControl),
+    ("Delete the note about groceries.", Route::DeviceControl),
+    ("What are my reminders?", Route::DeviceControl),
+    ("Increase the volume by ten.", Route::DeviceControl),
 ];
 
 /// Test set: same 10 cases as model-tooling's agent_tests.py "router" category.
@@ -438,14 +589,65 @@ fn main() -> anyhow::Result<()> {
             println!("\nagent tasks passed: {passed}/{total}");
             let _ = fs::remove_dir_all(&home);
         }
+        Some("route-scores") => {
+            // route-scores <model> <train|dev|xl|test>: one JSON line per case,
+            // [expected label index, [logit per route]], for fitting calibrations.
+            let cases: &[(&str, Route)] = match args.get(2).map(String::as_str) {
+                Some("train") => &TRAIN_CASES,
+                Some("dev") => &DEV_CASES,
+                Some("xl") => &XL_CASES,
+                Some("test") => &ROUTER_CASES,
+                _ => anyhow::bail!("usage: route-scores <model.gguf> <train|dev|xl|test>"),
+            };
+            let mut model = load_cached(&args[1])?;
+            let router = Router::new(Template::from_env());
+            for &(request, expected) in cases {
+                let scores = router.scores(&mut model, request)?;
+                let idx = Route::ALL.iter().position(|&r| r == expected).unwrap();
+                println!("SCORE {}", serde_json::json!([idx, scores]));
+            }
+        }
+        Some("route-feats") => {
+            // route-feats <model> <train|dev|xl|test> [short]: [label index, hidden state] per case.
+            // The second argument is a set name or a label<TAB>request file.
+            let owned: Vec<(String, Route)>;
+            let cases: Vec<(&str, Route)> = match args.get(2).map(String::as_str) {
+                Some("train") => TRAIN_CASES.to_vec(),
+                Some("dev") => DEV_CASES.to_vec(),
+                Some("xl") => XL_CASES.to_vec(),
+                Some("test") => ROUTER_CASES.to_vec(),
+                Some(path) if std::path::Path::new(path).exists() => {
+                    owned = std::fs::read_to_string(path)?
+                        .lines()
+                        .filter_map(|l| {
+                            let (label, text) = l.split_once('\t')?;
+                            Some((text.to_string(), Route::ALL.into_iter().find(|r| r.label() == label)?))
+                        })
+                        .collect();
+                    owned.iter().map(|(t, r)| (t.as_str(), *r)).collect()
+                }
+                _ => anyhow::bail!("usage: route-feats <model.gguf> <train|dev|xl|test|file.tsv> [short]"),
+            };
+            let short = args.get(3).is_some_and(|a| a == "short");
+            let mut model = load_cached(&args[1])?;
+            let router = Router::new(Template::from_env());
+            for &(request, expected) in &cases {
+                let h = router.features(&mut model, request, short)?;
+                let idx = Route::ALL.iter().position(|&r| r == expected).unwrap();
+                println!("FEAT {}", serde_json::json!([idx, h]));
+            }
+        }
         Some("route-eval") => {
             let (model, cases): (&String, &[(&str, Route)]) = match args.as_slice() {
                 [_, model] => (model, &ROUTER_CASES),
                 [_, model, flag] if flag == "--dev" => (model, &DEV_CASES),
-                _ => anyhow::bail!("usage: ojp-core route-eval <model.gguf> [--dev]"),
+                [_, model, flag] if flag == "--xl" => (model, &XL_CASES),
+                _ => anyhow::bail!("usage: ojp-core route-eval <model.gguf> [--dev|--xl]"),
             };
             let mut model = load_cached(model)?;
-            let router = Router::new(Template::from_env());
+            // OJP_ROUTER_PROBE=<probe.json> routes with a fitted probe instead of the model's own answer.
+            let probe = std::env::var("OJP_ROUTER_PROBE").ok().map(|p| ojp_core::router::Probe::load(std::path::Path::new(&p))).transpose()?;
+            let router = Router::new(Template::from_env()).with_probe(probe);
             let (mut passed, mut total_ms) = (0, 0);
             for &(request, expected) in cases {
                 let d = match router.classify(&mut model, request) {
