@@ -37,6 +37,9 @@ main = "models/main.gguf"
 # Layers to offload to the GPU (0 = CPU only, 99 = everything).
 gpu_layers = 0
 n_ctx = 4096
+# Use less RAM (about 200 MB less for the small router) for about 10% slower
+# answers: no repacked weight copies, smaller scratch buffers. Good for phones.
+low_memory = false
 # Where models/ lives. On Android this is set when you pick phone storage
 # or SD card at download time; unset means the app's data directory.
 # location = "/path/to/dir"
@@ -218,6 +221,7 @@ pub struct Models {
     pub main_model: Option<String>,
     pub gpu_layers: i32,
     pub n_ctx: u32,
+    pub low_memory: bool,
     pub chat_template: String,
 }
 
@@ -284,6 +288,7 @@ impl Default for Models {
             main_model: None,
             gpu_layers: 0,
             n_ctx: 4096,
+            low_memory: false,
             chat_template: "chatml".into(),
         }
     }

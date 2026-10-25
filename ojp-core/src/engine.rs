@@ -83,7 +83,7 @@ impl Engine {
         let mut status = Vec::new();
         let mut load = |role: &str, path: &Option<std::path::PathBuf>| -> Option<Model> {
             let path = path.as_ref()?;
-            match Model::load(path, config.models.n_ctx, config.models.gpu_layers) {
+            match Model::load(path, config.models.n_ctx, config.models.gpu_layers, config.models.low_memory) {
                 Ok(model) => {
                     let name = path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into());
                     status.push(format!("{role}: {name}"));

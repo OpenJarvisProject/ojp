@@ -46,7 +46,7 @@ fn load(model_path: &str) -> anyhow::Result<Llama> {
 
 /// Same env knobs as `load`, through ojp-core's prompt-caching Model.
 fn load_cached(model_path: &str) -> anyhow::Result<ojp_core::model::Model> {
-    ojp_core::model::Model::load(model_path.as_ref(), env_or("OJP_N_CTX", 2048), env_or("OJP_GPU_LAYERS", 0))
+    ojp_core::model::Model::load(model_path.as_ref(), env_or("OJP_N_CTX", 2048), env_or("OJP_GPU_LAYERS", 0), std::env::var_os("OJP_LOW_MEMORY").is_some())
 }
 
 

@@ -39,6 +39,9 @@ pub struct LlamaModelParams {
     vocab_only: bool,
     use_mmap: bool,
     use_mlock: bool,
+    /// OJP patch: let llama.cpp copy weights into CPU-friendly interleaved
+    /// layouts (faster, but a second copy of those weights in memory).
+    use_extra_bufts: bool,
 }
 
 impl Default for LlamaModelParams {
@@ -57,6 +60,7 @@ impl Default for LlamaModelParams {
             main_gpu: raw.main_gpu,
             vocab_only: raw.vocab_only,
             // OJP patch (newer llama.cpp): mmap/mlock became one `load_mode`.
+            use_extra_bufts: raw.use_extra_bufts,
             use_mmap: !matches!(
                 raw.load_mode,
                 sys::llama_load_mode::LLAMA_LOAD_MODE_NONE | sys::llama_load_mode::LLAMA_LOAD_MODE_MLOCK
@@ -104,6 +108,13 @@ impl LlamaModelParams {
         self
     }
 
+    /// OJP patch: allow repacked CPU weight copies (default on).
+    #[must_use]
+    pub fn with_use_extra_bufts(mut self, yes: bool) -> Self {
+        self.use_extra_bufts = yes;
+        self
+    }
+
     /// Memory-map the model file.
     #[must_use]
     pub fn with_use_mmap(mut self, yes: bool) -> Self {
@@ -126,6 +137,7 @@ impl LlamaModelParams {
         raw.split_mode = self.split_mode.into();
         raw.main_gpu = self.main_gpu;
         raw.vocab_only = self.vocab_only;
+        raw.use_extra_bufts = self.use_extra_bufts;
         raw.load_mode = match (self.use_mmap, self.use_mlock) {
             (false, false) => sys::llama_load_mode::LLAMA_LOAD_MODE_NONE,
             (true, false) => sys::llama_load_mode::LLAMA_LOAD_MODE_MMAP,

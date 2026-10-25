@@ -59,7 +59,9 @@ struct Checkpoint {
 const END_MARKERS: [&str; 6] = ["<|endoftext|>", "<|im_end|>", "<|eot_id|>", "<|end|>", "<end_of_turn>", "</s>"];
 
 impl Model {
-    pub fn load(path: &Path, n_ctx: u32, gpu_layers: i32) -> Result<Model> {
+    /// `low_memory` trades about 10% speed for a few hundred MB less RAM: no repacked
+    /// weight copies and small scratch buffers.
+    pub fn load(path: &Path, n_ctx: u32, gpu_layers: i32, low_memory: bool) -> Result<Model> {
         if !path.exists() {
             bail!("{} not found", path.display());
         }
@@ -67,6 +69,13 @@ impl Model {
         // cache evenly between the n_seq_max sequences.
         let mut params = LlamaParams::new(path).with_n_ctx(n_ctx * SEQS as u32).with_n_gpu_layers(gpu_layers);
         params.context = params.context.with_n_seq_max(SEQS as u32);
+        let ubatch = std::env::var("OJP_N_UBATCH").ok().and_then(|v| v.parse::<u32>().ok());
+        if let Some(ub) = ubatch.or(low_memory.then_some(128)) {
+            params.context = params.context.with_n_ubatch(ub);
+        }
+        if low_memory || std::env::var_os("OJP_NO_REPACK").is_some() {
+            params.model = params.model.with_use_extra_bufts(false);
+        }
         let mut llama = Llama::load(params).with_context(|| format!("loading {}", path.display()))?;
         let vocab = llama.model();
         let mut eog = vec![vocab.token_eos(), vocab.token_eot()];
