@@ -37,8 +37,9 @@ main = "models/main.gguf"
 # Layers to offload to the GPU (0 = CPU only, 99 = everything).
 gpu_layers = 0
 n_ctx = 4096
-# Use less RAM (about 200 MB less for the small router) for about 10% slower
-# answers: no repacked weight copies, smaller scratch buffers. Good for phones.
+# Use less RAM for the main model (about 250 MB less for a 0.8B) at about 10%
+# slower answers: no repacked weight copies, smaller scratch buffers. The small
+# router always runs this way, since it is meant to stay light.
 low_memory = false
 # Where models/ lives. On Android this is set when you pick phone storage
 # or SD card at download time; unset means the app's data directory.
