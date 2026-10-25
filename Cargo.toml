@@ -19,3 +19,5 @@ strip = true
 [patch.crates-io]
 i-slint-backend-android-activity = { path = "vendor/i-slint-backend-android-activity" }
 i-slint-core = { path = "vendor/i-slint-core" }
+llama-crab-sys = { path = "vendor/llama-crab-sys" }
+llama-crab = { path = "vendor/llama-crab" }

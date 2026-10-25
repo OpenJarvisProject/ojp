@@ -42,3 +42,20 @@ swipe passes its threshold.
 `i-slint-backend-android-activity/lib.rs`, `javahelper.rs`, and
 `SlintAndroidJavaHelper.java`: `set_light_status_bar(bool)` toggles
 `SYSTEM_UI_FLAG_LIGHT_STATUS_BAR` so light themes get dark status-bar icons.
+
+## llama.cpp engine update (llama-crab-sys / llama-crab)
+
+`vendor/llama-crab-sys` is crates.io `llama-crab-sys` 0.1.8 with its bundled
+`llama.cpp` replaced by upstream build cbe28bb (2026-10-13), which knows about
+241 model architectures instead of 188 (Qwen3.5, Gemma 4, ...). Only the
+`llama.cpp/{cmake,common,ggml,include,src,vendor,tools/mtmd}` trees and the
+top-level CMake/LICENSE/AUTHORS were swapped; build.rs and wrappers are
+untouched. `vendor/llama-crab` is crates.io `llama-crab` 0.1.8 with the
+changes the newer C API needs:
+
+- `model/params.rs`: `use_mmap`/`use_mlock` became one `load_mode` field.
+- `sampling/strategies.rs`: `llama_sampler_init_penalties` takes `n_vocab`
+  (new first argument; callers pass the model's vocabulary size);
+  `llama_sampler_init_dry` lost the `n_ctx_train` argument; the custom
+  tail-free sampler's interface struct got `backend_reset`/`copy_state`.
+- `high_level/completion.rs`, `sampling/chain.rs`: pass `n_vocab` through.

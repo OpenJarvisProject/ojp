@@ -1,0 +1,112 @@
+[package]
+name = "llama-crab"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+description = "Safe, ergonomic and complete Rust bindings for llama.cpp"
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+# Declare each integration test explicitly so feature-gated tests keep
+# their required feature metadata.
+autotests = false
+autobins = false
+
+[lib]
+path = "src/lib.rs"
+
+[[test]]
+name = "gemma4_text"
+path = "tests/gemma4_text.rs"
+
+[[test]]
+name = "gemma4_vision"
+path = "tests/gemma4_vision.rs"
+required-features = ["mtmd"]
+
+[[test]]
+name = "lfm_vl_vision"
+path = "tests/lfm_vl_vision.rs"
+required-features = ["mtmd"]
+
+[[test]]
+name = "hf_download"
+path = "tests/hf_download.rs"
+required-features = ["hf-hub"]
+
+[[test]]
+name = "embedding_regression"
+path = "tests/embedding_regression.rs"
+
+[[test]]
+name = "rerank_api"
+path = "tests/rerank_api.rs"
+
+[[test]]
+name = "infill_api"
+path = "tests/infill_api.rs"
+
+[[test]]
+name = "streaming_api"
+path = "tests/streaming_api.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+llama-crab-sys.workspace = true
+thiserror.workspace = true
+tracing = "0.1"
+tracing-core = "0.1"
+bitflags = { version = "2", features = ["serde"] }
+parking_lot = "0.12"
+indexmap = { version = "2", features = ["serde"] }
+smallvec = { version = "1", features = ["union"] }
+half = { version = "2", features = ["serde"] }
+encoding_rs = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+image = { version = "0.25", optional = true }
+base64 = { version = "0.22", optional = true }
+hf-hub = { version = "0.5", optional = true }
+llguidance_lib = { version = "1.7", package = "llguidance", optional = true }
+toktrie = { version = "1.7", package = "toktrie", optional = true }
+tokenizers = { version = "0.23", default-features = false, features = ["http", "onig"], optional = true }
+sled = { version = "0.34", optional = true }
+
+# Optional: tracing-subscriber integration is a runtime-only concern
+[dev-dependencies]
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tempfile = "3"
+cargo-llvm-cov = "0.8"
+
+[features]
+default = ["openmp", "metal"]
+openmp = ["llama-crab-sys/openmp"]
+metal = ["llama-crab-sys/metal"]
+cuda = ["llama-crab-sys/cuda"]
+cuda-no-vmm = ["llama-crab-sys/cuda-no-vmm"]
+vulkan = ["llama-crab-sys/vulkan"]
+rocm = ["llama-crab-sys/rocm"]
+opencl = ["llama-crab-sys/opencl"]
+kleidiai = ["llama-crab-sys/kleidiai"]
+dynamic-link = ["llama-crab-sys/dynamic-link"]
+dynamic-backends = ["llama-crab-sys/dynamic-backends"]
+system-ggml = ["llama-crab-sys/system-ggml"]
+shared-stdcxx = ["llama-crab-sys/shared-stdcxx"]
+static-stdcxx = ["llama-crab-sys/static-stdcxx"]
+common = ["llama-crab-sys/common"]
+mtmd = ["llama-crab-sys/mtmd", "dep:image", "dep:base64"]
+llguidance = ["llama-crab-sys/llguidance", "dep:llguidance_lib", "dep:toktrie"]
+hf-tokenizer = ["dep:tokenizers"]
+hf-hub = ["dep:hf-hub"]
+disk-cache = ["dep:sled"]
+
+[package.metadata.docs.rs]
+no-default-features = true
+features = ["openmp", "mtmd"]
+rustdoc-args = ["--cfg", "docsrs"]
