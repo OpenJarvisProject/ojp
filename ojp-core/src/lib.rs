@@ -11,6 +11,7 @@ pub mod download;
 pub mod engine;
 pub mod format;
 pub mod math;
+pub mod memory;
 pub mod model;
 pub mod reminders;
 pub mod router;

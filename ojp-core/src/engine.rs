@@ -129,7 +129,9 @@ impl Engine {
             "You are {name}, a helpful personal assistant running locally on the user's own device. \
              Answer accurately and concisely. If you don't know something, say so. \
              Write math in LaTeX: put standalone equations on their own line between $$ and $$, \
-             and inline math between \\( and \\)."
+             and inline math between \\( and \\). You have a memory: things the user told you in \
+             earlier chats appear in square brackets before their message. Use them naturally, and \
+             never claim you cannot remember or lack access to personal information when they are there."
         );
         // Warm-up, done while loading so the first message is fast: the
         // router evaluates its few-shot prompt, and whichever model answers
@@ -238,7 +240,7 @@ impl Engine {
         let reply = if route == Route::DeviceControl {
             self.use_tool(request, on_event)?
         } else {
-            self.answer(on_event)?
+            self.answer_with_memory(request, on_event)?
         };
         self.history.push(ChatMessage::new(Role::Assistant, reply.clone()));
         Ok(reply)
@@ -269,6 +271,9 @@ impl Engine {
             Err(message) => message,
             Ok(calls) => {
                 let run = tools::run_typed(&calls);
+                if run.outcomes.iter().any(|o| tools::writes_memory(&o.call)) {
+                    self.refine_memory();
+                }
                 for o in &run.outcomes {
                     on_event(Event::Notice(format!("command: {}", tools::describe_call(&o.call))));
                 }
@@ -296,6 +301,8 @@ impl Engine {
         let mut failure: Option<String> = None;
         let mut ask_first: Option<String> = None;
 
+        // Becomes true once the request has read text that someone else wrote.
+        let mut tainted = false;
         'steps: for _ in 0..MAX_STEPS {
             let calls = match self.plan_step(request, &steps) {
                 Ok(c) => c,
@@ -309,6 +316,13 @@ impl Engine {
             let mut results = Vec::new();
             let mut explored = false;
             for call in calls.iter().filter(|c| !tools::is_done(c)) {
+                // Text from a web page or file must not be able to plant "memories".
+                if tainted && tools::writes_memory(call) {
+                    let what = call["args"]["text"].as_str().unwrap_or("");
+                    self.pending = Some(Pending { call: call.clone() });
+                    ask_first = Some(format!("I'd like to save this to memory: \"{what}\". It came from something I just read, so I'm checking with you first. Shall I? (yes / no)"));
+                    break 'steps;
+                }
                 if let Some(plan) = tools::needs_confirmation(call) {
                     match plan {
                         Ok(what) => {
@@ -322,7 +336,11 @@ impl Engine {
                 match tools::run_call(call) {
                     Ok(o) => {
                         on_event(Event::Notice(format!("tool: {}", tools::describe_call(&o.call))));
+                        if tools::writes_memory(&o.call) && std::env::var("OJP_TOOLS_DRY_RUN").is_err() {
+                            self.refine_memory();
+                        }
                         explored |= tools::is_explore(&o.call);
+                        tainted |= tools::reads_untrusted(&o.call);
                         results.push(o.text.clone());
                         match o.kind {
                             tools::Kind::Act => acts.push(o.text),
@@ -379,6 +397,51 @@ impl Engine {
             text.push_str(&line);
         }
         text
+    }
+
+    /// Answer, giving the model what it remembers about the user. The memory goes
+    /// into the system prompt for this one answer only (a small model follows facts
+    /// there, but ignores them in the user's message); the stored chat stays as typed.
+    fn answer_with_memory(&mut self, request: &str, on_event: &mut dyn FnMut(Event)) -> Result<String> {
+        let Some(context) = crate::memory::context_for(request) else {
+            return self.answer(on_event);
+        };
+        let base = self.system_prompt.clone();
+        self.system_prompt = format!(
+            "{base}\n\n{context}\nIf the user's question relates to these, answer using them; don't say you lack personal information."
+        );
+        let reply = self.answer(on_event);
+        self.system_prompt = base;
+        reply
+    }
+
+    /// After something is saved to memory: if it is long, or no tag fit by its words,
+    /// ask the model for tags (from the fixed vocabulary only) and a short summary.
+    /// Never fails the request: the word-based filing stays if this doesn't work.
+    fn refine_memory(&mut self) {
+        let Some(m) = crate::memory::list().into_iter().max_by_key(|m| m.id) else { return };
+        if m.text.chars().count() <= 90 && m.tags != [crate::memory::OTHER] {
+            return;
+        }
+        let model = match (&mut self.router_llm, &mut self.main) {
+            (_, Some(Main::Local(model))) | (Some(model), _) => model,
+            _ => return,
+        };
+        if let Ok((tags, summary)) = tools::file_memory(model, self.template, &m.text) {
+            let summary = if m.text.chars().count() <= 90 { m.summary.clone() } else { summary };
+            // The model's choices first, then the word-based ones; "other" only if nothing else fits.
+            let mut merged: Vec<String> = Vec::new();
+            for t in tags.into_iter().chain(m.tags.iter().cloned()) {
+                if t != crate::memory::OTHER && !merged.contains(&t) {
+                    merged.push(t);
+                }
+            }
+            merged.truncate(3);
+            if merged.is_empty() {
+                merged.push(crate::memory::OTHER.into());
+            }
+            let _ = crate::memory::set_meta(m.id, merged, summary);
+        }
     }
 
     fn plan_step(&mut self, request: &str, steps: &[tools::Step]) -> Result<Vec<serde_json::Value>> {

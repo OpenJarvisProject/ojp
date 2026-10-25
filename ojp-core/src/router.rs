@@ -16,17 +16,17 @@ use crate::model::{Model, Seq};
 /// baseline are scored on the same prompt (one variable: the grammar).
 /// Part of the warm-up cache key (engine.rs): bump when SYSTEM_PROMPT or
 /// FEW_SHOT change so stale caches are never reused.
-pub const PROMPT_VERSION: u32 = 4;
+pub const PROMPT_VERSION: u32 = 5;
 
 const SYSTEM_PROMPT: &str = "Classify the user's request into exactly one category and reply with ONLY the category name.\n\
 answer_directly: casual chat or a simple fact.\n\
 coding: writing, fixing, or explaining code.\n\
 reasoning: multi-step problems, planning, analysis, or math word problems.\n\
-device_control: doing things on this computer: apps, settings, timers, reminders, volume, music; looking up live facts (time, battery, files, clipboard, notes) or the web; reading, listing or creating files; running commands; exact arithmetic; saving notes.";
+device_control: doing things on this computer: apps, settings, timers, reminders, volume, music; looking up live facts (time, battery, files, clipboard, notes) or the web; reading, listing or creating files; running commands; exact arithmetic; saving notes; remembering or forgetting facts about the user.";
 
 /// Worked examples shown to the model as prior turns. Disjoint from both
 /// the dev and test case sets in main.rs.
-const FEW_SHOT: [(&str, Route); 24] = [
+const FEW_SHOT: [(&str, Route); 27] = [
     ("Hi there!", Route::AnswerDirectly),
     ("What is the boiling point of water?", Route::AnswerDirectly),
     ("Write a function to check if a number is prime in JavaScript.", Route::Coding),
@@ -51,6 +51,9 @@ const FEW_SHOT: [(&str, Route); 24] = [
     ("Search the web for good pasta recipes.", Route::DeviceControl),
     ("Create a file called todo.txt with my tasks in it.", Route::DeviceControl),
     ("List the files in my Downloads folder.", Route::DeviceControl),
+    ("Remember that I'm vegetarian.", Route::DeviceControl),
+    ("What do you remember about me?", Route::DeviceControl),
+    ("Forget what I told you about my old address.", Route::DeviceControl),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

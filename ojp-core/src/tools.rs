@@ -79,12 +79,18 @@ const REGISTRY: &[Tool] = &[
     Tool { name: "find_files", doc: "find files by part of their NAME (not what is inside them)", args: &[Arg { name: "query", kind: ArgKind::Text { max: 60 } }], kind: Kind::Read, risk: Risk::Safe, explore: true, run: |a| find_files(text(a, "query")?) },
     Tool { name: "reminders_list", doc: "show the pending timers and reminders", args: &[], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |_| reminders_list() },
     Tool { name: "list_dir", doc: "list the files in a folder (~ is the home folder)", args: &[Arg { name: "path", kind: ArgKind::Text { max: 150 } }], kind: Kind::Read, risk: Risk::Safe, explore: true, run: |a| ext::list_dir(text(a, "path")?) },
-    Tool { name: "search_text", doc: "search INSIDE the user's files for words; use it for questions about their own information such as money, plans, passwords or dates", args: &[Arg { name: "query", kind: ArgKind::Text { max: 80 } }], kind: Kind::Read, risk: Risk::Safe, explore: true, run: |a| ext::search_text(text(a, "query")?) },
+    Tool { name: "search_text", doc: "search INSIDE the user's files for words, when they mention their files, notes or documents (money, plans, passwords, dates); for what the user told you, use recall", args: &[Arg { name: "query", kind: ArgKind::Text { max: 80 } }], kind: Kind::Read, risk: Risk::Safe, explore: true, run: |a| ext::search_text(text(a, "query")?) },
     Tool { name: "read_file", doc: "read a text file", args: &[Arg { name: "path", kind: ArgKind::Text { max: 150 } }], kind: Kind::Read, risk: Risk::Safe, explore: true, run: |a| ext::read_file(text(a, "path")?) },
     Tool { name: "write_file", doc: "create or replace a text file (asks the user first)", args: &[Arg { name: "path", kind: ArgKind::Text { max: 150 } }, Arg { name: "text", kind: ArgKind::Text { max: 1500 } }], kind: Kind::Act, risk: Risk::Confirm, explore: false, run: |a| ext::write_file(text(a, "path")?, text(a, "text")?) },
     Tool { name: "run_command", doc: "run a terminal command (asks the user first)", args: &[Arg { name: "command", kind: ArgKind::Text { max: 250 } }], kind: Kind::Act, risk: Risk::Confirm, explore: false, run: |a| ext::run_command(text(a, "command")?) },
     Tool { name: "web_search", doc: "search the web (needs internet access to be on)", args: &[Arg { name: "query", kind: ArgKind::Text { max: 120 } }], kind: Kind::Read, risk: Risk::Safe, explore: true, run: |a| ext::web_search(text(a, "query")?) },
     Tool { name: "web_fetch", doc: "read the text of a web page so you can tell the user what it says (needs internet access)", args: &[Arg { name: "url", kind: ArgKind::Text { max: 300 } }], kind: Kind::Read, risk: Risk::Safe, explore: true, run: |a| ext::web_fetch(text(a, "url")?) },
+    Tool { name: "remember", doc: "save a lasting fact about the user so it is remembered in later chats", args: &[Arg { name: "text", kind: ArgKind::Text { max: 250 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| remember(text(a, "text")?) },
+    Tool { name: "recall", doc: "look up what is remembered about the user on a topic", args: &[Arg { name: "query", kind: ArgKind::Text { max: 80 } }], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |a| recall(text(a, "query")?) },
+    Tool { name: "memories_list", doc: "show everything that is remembered about the user", args: &[], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |_| memories_list() },
+    Tool { name: "tags_list", doc: "show the tags that memories are filed under", args: &[], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |_| tags_list() },
+    Tool { name: "tag_add", doc: "add a memory tag, or more words for one; words are separated by commas", args: &[Arg { name: "name", kind: ArgKind::Text { max: 24 } }, Arg { name: "words", kind: ArgKind::Text { max: 120 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| tag_add(text(a, "name")?, text(a, "words")?) },
+    Tool { name: "forget", doc: "remove something that is remembered about the user (asks first)", args: &[Arg { name: "query", kind: ArgKind::Text { max: 80 } }], kind: Kind::Act, risk: Risk::Confirm, explore: false, run: |a| forget(text(a, "query")?) },
     Tool { name: "notes_list", doc: "show the saved notes", args: &[], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |_| notes_list() },
 ];
 
@@ -181,6 +187,14 @@ const EXAMPLES: &[(&str, &str)] = &[
     ("Which of my files mentions the passport number?", r#"[{"tool": "search_text", "args": {"query": "passport number"}}]"#),
     ("Search the web for rust tutorials.", r#"[{"tool": "web_search", "args": {"query": "rust tutorials"}}]"#),
     ("Read the page at https://example.org.", r#"[{"tool": "web_fetch", "args": {"url": "https://example.org"}}]"#),
+    ("Remember that my sister is called Mia.", r#"[{"tool": "remember", "args": {"text": "my sister is called Mia"}}]"#),
+    ("Look up what I told you about my allergies.", r#"[{"tool": "recall", "args": {"query": "allergies"}}]"#),
+    ("What do I like to drink?", r#"[{"tool": "recall", "args": {"query": "drink"}}]"#),
+    ("What is my dog called?", r#"[{"tool": "recall", "args": {"query": "dog"}}]"#),
+    ("What do you remember about me?", r#"[{"tool": "memories_list", "args": {}}]"#),
+    ("Which tags do you use for my memories?", r#"[{"tool": "tags_list", "args": {}}]"#),
+    ("Add a tag called gardening for plants and flowers.", r#"[{"tool": "tag_add", "args": {"name": "gardening", "words": "plants, flowers"}}]"#),
+    ("Forget that I work on Tuesdays.", r#"[{"tool": "forget", "args": {"query": "work on Tuesdays"}}]"#),
     ("Show me what I wrote down.", r#"[{"tool": "notes_list", "args": {}}]"#),
 ];
 
@@ -255,6 +269,48 @@ pub fn plan(model: &mut Model, template: BuiltinTemplate, request: &str, steps: 
     }
 }
 
+/// Ask the model to file a memory: up to three tags from the vocabulary and a
+/// summary of at most 90 characters (grammar-constrained, so it can only pick
+/// existing tags and never invents new ones).
+pub fn file_memory(model: &mut Model, template: BuiltinTemplate, text: &str) -> Result<(Vec<String>, String)> {
+    let mut tags: Vec<String> = crate::memory::vocabulary().into_iter().map(|(t, _)| t).collect();
+    tags.push(crate::memory::OTHER.into());
+    let options: Vec<String> = tags.iter().map(|t| format!("\"\\\"{t}\\\"\"")).collect();
+    let grammar = format!(
+        "root ::= \"{{\\\"tags\\\": [\" tag ( \", \" tag ){{0,2}} \"], \\\"summary\\\": \\\"\" [^\"\\\\\\n]{{1,90}} \"\\\"}}\"\ntag ::= {}\n",
+        options.join(" | ")
+    );
+    let messages = [
+        ChatMessage::new(
+            Role::System,
+            format!(
+                "You file notes about a user. Pick the 1 to 3 tags that fit best from: {}. Then write a summary of at most 90 characters that keeps the key facts (names, dates, numbers). Reply with JSON only.",
+                tags.join(", ")
+            ),
+        ),
+        ChatMessage::new(Role::User, text),
+    ];
+    let prompt = render_builtin(template, &messages, &[], true);
+    // SAFETY: llama_sampler_init_grammar parses the grammar during the call.
+    let g = unsafe { LlamaSampler::grammar(model.llama().model(), &grammar, "root") }.context("filing grammar rejected")?;
+    let greedy = LlamaSampler::greedy().context("greedy sampler")?;
+    let mut sampler = LlamaSampler::chain(vec![g, greedy], true).context("sampler chain")?;
+    let out = model.complete(Seq::Route, &prompt, &mut sampler, 120, &mut |_| {})?;
+    let v: Value = serde_json::from_str(out.trim()).with_context(|| format!("filing didn't parse: {out:?}"))?;
+    let picked: Vec<String> = v["tags"].as_array().map(|a| a.iter().filter_map(|t| t.as_str()).map(String::from).collect()).unwrap_or_default();
+    let mut unique: Vec<String> = Vec::new();
+    for t in picked {
+        if tags.contains(&t) && !unique.contains(&t) {
+            unique.push(t);
+        }
+    }
+    let summary = v["summary"].as_str().unwrap_or("").trim().to_string();
+    if unique.is_empty() || summary.is_empty() {
+        bail!("the filing was empty");
+    }
+    Ok((unique, summary))
+}
+
 /// A result trimmed to what fits in the next prompt.
 fn clip_result(text: &str) -> String {
     let t: String = text.chars().take(1200).collect();
@@ -269,6 +325,17 @@ pub fn is_done(call: &Value) -> bool {
 fn find(call: &Value) -> Option<&'static Tool> {
     let name = call["tool"].as_str()?;
     REGISTRY.iter().find(|t| t.name == name)
+}
+
+/// Does this call bring in text that someone else wrote (a web page, a file, the
+/// clipboard, command output)? Such text can contain instructions meant to trick the assistant.
+pub fn reads_untrusted(call: &Value) -> bool {
+    matches!(call["tool"].as_str(), Some("web_search" | "web_fetch" | "read_file" | "search_text" | "clipboard" | "run_command" | "find_files"))
+}
+
+/// Is this a call that saves something to long-term memory?
+pub fn writes_memory(call: &Value) -> bool {
+    call["tool"] == "remember"
 }
 
 /// Does this call explore (list, search, read), so its result may call for another step?
@@ -287,6 +354,12 @@ pub fn needs_confirmation(call: &Value) -> Option<Result<String>> {
     Some(match tool.name {
         "write_file" => ext::write_plan(args["path"].as_str().unwrap_or(""), args["text"].as_str().unwrap_or("")),
         "run_command" => Ok(format!("run this command in your home folder: {}", args["command"].as_str().unwrap_or(""))),
+        "forget" => crate::memory::forget_matches(args["query"].as_str().unwrap_or("")).and_then(|m| {
+            if m.len() > 5 {
+                anyhow::bail!("that matches {} memories; be more specific", m.len());
+            }
+            Ok(format!("forget: {}", m.iter().map(|x| format!("\"{}\"", x.text)).collect::<Vec<_>>().join(", ")))
+        }),
         other => Ok(format!("use {other}")),
     })
 }
@@ -382,6 +455,12 @@ const COMMANDS: &[(&str, &str, Option<&str>)] = &[
     ("run", "run_command", None),
     ("search", "web_search", None),
     ("grep", "search_text", None),
+    ("remember", "remember", None),
+    ("recall", "recall", None),
+    ("memories", "memories_list", None),
+    ("forget", "forget", None),
+    ("tags", "tags_list", None),
+    ("tag", "tag_add", None),
     ("fetch", "web_fetch", None),
 ];
 
@@ -416,6 +495,8 @@ pub fn command(line: &str) -> Option<Result<Vec<Value>, String>> {
     };
     let tool = REGISTRY.iter().find(|t| t.name == tool_name)?;
     let arg = if tool_name == "list_dir" && arg.is_empty() { "~" } else { arg };
+    // "/tag add gardening plants, flowers" reads naturally; the word "add" isn't part of the tag.
+    let arg = if tool_name == "tag_add" { arg.strip_prefix("add ").map_or(arg, str::trim_start) } else { arg };
     let mut args = serde_json::Map::new();
     if let Some(value) = fixed {
         args.insert(tool.args[0].name.into(), Value::String(value.into()));
@@ -668,6 +749,69 @@ fn notes_list() -> Result<String> {
     }
     let recent = &lines[lines.len().saturating_sub(10)..];
     Ok(format!("{} note(s), newest last:\n{}", lines.len(), recent.join("\n")))
+}
+
+fn remember(what: &str) -> Result<String> {
+    if dry_run() {
+        eprintln!("[dry run: remember {what:?}]");
+        return Ok("I'll remember that.".into());
+    }
+    let m = crate::memory::add(what)?;
+    Ok(format!("I'll remember that: {} (filed under {}; /forget #{} removes it).", m.text, m.tags.join(", "), m.id))
+}
+
+fn recall(query: &str) -> Result<String> {
+    let query = query.trim();
+    // "#3": the full text of one memory.
+    if let Some(id) = query.strip_prefix('#').and_then(|n| n.trim().parse::<u64>().ok()) {
+        let m = crate::memory::list().into_iter().find(|m| m.id == id).with_context(|| format!("I have no memory #{id}"))?;
+        return Ok(format!("#{} [{}]: {}", m.id, m.tags.join(", "), m.text));
+    }
+    let mut found: Vec<crate::memory::Memory> = Vec::new();
+    // A tag (or a word meaning one): everything filed under it.
+    if let Some(tag) = query.split_whitespace().find_map(crate::memory::tag_for_word).filter(|_| query.split_whitespace().count() <= 2) {
+        found.extend(crate::memory::with_tag(&tag));
+    }
+    for (_, m) in crate::memory::search(query, 6) {
+        if !found.iter().any(|f| f.id == m.id) {
+            found.push(m);
+        }
+    }
+    found.truncate(8);
+    if found.is_empty() {
+        return Ok(format!("I don't remember anything about {query:?}."));
+    }
+    let lines: Vec<String> = found.iter().map(|m| format!("#{} [{}]: {}", m.id, m.tags.join(", "), m.gist())).collect();
+    Ok(format!("What I remember:\n{}\n(Ask for #number to see the full text.)", lines.join("\n")))
+}
+
+fn tags_list() -> Result<String> {
+    let counts = crate::memory::tag_counts();
+    let used: Vec<String> = counts.iter().filter(|(_, n)| *n > 0).map(|(t, n)| format!("{t} ({n})")).collect();
+    let unused: Vec<&str> = counts.iter().filter(|(_, n)| *n == 0).map(|(t, _)| t.as_str()).collect();
+    Ok(format!("Memory tags in use: {}.\nAvailable: {}.", if used.is_empty() { "none yet".to_string() } else { used.join(", ") }, unused.join(", ")))
+}
+
+fn tag_add(name: &str, words: &str) -> Result<String> {
+    let words: Vec<String> = words.split([',', ' ']).filter(|w| !w.is_empty()).map(String::from).collect();
+    crate::memory::add_vocabulary(name, &words)?;
+    Ok(format!("Tag \"{}\" now covers: {}.", name.trim().to_lowercase(), if words.is_empty() { "(just its own name)".to_string() } else { words.join(", ") }))
+}
+
+fn memories_list() -> Result<String> {
+    let all = crate::memory::list();
+    if all.is_empty() {
+        return Ok("I don't have anything saved about you yet.".into());
+    }
+    let recent = &all[all.len().saturating_sub(25)..];
+    let lines: Vec<String> = recent.iter().map(|m| format!("#{} [{}]: {}", m.id, m.tags.join(", "), m.gist())).collect();
+    Ok(format!("{} thing(s) remembered{}:\n{}", all.len(), if all.len() > 25 { ", newest 25" } else { "" }, lines.join("\n")))
+}
+
+fn forget(query: &str) -> Result<String> {
+    let gone = crate::memory::forget(query)?;
+    let lines: Vec<String> = gone.iter().map(|m| m.text.clone()).collect();
+    Ok(format!("Forgotten: {}.", lines.join("; ")))
 }
 
 fn get_time() -> Result<String> {
@@ -1128,6 +1272,7 @@ mod tests {
         assert_eq!(call("/open Visual Studio Code"), json!({"tool": "open_app", "args": {"name": "Visual Studio Code"}}));
         assert_eq!(call("/open https://example.com"), json!({"tool": "open_url", "args": {"url": "https://example.com"}}));
         assert_eq!(call("/time"), json!({"tool": "get_time", "args": {}}));
+        assert_eq!(call("/tag add gardening plants, flowers"), json!({"tool": "tag_add", "args": {"name": "gardening", "words": "plants, flowers"}}));
         assert_eq!(call("/note buy oat milk"), json!({"tool": "note_add", "args": {"text": "buy oat milk"}}));
         assert!(command("hello").is_none());
         assert!(command("/volume").unwrap().unwrap_err().starts_with("Usage: /volume"));
