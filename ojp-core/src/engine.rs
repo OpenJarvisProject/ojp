@@ -81,10 +81,16 @@ pub struct Engine {
 impl Engine {
     pub fn new(config: &Config) -> Result<Engine> {
         let mut status = Vec::new();
+        // A probe router next to a main model only classifies, so it needs one short sequence.
+        // (Tool calls run on the main model when it is local; with a remote main they run on the router.)
+        let main_planned = config.models.main_url.is_none()
+            && config.models.main_enabled
+            && config.models.main.as_ref().is_some_and(|m| m.exists());
         let probe = config.models.router.as_ref().and_then(|r| crate::router::Probe::find(r, config.models.router_probe.as_deref()));
+        let light_router = probe.is_some() && main_planned;
         let mut load = |role: &str, path: &Option<std::path::PathBuf>| -> Option<Model> {
             let path = path.as_ref()?;
-            match Model::load(path, config.models.n_ctx, config.models.gpu_layers, role == "router" || config.models.low_memory, role == "router" && probe.is_some()) {
+            match Model::load(path, if role == "router" && light_router { 1024 } else { config.models.n_ctx }, config.models.gpu_layers, role == "router" || config.models.low_memory, role == "router" && probe.is_some(), role == "router" && light_router) {
                 Ok(model) => {
                     let name = path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into());
                     status.push(format!("{role}: {name}"));
@@ -147,15 +153,19 @@ impl Engine {
         };
         if let Some(model) = router_llm.as_mut() {
             let tool_prompt = tools::system_prompt();
-            let path = cache_path(config, config.models.router.as_deref(), &[&chat_prompt, &format!("{router_only}"), &tool_prompt]);
+            let path = cache_path(config, config.models.router.as_deref(), &[&chat_prompt, &format!("{router_only}{light_router}{}", router.has_probe()), &tool_prompt]);
             if path.as_ref().is_none_or(|p| model.load_cache(p).is_err()) {
                 let _ = router.classify(model, "hello");
                 // Evaluates the tool prompt once so the first tool call is fast.
-                let _ = tools::ask(model, template, "what time is it");
+                if !light_router {
+                    let _ = tools::ask(model, template, "what time is it");
+                }
                 if model.is_recurrent() {
                     // A recurrent model can't rewind: it snapshots where two prompts diverge.
                     let _ = router.classify(model, "what time is it");
-                    let _ = tools::ask(model, template, "hello");
+                    if !light_router {
+                        let _ = tools::ask(model, template, "hello");
+                    }
                 }
                 if router_only {
                     warm_chat(model);
@@ -172,10 +182,15 @@ impl Engine {
             let path = cache_path(config, config.models.main.as_deref(), &[&chat_prompt, &tool_prompt, "routes+tools"]);
             if path.as_ref().is_none_or(|p| model.load_cache(p).is_err()) {
                 warm_chat(model);
-                let _ = router.classify(model, "hello");
+                let routes_here = !(router.has_probe() && router_llm.is_some());
+                if routes_here {
+                    let _ = router.classify(model, "hello");
+                }
                 let _ = tools::ask(model, template, "what time is it");
                 if model.is_recurrent() {
-                    let _ = router.classify(model, "what time is it");
+                    if routes_here {
+                        let _ = router.classify(model, "what time is it");
+                    }
                     let _ = tools::ask(model, template, "hello");
                 }
                 if let Some(p) = &path {
@@ -257,9 +272,12 @@ impl Engine {
 
     fn route(&mut self, request: &str, on_event: &mut dyn FnMut(Event)) -> Route {
         let start = Instant::now();
-        // The in-process main model, when loaded, is far more accurate than the
-        // 0.5B router (measured with `ojp-cli route-eval` and `tool-eval`).
+        // A probe-equipped router is the most accurate and the fastest classifier
+        // (98% on held-out requests). Without one, the in-process main model, when
+        // loaded, is far more accurate than the small router answering for itself
+        // (measured with `ojp-cli route-eval` and `tool-eval`).
         let classifier = match (&mut self.router_llm, &mut self.main) {
+            (Some(model), _) if self.router.has_probe() => model,
             (_, Some(Main::Local(model))) | (Some(model), _) => model,
             (None, _) => return Route::AnswerDirectly,
         };

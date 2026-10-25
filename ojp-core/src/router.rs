@@ -155,6 +155,10 @@ impl Router {
         Router { grammar, template, probe: None }
     }
 
+    pub fn has_probe(&self) -> bool {
+        self.probe.is_some()
+    }
+
     pub fn with_probe(mut self, probe: Option<Probe>) -> Self {
         self.probe = probe;
         self

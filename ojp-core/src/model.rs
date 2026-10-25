@@ -44,6 +44,8 @@ pub struct Model {
     checkpoint: [Option<Checkpoint>; SEQS],
     /// Index (in the last decoded batch) of the logits of the last prompt token.
     logits_idx: i32,
+    /// One sequence and a small context: a probe router that sits beside a main model.
+    light: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -62,16 +64,19 @@ const END_MARKERS: [&str; 6] = ["<|endoftext|>", "<|im_end|>", "<|eot_id|>", "<|
 
 impl Model {
     /// `embeddings` keeps the last token's hidden state available (`last_hidden`).
+    /// `light` makes a router-only model: one sequence and `n_ctx` tokens of context
+    /// (every `Seq` then shares that one), which saves about 100 MB.
     /// `low_memory` trades about 10% speed for a few hundred MB less RAM: no repacked
     /// weight copies and small scratch buffers.
-    pub fn load(path: &Path, n_ctx: u32, gpu_layers: i32, low_memory: bool, embeddings: bool) -> Result<Model> {
+    pub fn load(path: &Path, n_ctx: u32, gpu_layers: i32, low_memory: bool, embeddings: bool, light: bool) -> Result<Model> {
         if !path.exists() {
             bail!("{} not found", path.display());
         }
         // Each sequence gets its own n_ctx: llama.cpp splits a non-unified KV
         // cache evenly between the n_seq_max sequences.
-        let mut params = LlamaParams::new(path).with_n_ctx(n_ctx * SEQS as u32).with_n_gpu_layers(gpu_layers);
-        params.context = params.context.with_n_seq_max(SEQS as u32);
+        let n_seq = if light { 1 } else { SEQS as u32 };
+        let mut params = LlamaParams::new(path).with_n_ctx(n_ctx * n_seq).with_n_gpu_layers(gpu_layers);
+        params.context = params.context.with_n_seq_max(n_seq);
         let ubatch = std::env::var("OJP_N_UBATCH").ok().and_then(|v| v.parse::<u32>().ok());
         if let Some(ub) = ubatch.or(low_memory.then_some(128)) {
             params.context = params.context.with_n_ubatch(ub);
@@ -108,6 +113,7 @@ impl Model {
             last_prompt: Default::default(),
             checkpoint: Default::default(),
             logits_idx: 0,
+            light,
         })
     }
 
@@ -138,6 +144,15 @@ impl Model {
 
     pub fn llama(&self) -> &Llama {
         &self.llama
+    }
+
+    /// The sequences this model actually has.
+    fn active(&self) -> &'static [Seq] {
+        if self.light { &ALL_SEQS[..1] } else { &ALL_SEQS }
+    }
+
+    fn norm(&self, seq: Seq) -> Seq {
+        if self.light { Seq::Route } else { seq }
     }
 
     /// True for models whose memory can't be rewound (see `recurrent`).
@@ -202,7 +217,7 @@ impl Model {
         out.extend_from_slice(&(header.len() as u64).to_le_bytes());
         out.extend_from_slice(&header);
         for seq in ALL_SEQS {
-            let blob = self.snapshot(seq);
+            let blob = if self.active().contains(&seq) { self.snapshot(seq) } else { Vec::new() };
             out.extend_from_slice(&(blob.len() as u64).to_le_bytes());
             out.extend_from_slice(&blob);
         }
@@ -242,6 +257,9 @@ impl Model {
                 let size = read_len(at)?;
                 let blob = bytes.get(at + 8..at + 8 + size).context("short cache file")?;
                 at += 8 + size;
+                if !self.active().contains(&seq) {
+                    continue;
+                }
                 let _ = self.llama.context().seq_rm(seq as i32, -1, -1);
                 // SAFETY: ctx is valid and blob is a slice of the stated length.
                 let loaded = unsafe { llama_crab_sys::llama_state_seq_set_data(ctx, blob.as_ptr(), blob.len(), seq as i32) };
@@ -263,7 +281,7 @@ impl Model {
             Ok(())
         })();
         if result.is_err() {
-            for seq in ALL_SEQS {
+            for &seq in self.active() {
                 self.reset(seq);
             }
         }
@@ -281,6 +299,7 @@ impl Model {
         max_tokens: usize,
         on_text: &mut dyn FnMut(&str),
     ) -> Result<String> {
+        let seq = self.norm(seq);
         let tokens = self.llama.model().tokenize(prompt, true, true)?;
         if tokens.is_empty() {
             bail!("empty prompt");
