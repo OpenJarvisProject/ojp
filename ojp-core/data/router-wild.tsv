@@ -1,0 +1,42 @@
+answer_directly	yo whats good
+answer_directly	lol that's hilarious, tell me another one
+answer_directly	who won the world cup in 2018
+answer_directly	explain to me like i'm five what a rainbow is
+answer_directly	bonjour, comment ça va ?
+answer_directly	ur really smart you know that
+answer_directly	what's the meaning of life
+answer_directly	do dogs dream?
+answer_directly	I just got a promotion!!
+answer_directly	whats the diffrence between a crocodile and an alligator
+answer_directly	can you recommend a good name for my cat
+answer_directly	I'm so tired today, long week
+coding	my for loop in python is giving me 'invalid syntax' pls help
+coding	how2 make a http server in node
+coding	whats a lambda
+coding	this regex isn't matching: ^[a-z]+$ against "Hello"
+coding	write me a quick script that backs up my folder with rsync
+coding	segfault in my c++ linked list after delete, any idea?
+coding	is it better to use tabs or spaces in python code?
+coding	explain big O notation with an example in code
+coding	what's wrong with: SELECT * FROM users WHERE name = ;
+coding	make a react hook that debounces a value
+reasoning	i've got 3 weeks to get in shape for a wedding, what should my plan look like
+reasoning	if i invest 200 a month at 7% how much will i have in 10 years
+reasoning	help me figure out whether to quit my job to freelance
+reasoning	which is better value, the 12 oz for $2.40 or the 20 oz for $3.60? show me
+reasoning	my team keeps missing deadlines, how should i diagnose why
+reasoning	make a plan for cleaning my whole house in a weekend
+reasoning	is it smarter to pay off a 5% loan early or invest the money
+reasoning	i need to decide between 3 apartments, here are the pros and cons of each...
+device_control	timer 5 min
+device_control	turn it up a bit
+device_control	pls open spotify
+device_control	whats my battery at
+device_control	remind me in an hour to move the laundry
+device_control	what's 18% tip on $64
+device_control	write down: call the plumber thursday
+device_control	switch off wifi
+device_control	what files do i have in downloads
+device_control	skip
+device_control	google cheap flights to lisbon
+device_control	remember i'm allergic to shellfish

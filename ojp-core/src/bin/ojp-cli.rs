@@ -684,6 +684,17 @@ fn main() -> anyhow::Result<()> {
                 [_, model] => (model, &ROUTER_CASES),
                 [_, model, flag] if flag == "--dev" => (model, &DEV_CASES),
                 [_, model, flag] if flag == "--xl" => (model, &XL_CASES),
+                [_, model, path] if !path.starts_with("--") && std::path::Path::new(path).exists() => {
+                    // A label<TAB>request file: leak the parsed cases so they live as long as the set arrays do.
+                    let parsed: Vec<(&'static str, Route)> = std::fs::read_to_string(path)?
+                        .lines()
+                        .filter_map(|l| {
+                            let (label, text) = l.split_once('\t')?;
+                            Some((&*Box::leak(text.to_string().into_boxed_str()), Route::ALL.into_iter().find(|r| r.label() == label)?))
+                        })
+                        .collect();
+                    (model, Box::leak(parsed.into_boxed_slice()))
+                }
                 _ => anyhow::bail!("usage: ojp-core route-eval <model.gguf> [--dev|--xl]"),
             };
             let mut model = load_cached(model)?;
