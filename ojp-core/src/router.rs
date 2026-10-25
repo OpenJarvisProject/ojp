@@ -6,7 +6,7 @@
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
-use llama_crab::chat::template::{BuiltinTemplate, render_builtin};
+use crate::template::Template;
 use llama_crab::{ChatMessage, LlamaSampler, Role};
 
 use crate::model::{Model, Seq};
@@ -96,11 +96,11 @@ pub struct Decision {
 /// device) can do the routing.
 pub struct Router {
     grammar: String,
-    template: BuiltinTemplate,
+    template: Template,
 }
 
 impl Router {
-    pub fn new(template: BuiltinTemplate) -> Self {
+    pub fn new(template: Template) -> Self {
         let alternatives: Vec<String> = Route::ALL.iter().map(|r| format!("\"{}\"", r.label())).collect();
         let grammar = format!("root ::= {}\n", alternatives.join(" | "));
         Router { grammar, template }
@@ -119,7 +119,7 @@ impl Router {
             }
         }
         messages.push(ChatMessage::new(Role::User, request));
-        let prompt = render_builtin(self.template, &messages, &[], true);
+        let prompt = self.template.render(&messages, true);
 
         // Grammar first, then greedy: greedy picks the most likely token
         // among those the grammar still allows.

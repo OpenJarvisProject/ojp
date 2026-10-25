@@ -13,8 +13,7 @@
 use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
-use llama_crab::chat::BuiltinTemplate;
-use llama_crab::chat::template::render_builtin;
+use crate::template::Template;
 use llama_crab::high_level::completion::SamplingOptions;
 use llama_crab::{ChatMessage, Role};
 use serde_json::{Value, json};
@@ -70,7 +69,7 @@ pub struct Engine {
     router_llm: Option<Model>,
     main: Option<Main>,
     router: Router,
-    template: BuiltinTemplate,
+    template: Template,
     system_prompt: String,
     history: Vec<ChatMessage>,
     /// An action waiting for the user's yes or no.
@@ -138,7 +137,7 @@ impl Engine {
         // evaluates the system prompt (which also pages its memory-mapped
         // weights in). The resulting KV cache is saved next to the models
         // and restored on later starts instead of being recomputed.
-        let chat_prompt = render_builtin(template, &[ChatMessage::new(Role::System, system_prompt.clone())], &[], false);
+        let chat_prompt = template.render(&[ChatMessage::new(Role::System, system_prompt.clone())], false);
         let router_only = main.is_none();
         let warm_chat = |model: &mut Model| {
             if let Ok(mut sampler) = llama_crab::LlamaSampler::greedy().context("greedy") {
@@ -152,6 +151,11 @@ impl Engine {
                 let _ = router.classify(model, "hello");
                 // Evaluates the tool prompt once so the first tool call is fast.
                 let _ = tools::ask(model, template, "what time is it");
+                if model.is_recurrent() {
+                    // A recurrent model can't rewind: it snapshots where two prompts diverge.
+                    let _ = router.classify(model, "what time is it");
+                    let _ = tools::ask(model, template, "hello");
+                }
                 if router_only {
                     warm_chat(model);
                 }
@@ -169,6 +173,10 @@ impl Engine {
                 warm_chat(model);
                 let _ = router.classify(model, "hello");
                 let _ = tools::ask(model, template, "what time is it");
+                if model.is_recurrent() {
+                    let _ = router.classify(model, "what time is it");
+                    let _ = tools::ask(model, template, "hello");
+                }
                 if let Some(p) = &path {
                     let _ = model.save_cache(p);
                 }
@@ -484,13 +492,13 @@ impl Engine {
 
 fn generate_local(
     model: &mut Model,
-    template: BuiltinTemplate,
+    template: Template,
     messages: &[ChatMessage],
     on_event: &mut dyn FnMut(Event),
 ) -> Result<String> {
     // The rendered history only grows at the end between turns, so the
     // prompt cache makes each turn evaluate just the newest messages.
-    let prompt = render_builtin(template, messages, &[], true);
+    let prompt = template.render(messages, true);
     let mut sampler = SamplingOptions::chat().build_sampler(model.llama())?;
     let text = model.complete(Seq::Chat, &prompt, &mut sampler, MAX_TOKENS, &mut |t| on_event(Event::Token(t.to_string())))?;
     Ok(text.trim().to_string())

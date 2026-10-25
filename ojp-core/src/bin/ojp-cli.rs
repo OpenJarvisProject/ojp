@@ -9,7 +9,7 @@
 //!   ojp-cli download [config.toml]           fetch missing models
 use std::io::Write;
 
-use llama_crab::chat::BuiltinTemplate;
+use ojp_core::template::Template;
 use llama_crab::{Llama, LlamaParams};
 use ojp_core::router::Router;
 use ojp_core::{Config, Engine, Event, Route};
@@ -198,7 +198,7 @@ fn main() -> anyhow::Result<()> {
                 anyhow::bail!("usage: ojp-core route <model.gguf> \"<request>\"");
             };
             let mut model = load_cached(model)?;
-            let d = Router::new(BuiltinTemplate::ChatMl).classify(&mut model, request)?;
+            let d = Router::new(Template::from_env()).classify(&mut model, request)?;
             println!("{} ({} ms)", d.route.label(), d.elapsed.as_millis());
         }
         Some("chat") => {
@@ -229,7 +229,7 @@ fn main() -> anyhow::Result<()> {
             // Actions are only printed, never run.
             unsafe { std::env::set_var("OJP_TOOLS_DRY_RUN", "1") };
             let mut model = load_cached(model_path)?;
-            let router = Router::new(BuiltinTemplate::ChatMl);
+            let router = Router::new(Template::from_env());
             for (set_name, cases) in [("SEEN (tuned against)", TOOL_CASES), ("UNSEEN (written after tuning)", TOOL_CASES_UNSEEN)] {
             println!("\n=== {set_name} ===");
             let (mut routed, mut chose, mut args_ok, mut full, mut total_ms) = (0, 0, 0, 0, 0u128);
@@ -237,7 +237,7 @@ fn main() -> anyhow::Result<()> {
             for (request, tool, check) in cases {
                 let start = std::time::Instant::now();
                 let route_ok = router.classify(&mut model, request).map(|d| d.route == Route::DeviceControl).unwrap_or(false);
-                let call = ojp_core::tools::ask(&mut model, BuiltinTemplate::ChatMl, request).map(|c| c.into_iter().next().unwrap_or_default());
+                let call = ojp_core::tools::ask(&mut model, Template::from_env(), request).map(|c| c.into_iter().next().unwrap_or_default());
                 total_ms += start.elapsed().as_millis();
                 let (tool_ok, detail) = match &call {
                     Err(e) => (false, format!("{e:#}")),
@@ -274,7 +274,7 @@ fn main() -> anyhow::Result<()> {
                 println!("\n=== MULTI-STEP and reminders (unseen) ===");
                 let mut ok = 0;
                 for (request, expected) in TOOL_CASES_MULTI {
-                    let got: Vec<String> = ojp_core::tools::ask(&mut model, BuiltinTemplate::ChatMl, request)
+                    let got: Vec<String> = ojp_core::tools::ask(&mut model, Template::from_env(), request)
                         .map(|calls| calls.iter().map(|c| c["tool"].as_str().unwrap_or("?").to_string()).collect())
                         .unwrap_or_default();
                     let pass = got.iter().map(String::as_str).eq(expected.iter().copied());
@@ -444,7 +444,7 @@ fn main() -> anyhow::Result<()> {
                 _ => anyhow::bail!("usage: ojp-core route-eval <model.gguf> [--dev]"),
             };
             let mut model = load_cached(model)?;
-            let router = Router::new(BuiltinTemplate::ChatMl);
+            let router = Router::new(Template::from_env());
             let (mut passed, mut total_ms) = (0, 0);
             for &(request, expected) in cases {
                 let d = match router.classify(&mut model, request) {

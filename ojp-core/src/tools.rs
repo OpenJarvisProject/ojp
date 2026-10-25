@@ -15,8 +15,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
-use llama_crab::chat::BuiltinTemplate;
-use llama_crab::chat::template::render_builtin;
+use crate::template::Template;
 use llama_crab::{ChatMessage, LlamaSampler, Role};
 use serde_json::Value;
 
@@ -223,13 +222,13 @@ pub struct Step {
 }
 
 /// Ask the model for the first one to three tool calls (grammar-constrained).
-pub fn ask(model: &mut Model, template: BuiltinTemplate, request: &str) -> Result<Vec<Value>> {
+pub fn ask(model: &mut Model, template: Template, request: &str) -> Result<Vec<Value>> {
     plan(model, template, request, &[])
 }
 
 /// Ask the model what to do next, given what earlier steps found. After the
 /// first step it may also answer `done`.
-pub fn plan(model: &mut Model, template: BuiltinTemplate, request: &str, steps: &[Step]) -> Result<Vec<Value>> {
+pub fn plan(model: &mut Model, template: Template, request: &str, steps: &[Step]) -> Result<Vec<Value>> {
     let with_done = !steps.is_empty();
     let mut messages = vec![ChatMessage::new(Role::System, system_prompt_for(with_done))];
     for (user, calls) in EXAMPLES {
@@ -257,7 +256,7 @@ pub fn plan(model: &mut Model, template: BuiltinTemplate, request: &str, steps: 
             format!("Results:\n{}\n{NEXT}", results.join("\n")),
         ));
     }
-    let prompt = render_builtin(template, &messages, &[], true);
+    let prompt = template.render(&messages, true);
     // SAFETY: llama_sampler_init_grammar parses the grammar during the call.
     let grammar = unsafe { LlamaSampler::grammar(model.llama().model(), &grammar(with_done), "root") }.context("tool grammar rejected")?;
     let greedy = LlamaSampler::greedy().context("greedy sampler")?;
@@ -272,7 +271,7 @@ pub fn plan(model: &mut Model, template: BuiltinTemplate, request: &str, steps: 
 /// Ask the model to file a memory: up to three tags from the vocabulary and a
 /// summary of at most 90 characters (grammar-constrained, so it can only pick
 /// existing tags and never invents new ones).
-pub fn file_memory(model: &mut Model, template: BuiltinTemplate, text: &str) -> Result<(Vec<String>, String)> {
+pub fn file_memory(model: &mut Model, template: Template, text: &str) -> Result<(Vec<String>, String)> {
     let mut tags: Vec<String> = crate::memory::vocabulary().into_iter().map(|(t, _)| t).collect();
     tags.push(crate::memory::OTHER.into());
     let options: Vec<String> = tags.iter().map(|t| format!("\"\\\"{t}\\\"\"")).collect();
@@ -290,7 +289,7 @@ pub fn file_memory(model: &mut Model, template: BuiltinTemplate, text: &str) -> 
         ),
         ChatMessage::new(Role::User, text),
     ];
-    let prompt = render_builtin(template, &messages, &[], true);
+    let prompt = template.render(&messages, true);
     // SAFETY: llama_sampler_init_grammar parses the grammar during the call.
     let g = unsafe { LlamaSampler::grammar(model.llama().model(), &grammar, "root") }.context("filing grammar rejected")?;
     let greedy = LlamaSampler::greedy().context("greedy sampler")?;

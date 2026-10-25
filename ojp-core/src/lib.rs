@@ -16,6 +16,7 @@ pub mod model;
 pub mod reminders;
 pub mod router;
 pub mod storage;
+pub mod template;
 pub mod tools;
 pub mod tools_ext;
 pub mod tts;

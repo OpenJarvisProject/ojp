@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use llama_crab::chat::BuiltinTemplate;
+use crate::template::Template;
 use serde::Deserialize;
 
 pub const DEFAULT_CONFIG: &str = r#"# OpenJarvisProject (ojp) configuration.
@@ -40,7 +40,8 @@ n_ctx = 4096
 # Where models/ lives. On Android this is set when you pick phone storage
 # or SD card at download time; unset means the app's data directory.
 # location = "/path/to/dir"
-# Prompt format of the models: chatml (Qwen and most others), llama3,
+# Prompt format of the models: chatml (Qwen and most others), chatml-nothink
+# (Qwen3.5: thinking off), llama3,
 # mistral, gemma, phi3.
 chat_template = "chatml"
 
@@ -343,15 +344,9 @@ impl Config {
         }
     }
 
-    pub fn template(&self) -> Result<BuiltinTemplate> {
-        Ok(match self.models.chat_template.to_lowercase().as_str() {
-            "chatml" => BuiltinTemplate::ChatMl,
-            "llama3" => BuiltinTemplate::Llama3,
-            "mistral" => BuiltinTemplate::MistralInstruct,
-            "gemma" => BuiltinTemplate::Gemma,
-            "phi3" => BuiltinTemplate::Phi3,
-            other => anyhow::bail!("unknown chat_template {other:?}"),
-        })
+    pub fn template(&self) -> Result<Template> {
+        Template::named(&self.models.chat_template)
+            .ok_or_else(|| anyhow::anyhow!("unknown chat_template {:?}", self.models.chat_template))
     }
 }
 
@@ -365,7 +360,7 @@ mod tests {
         assert_eq!(c.persona.name, "Jarvis");
         assert_eq!(c.models.router.as_deref(), Some(Path::new("models/router.gguf")));
         assert_eq!(c.models.main_url, None);
-        assert!(matches!(c.template().unwrap(), BuiltinTemplate::ChatMl));
+        assert!(c.template().unwrap() == Template::CHATML);
     }
 
     #[test]

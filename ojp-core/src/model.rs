@@ -35,6 +35,18 @@ pub struct Model {
     /// chat formats that exist in this vocabulary as single tokens.
     eog: Vec<LlamaToken>,
     n_ctx: usize,
+    /// Recurrent or hybrid architecture (Qwen3.5, Mamba, ...): its memory
+    /// can't be trimmed back to an earlier position, only restored whole.
+    recurrent: bool,
+    /// Per sequence, for recurrent models: the last prompt evaluated, and a
+    /// snapshot of the state at the longest prefix it shared with the one before.
+    last_prompt: [Vec<LlamaToken>; SEQS],
+    checkpoint: [Option<Checkpoint>; SEQS],
+}
+
+struct Checkpoint {
+    tokens: Vec<LlamaToken>,
+    state: Vec<u8>,
 }
 
 const END_MARKERS: [&str; 6] = ["<|endoftext|>", "<|im_end|>", "<|eot_id|>", "<|end|>", "<end_of_turn>", "</s>"];
@@ -59,16 +71,60 @@ impl Model {
                 eog.push(token);
             }
         }
-        Ok(Model { llama, cached: Default::default(), eog, n_ctx: n_ctx as usize })
+        let recurrent = vocab.is_recurrent() || vocab.is_hybrid();
+        Ok(Model {
+            llama,
+            cached: Default::default(),
+            eog,
+            n_ctx: n_ctx as usize,
+            recurrent,
+            last_prompt: Default::default(),
+            checkpoint: Default::default(),
+        })
     }
 
     pub fn llama(&self) -> &Llama {
         &self.llama
     }
 
+    /// True for models whose memory can't be rewound (see `recurrent`).
+    pub fn is_recurrent(&self) -> bool {
+        self.recurrent
+    }
+
+    fn snapshot(&mut self, seq: Seq) -> Vec<u8> {
+        let ctx = self.llama.context().raw_handle();
+        // SAFETY: ctx is valid for the call; the buffer has the size llama.cpp asked for.
+        unsafe {
+            let size = llama_crab_sys::llama_state_seq_get_size(ctx, seq as i32);
+            let mut buf = vec![0_u8; size];
+            let written = llama_crab_sys::llama_state_seq_get_data(ctx, buf.as_mut_ptr(), size, seq as i32);
+            buf.truncate(written);
+            buf
+        }
+    }
+
+    fn restore(&mut self, seq: Seq) -> bool {
+        let Some(cp) = &self.checkpoint[seq as usize] else { return false };
+        let ctx = self.llama.context().raw_handle();
+        let _ = self.llama.context().seq_rm(seq as i32, -1, -1);
+        // SAFETY: ctx is valid and the blob is a slice of the stated length.
+        let loaded = unsafe { llama_crab_sys::llama_state_seq_set_data(ctx, cp.state.as_ptr(), cp.state.len(), seq as i32) };
+        if loaded == 0 {
+            self.checkpoint[seq as usize] = None;
+            self.reset(seq);
+            return false;
+        }
+        self.cached[seq as usize] = cp.tokens.clone();
+        true
+    }
+
     /// Save the KV cache (all sequences) and the token lists describing it,
     /// so a later start can skip re-evaluating the same warm-up prompts.
     pub fn save_cache(&mut self, path: &Path) -> Result<()> {
+        if self.recurrent {
+            return Ok(()); // restored caches carry no checkpoints; warming up again is cheap
+        }
         // One state blob per sequence (llama_state_seq_*): the whole-context
         // state restores the two sequences' cells wrongly, which made the
         // first request after a restart misroute when it matched the warm-up.
@@ -103,6 +159,9 @@ impl Model {
     /// (the caller keys the file name). On any error the model is left with
     /// an empty cache, which is always correct, just slower.
     pub fn load_cache(&mut self, path: &Path) -> Result<()> {
+        if self.recurrent {
+            bail!("recurrent models are warmed up at every start");
+        }
         let result = (|| -> Result<()> {
             let bytes = std::fs::read(path)?;
             let read_len = |at: usize| -> Result<usize> {
@@ -169,6 +228,10 @@ impl Model {
     fn reset(&mut self, seq: Seq) {
         let _ = self.llama.context().seq_rm(seq as i32, -1, -1);
         self.cached[seq as usize].clear();
+        if self.recurrent {
+            self.last_prompt[seq as usize].clear();
+            self.checkpoint[seq as usize] = None;
+        }
     }
 
     fn generate(
@@ -183,17 +246,52 @@ impl Model {
         // prompt token: its logits are what the first sample is drawn from.
         let id = seq as i32;
         let common = self.cached[seq as usize].iter().zip(tokens).take_while(|(a, b)| a == b).count();
-        let keep = common.min(tokens.len() - 1);
-        if self.llama.context().seq_rm(id, keep as i32, -1).is_err() {
-            self.reset(seq);
+        let mut checkpoint_at = None;
+        let keep = if self.recurrent {
+            // The memory can't be trimmed, so continue from what is cached
+            // only when it is entirely a prefix of the new prompt; otherwise
+            // go back to the snapshot, or to nothing.
+            let cached_len = self.cached[seq as usize].len();
+            if common == cached_len && cached_len < tokens.len() {
+                cached_len
+            } else {
+                let usable = self.checkpoint[seq as usize]
+                    .as_ref()
+                    .is_some_and(|cp| cp.tokens.len() < tokens.len() && tokens.starts_with(&cp.tokens));
+                if !(usable && self.restore(seq)) {
+                    self.reset(seq);
+                }
+                self.cached[seq as usize].len()
+            }
+        } else {
+            let keep = common.min(tokens.len() - 1);
+            if self.llama.context().seq_rm(id, keep as i32, -1).is_err() {
+                self.reset(seq);
+            }
+            let keep = keep.min(self.cached[seq as usize].len());
+            self.cached[seq as usize].truncate(keep);
+            keep
+        };
+        if self.recurrent {
+            // Where this prompt departs from the previous one is where the
+            // next one will probably depart too: snapshot the state there.
+            let shared = self.last_prompt[seq as usize].iter().zip(tokens).take_while(|(a, b)| a == b).count();
+            let at = shared.min(tokens.len() - 1);
+            if at > keep && self.checkpoint[seq as usize].as_ref().is_none_or(|cp| cp.tokens.len() != at) {
+                checkpoint_at = Some(at);
+            }
+            self.last_prompt[seq as usize] = tokens.to_vec();
         }
-        let keep = keep.min(self.cached[seq as usize].len());
-        self.cached[seq as usize].truncate(keep);
 
         let n_batch = self.llama.context().n_batch() as usize;
         let mut logits_idx = 0;
-        for start in (keep..tokens.len()).step_by(n_batch.max(1)) {
-            let chunk = &tokens[start..(start + n_batch).min(tokens.len())];
+        let mut start = keep;
+        while start < tokens.len() {
+            let mut end = (start + n_batch).min(tokens.len());
+            if let Some(at) = checkpoint_at.filter(|&at| start < at && at < end) {
+                end = at;
+            }
+            let chunk = &tokens[start..end];
             // Capacity 1 sequence id per token: llama-crab marks every token as
             // belonging to that many sequences, so a larger capacity would tie
             // each token to sequence 0 too ("coupled sequences" in llama.cpp).
@@ -205,6 +303,11 @@ impl Model {
             self.llama.context().decode(&batch)?;
             self.cached[seq as usize].extend_from_slice(chunk);
             logits_idx = chunk.len() as i32 - 1;
+            start = end;
+            if checkpoint_at == Some(start) {
+                let state = self.snapshot(seq);
+                self.checkpoint[seq as usize] = Some(Checkpoint { tokens: tokens[..start].to_vec(), state });
+            }
         }
 
         let mut text = String::new();
