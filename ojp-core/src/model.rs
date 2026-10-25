@@ -44,6 +44,13 @@ pub struct Model {
     checkpoint: [Option<Checkpoint>; SEQS],
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CacheHeader {
+    cached: Vec<Vec<i32>>,
+    last_prompt: Vec<Vec<i32>>,
+    checkpoint: Vec<Option<Vec<i32>>>,
+}
+
 struct Checkpoint {
     tokens: Vec<LlamaToken>,
     state: Vec<u8>,
@@ -140,9 +147,13 @@ impl Model {
             eprintln!("cache: restoring checkpoint of {} tokens ({} bytes)", cp.tokens.len(), cp.state.len());
         }
         let ctx = self.llama.context().raw_handle();
+        let t = std::time::Instant::now();
         let _ = self.llama.context().seq_rm(seq as i32, -1, -1);
         // SAFETY: ctx is valid and the blob is a slice of the stated length.
         let loaded = unsafe { llama_crab_sys::llama_state_seq_set_data(ctx, cp.state.as_ptr(), cp.state.len(), seq as i32) };
+        if std::env::var_os("OJP_DEBUG_CACHE").is_some() {
+            eprintln!("cache: restore took {} ms", t.elapsed().as_millis());
+        }
         if loaded == 0 {
             if std::env::var_os("OJP_DEBUG_CACHE").is_some() {
                 eprintln!("cache: restore failed");
@@ -158,29 +169,32 @@ impl Model {
     /// Save the KV cache (all sequences) and the token lists describing it,
     /// so a later start can skip re-evaluating the same warm-up prompts.
     pub fn save_cache(&mut self, path: &Path) -> Result<()> {
-        if self.recurrent {
-            return Ok(()); // restored caches carry no checkpoints; warming up again is cheap
-        }
         // One state blob per sequence (llama_state_seq_*): the whole-context
         // state restores the two sequences' cells wrongly, which made the
         // first request after a restart misroute when it matched the warm-up.
-        let tokens: Vec<Vec<i32>> = self.cached.iter().map(|seq| seq.iter().map(|t| t.raw()).collect()).collect();
-        let header = serde_json::to_vec(&tokens)?;
+        let header = CacheHeader {
+            cached: self.cached.iter().map(|seq| seq.iter().map(|t| t.raw()).collect()).collect(),
+            last_prompt: self.last_prompt.iter().map(|seq| seq.iter().map(|t| t.raw()).collect()).collect(),
+            checkpoint: self
+                .checkpoint
+                .iter()
+                .map(|cp| cp.as_ref().map(|cp| cp.tokens.iter().map(|t| t.raw()).collect()))
+                .collect(),
+        };
+        let header = serde_json::to_vec(&header)?;
         let mut out = Vec::new();
         out.extend_from_slice(&(header.len() as u64).to_le_bytes());
         out.extend_from_slice(&header);
-        let ctx = self.llama.context().raw_handle();
         for seq in ALL_SEQS {
-            // SAFETY: ctx is valid for the call; the buffer has the size llama.cpp asked for.
-            let blob = unsafe {
-                let size = llama_crab_sys::llama_state_seq_get_size(ctx, seq as i32);
-                let mut buf = vec![0_u8; size];
-                let written = llama_crab_sys::llama_state_seq_get_data(ctx, buf.as_mut_ptr(), size, seq as i32);
-                buf.truncate(written);
-                buf
-            };
+            let blob = self.snapshot(seq);
             out.extend_from_slice(&(blob.len() as u64).to_le_bytes());
             out.extend_from_slice(&blob);
+        }
+        // Recurrent models' snapshots, one blob per sequence (empty when none).
+        for cp in &self.checkpoint {
+            let blob: &[u8] = cp.as_ref().map_or(&[], |cp| &cp.state);
+            out.extend_from_slice(&(blob.len() as u64).to_le_bytes());
+            out.extend_from_slice(blob);
         }
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
@@ -195,9 +209,6 @@ impl Model {
     /// (the caller keys the file name). On any error the model is left with
     /// an empty cache, which is always correct, just slower.
     pub fn load_cache(&mut self, path: &Path) -> Result<()> {
-        if self.recurrent {
-            bail!("recurrent models are warmed up at every start");
-        }
         let result = (|| -> Result<()> {
             let bytes = std::fs::read(path)?;
             let read_len = |at: usize| -> Result<usize> {
@@ -205,9 +216,9 @@ impl Model {
             };
             let len = read_len(0)?;
             let header = bytes.get(8..8 + len).context("short cache file")?;
-            let tokens: Vec<Vec<i32>> = serde_json::from_slice(header)?;
-            if tokens.len() != SEQS {
-                bail!("cache has {} sequences, expected {SEQS}", tokens.len());
+            let header: CacheHeader = serde_json::from_slice(header)?;
+            if header.cached.len() != SEQS || header.last_prompt.len() != SEQS || header.checkpoint.len() != SEQS {
+                bail!("cache has the wrong number of sequences, expected {SEQS}");
             }
             let ctx = self.llama.context().raw_handle();
             let mut at = 8 + len;
@@ -218,12 +229,20 @@ impl Model {
                 let _ = self.llama.context().seq_rm(seq as i32, -1, -1);
                 // SAFETY: ctx is valid and blob is a slice of the stated length.
                 let loaded = unsafe { llama_crab_sys::llama_state_seq_set_data(ctx, blob.as_ptr(), blob.len(), seq as i32) };
-                if loaded == 0 && !tokens[seq as usize].is_empty() {
+                if loaded == 0 && !header.cached[seq as usize].is_empty() {
                     bail!("llama.cpp rejected the saved state");
                 }
             }
-            for (seq, toks) in self.cached.iter_mut().zip(tokens) {
-                *seq = toks.into_iter().map(LlamaToken::from).collect();
+            let tokens = |raw: &[i32]| raw.iter().map(|&t| LlamaToken::from(t)).collect::<Vec<_>>();
+            for (i, cp_tokens) in header.checkpoint.iter().enumerate() {
+                let size = read_len(at)?;
+                let blob = bytes.get(at + 8..at + 8 + size).context("short cache file")?;
+                at += 8 + size;
+                self.checkpoint[i] = cp_tokens.as_ref().map(|t| Checkpoint { tokens: tokens(t), state: blob.to_vec() });
+            }
+            for i in 0..SEQS {
+                self.cached[i] = tokens(&header.cached[i]);
+                self.last_prompt[i] = tokens(&header.last_prompt[i]);
             }
             Ok(())
         })();
@@ -253,7 +272,11 @@ impl Model {
         if tokens.len() + max_tokens > self.n_ctx {
             bail!("prompt of {} tokens + {max_tokens} to generate exceeds the {}-token context", tokens.len(), self.n_ctx);
         }
+        let started = std::time::Instant::now();
         let result = self.generate(seq, &tokens, sampler, max_tokens, on_text);
+        if std::env::var_os("OJP_DEBUG_CACHE").is_some() {
+            eprintln!("cache: seq {} total {} ms", seq as i32, started.elapsed().as_millis());
+        }
         if result.is_err() {
             // Unknown KV state after a failed decode: start clean next time.
             self.reset(seq);
