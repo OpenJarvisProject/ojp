@@ -80,7 +80,8 @@ impl Model {
         let mut params = LlamaParams::new(path).with_n_ctx(n_ctx * n_seq).with_n_gpu_layers(gpu_layers);
         params.context = params.context.with_n_seq_max(n_seq);
         let ubatch = std::env::var("OJP_N_UBATCH").ok().and_then(|v| v.parse::<u32>().ok());
-        if let Some(ub) = ubatch.or(low_memory.then_some(128)) {
+        // A light (classify-only) router reads about 60 tokens per request, so its scratch buffers can be tiny.
+        if let Some(ub) = ubatch.or(if light { Some(32) } else { low_memory.then_some(128) }) {
             params.context = params.context.with_n_ubatch(ub);
         }
         // Hidden states are switched on only around `last_hidden`: with them on, llama.cpp

@@ -1,0 +1,1149 @@
+reasoning	Create a schedule 2 learn Fench in six months.
+coding	ok debug: my Go program fails to compile now
+reasoning	Hey jarvis, make a scedule for a vegetarian meal plan for a week now
+answer_directly	whats the huan heart
+reasoning	comapre solar panels with a big city
+reasoning	please should i go back to school or sell my old car? think it through 4 me
+device_control	Run the command whoami!
+device_control	Ok delete draft.txt please
+coding	Convert this loop to a one-liner in Rust
+reasoning	Plan a birthday party for twelve kids on a small budget.
+coding	Fix this typescript snippet that leaks memry
+device_control	pls how much storage is left pls
+device_control	set a timer for 15 sceonds
+answer_directly	Ok you're awesome please
+answer_directly	Where is electriciity
+coding	Give me a Python one-liner to flatten a nested list.
+answer_directly	Do you ever get tired
+reasoning	walk me through deciding whether 2 adopt a cat
+coding	Convert this SQL query 2 use a JION instead of a subquery.
+answer_directly	Who knows about honey bees
+coding	Fix the bug in this JavaScript: for (i = 0; i < arr.length; i--) {}
+reasoning	compare public transport vs driving with buying
+device_control	Look up how to bke sourdough online
+answer_directly	I want u 2 tell me about mars?
+device_control	google cheap flights 2 rome
+device_control	Turn the volume doown a lot
+coding	waht's the difference between a list and a tuple in python
+reasoning	Hellp me plan a weekend trip to the coast
+answer_directly	Ok tell me about rainbows?
+reasoning	Plase should i sell my old car or lease a car? think it through
+reasoning	i have two kids and one is a boy; whats the chance the other is a boy? reason it out
+coding	Fix this TypeScript snippet that gives an off-by-one result
+device_control	what time is it in Sdyney
+coding	Fix this Kotlin snippet that gives an off--by-one reesult
+device_control	Loctae my invoices folder
+reasoning	Walk me through deciding whether to adopt a cat
+coding	would u explain inheritance in php!
+device_control	Please loook up movie showtimes tonight online pls
+device_control	can you mute the sound for me
+answer_directly	What do pandas eat?
+reasoning	I want you to make a schedule for a vegetarian meal pllan for a week
+device_control	Set the volume to 20 percent.
+answer_directly	Tell me about the Roman Empire in a sentence.
+answer_directly	Where is the human heart
+coding	Why does my Bash code leaks memory
+coding	I want you to convert this loop to a one-liner in Go for me
+device_control	ok set brightness 2 35
+coding	would you show an exaple of recursion in haskell
+coding	Write a Java class 4 a bank accuont.
+reasoning	should I adopt a cat or start a business? think it through 4 me
+device_control	Remember that I'm learning guitar
+device_control	Take a note: dentist on Friday
+coding	write a java class 4 a bank account
+answer_directly	ok where is coffee pls
+coding	ok how do i downloads a web paeg in sql
+reasoning	figure out the best way to pay off stdent loans
+reasoning	ok work out how much interest i earn on $5000 at 3% over 4 years
+reasoning	Which weighs more, a pound of feathers or a pound of bricks? Explain why people get this wrong.
+answer_directly	Give me a quick fact about the Pacific Ocean
+device_control	Forget that I'm leanring guitar.
+coding	how do I reverses a string in Python
+device_control	Search the web for goood pasta recipes
+reasoning	Should i lease a car or adopt a cat? think it through
+reasoning	Can you work out how much time a 450 mile trip takes at 55 mph with two stops
+coding	Hey jarvis, write a unit test in Haskell for a function that merges two dictionaries
+device_control	Can you set a timer for 5 seconds!
+coding	write a Haskell functino that merges two dictionaries
+answer_directly	Hey jarvis, what's interesting about the human heart now
+answer_directly	What is the largest ocean on Eath
+reasoning	create a schedule 2 learn french in six months
+reasoning	Could you break down how to start a podcast for me
+reasoning	Break down how to learn to code
+answer_directly	good niight!
+device_control	Could you set an alarm for 6 am
+reasoning	should i leaase a car or adopt a cat? think it through
+device_control	Open taxes.xlsx?
+reasoning	Can u work out how much time a 450 mile trip takes at 55 mph with two stosp
+coding	fix the bug in this javascript: 4 (i = 0; i < arr.length; i--) {}
+reasoning	Estimate how long it takes to count to a million
+device_control	List what is in my Documents folder.
+coding	What is the idiomatic way to counts words in a file in Ruby
+answer_directly	Good night!
+device_control	Find the file taxes.xlsx
+coding	What's the difference between a list and a tuple in Python
+reasoning	wlak me througgh deciding whether to move abroad
+device_control	Forget that i'm allergic 2 peanuts
+coding	Fix this Ruby snippet that never terminates
+answer_directly	Thanks, that's all
+reasoning	What are the pros and cons of electric cars?
+answer_directly	What do pandas eat
+answer_directly	what is bread
+reasoning	Can u estimate how many wors are in a typical novel pls
+device_control	Close telegram
+coding	How do I flattens nested lists in Swift
+answer_directly	What is photosynthesis?
+reasoning	I have $500 a month for groceries for a family of four; help me budget it.
+coding	i want you 2 debug: my go program runs out of memory
+coding	Why am I getting a NullPointerException in Java?
+coding	cuold you show an examlpe of interfaces in python for me
+answer_directly	What is photosynnthesis?
+device_control	Lower the screen brightness to 30 percent
+answer_directly	who knows about glaciers
+coding	Explain inheritance in Python please
+device_control	hey, how's my battery please
+reasoning	help me plan a weddig on a small budget
+answer_directly	Please how old is the great wall of china?
+reasoning	Ok estimate how long it takes to count to a million for me
+answer_directly	Explain tigers in one sentence
+coding	Write a SQL function that removes duplicates from an array
+coding	Fix this Kotlin snippet that gives an off-by-one result
+reasoning	hey, figure out the best way to write a book in a year.
+device_control	can you lok up cheap flights 2 Rome online now
+device_control	What's 84 divided by 7?
+coding	Hey jarvis, write a unit test in Haskell for a function that mrges two dictionaries
+device_control	hey, show the files in the Pictures folder
+answer_directly	Who wrote Romeo and Juliet?
+reasoning	which weighs more, a pound of feathers or a puond of bricks? explain why people get this wrong.
+reasoning	work out a plna to pay off $6000 of credit caard debt in a year.
+coding	How do I reverses a string in Bash
+device_control	What's the battery level
+answer_directly	How old is castles
+answer_directly	say somethhing nice
+device_control	Cancel my timer
+coding	Convert this SQL query to use a JOIN instead of a subquery.
+device_control	Remind me 2 feed the cat at 8:15 2morrow
+reasoning	estimate how log it takes to count to a million
+reasoning	Estimate how many cups of coffee a city drinks per day
+device_control	Open Thunderbird
+reasoning	I need to choose a college major; how should I think about it?
+reasoning	Help me plaan a hoem renovation
+reasoning	Think through how 2 reduce my monthly expenses by 20 percent
+coding	fix this Rust snippet that runs out of memory
+coding	Fix this: print('hello' + 5)
+answer_directly	Who is the author of 1984?
+coding	Shhow an example of recursion in JavaScript
+coding	please write a unit test in C++ for a function that checks if a number is prime for me
+coding	Can you whats the idiomatic way to merges two dictionaries in C++
+device_control	Search the web for best hiking trails nearby
+reasoning	Should I take the new job or take the new job? think it through!
+answer_directly	Where is the Olympics
+device_control	Pause the music.
+device_control	i want u 2 switch 2 spoitfy for me
+device_control	Turn the volume down a lot
+device_control	google reviews of the new phnoe
+device_control	Unmute
+device_control	would you dellete draft.txt now
+coding	write a Swift function that sorts a list of numbers
+coding	why dooes my rust code say 'borrowed value does not live long enough'?
+device_control	Remind me 2 pay rent at 9 pm
+answer_directly	Tell me about coffee please
+device_control	Find my groceries list and read it to me.
+reasoning	estimate how long it would take to read 30 books this year
+answer_directly	Explain the Olympics in one sentence
+device_control	Hey, open Steam please
+device_control	toggle location services
+answer_directly	give me a quick fact about Shakespeare
+device_control	wake me up at 7:30
+device_control	Look up the weather in chicago onlinne
+answer_directly	Can u where is black holes
+device_control	Look up today's news online.
+device_control	whta time is it?
+answer_directly	can u who knows about the Eiffel Tower
+device_control	Remind me to pay rent at 9 pm
+device_control	Delete the file calld old.txt.
+coding	write a unit test in Rust 4 a function thaat downloads a web paage
+answer_directly	Hi there!
+answer_directly	how many dyas are in a leap year?
+device_control	Calculate 279 plus 65
+answer_directly	ok what is tea
+device_control	could you start a countdown of 5 seconds
+device_control	hey jarvis, look up train times to boston olnine
+answer_directly	I want you to tell me about mars?
+reasoning	what are the pros n cons of learning two languages at oce
+reasoning	Work out how much interest I earn on $5000 at 3% over 4 years please
+answer_directly	Hey jarvis, explain chess in one sentence
+device_control	can u what's playing
+coding	Ok how do i reads a csv file in haskell now
+coding	Write a Python function taht downloads a web page.
+answer_directly	I'm bored
+device_control	can u delete contacts.txt
+coding	Why does my C# code hangs on large input now
+reasoning	A snail climbs 3 feet by day and slips 2 at night in a 10 foto well; when does it get out
+device_control	What is playing right now?
+device_control	Look up pizza places near me online
+answer_directly	hey javis, whats volcanoes now
+device_control	Could you delete notes.txt
+coding	Give me a Python one-liner to flatten a nested list
+answer_directly	how are u 2day
+device_control	can you what's playing
+reasoning	A bat and a ball cost $1.10 in 2tal and the bat cots $1 more than the ball. How much is the ball?
+coding	Fix this JavaScript snippet that runs out of memory
+answer_directly	That was helpful
+answer_directly	ok why is raibnows famous now
+answer_directly	give me a quick fact about honey bees
+reasoning	If a shirt costs $20 after a 20% discount, what was the original price? Explain.
+coding	why does my bash coed leaks memory
+device_control	4get that i'm allergic to peanuts
+coding	Why does my SQL code prints the wrong output
+device_control	Create a fie called todo.txt with my tasks in it
+coding	I want you to whats the idiomatic way to reverses a string in Swift!
+answer_directly	who knnows about the human heart
+reasoning	mke a schedule for a wedding on a small budget
+coding	Would you show an example of recursion in Haskell
+device_control	Forget wht I 2ld you about my old address.
+reasoning	Should I adopt a cat or move abroad? think it through
+coding	I waant you to convert this loop to a one-liner in Rust please
+reasoning	If a shirt costs $20 after a 20% discount, what was the original price? Explain
+coding	Write a bash script that renames all .txt files to .md.
+coding	how do I reads environment variables in Haskell
+reasoning	Make a schedule for a charity fundraiser
+coding	convrt this loop to a one--liner in swift
+coding	Write a Python function that downloads a web page
+reasoning	Could you figure out the best way to build an emergency fund now
+answer_directly	What's interesting abotu the Paacific Ocean
+answer_directly	can you who knows about the Eiffel Tower!
+device_control	Turn the volume down
+coding	Can you what is the idiomatic way to merges two dictionaries in C++
+reasoning	Help me plan a month of workouts
+device_control	Jot down that the meeting moved 2 3pm
+device_control	look up pizza plaecs near me online
+answer_directly	Can you what's interesting about mars
+answer_directly	whats interesting about honey bees
+device_control	show the files in my downloads foldeer
+coding	Hey, write a unit test in Bash for a functon that sorts a list of numbers
+answer_directly	what's yuor favorite color
+coding	whats the idoimatic way to checks if a number is prime in kotlin
+device_control	please delete taxes.xlsx
+device_control	reaad draft.txt to me
+answer_directly	Give me a quick fact about the French Revolution 4 me
+reasoning	Think through how to reduce my monthly expenses by 20 percent.
+coding	Write a typescript function thhat flattens nested lists
+coding	fix this bash snippet that retuns undefined?
+coding	wrtie a shell one-liner 2 count lines in all .py files.
+coding	Ok how do I downloads a web page in SQL?
+device_control	set the volume to 20 percent
+device_control	google 2day's s2ck market
+reasoning	Walk me through deciding whether to move abroad
+coding	Could u convert this loop to a one-liner in Swift now
+answer_directly	Tell me about black holes
+device_control	Open Sptoify and play my liked songs.
+device_control	Set brightness to 35
+reasoning	Figure out the best way to build an emergency fund
+reasoning	a recipe serves 4 and uses 3 egs; how many eggs for 14 people
+device_control	add 1,250 n 3,475.
+device_control	Would u unmute.
+coding	write a python function that reverses a string
+reasoning	compare public transport vs driving wiht buying
+reasoning	Help me plan a weekend trpi to the coast
+device_control	hey, waht do you remember about me for me
+reasoning	ok estimate how many words are in a typical novel please
+answer_directly	how old is dolpihns
+device_control	please what are my rminders
+device_control	Remember that I take my coffee black.
+device_control	I want you to unmute now
+reasoning	Please make a scheduule for a month of workouts for me
+device_control	what's playing
+device_control	hey jarvis, remind me 2 check the oven at midnight?
+answer_directly	Hey jarvis, explain the Moon landing in one sentence.
+answer_directly	What's interesting about volcanoes
+device_control	Take a note: dntist on Friday.
+answer_directly	Please tell me about coffee now
+answer_directly	Tell me aboout the Sahara
+reasoning	should i adopt a cat or lease a carr? think it through
+coding	Debug: my Python program crashes with a null pointer
+coding	whats the idiomatic way 2 reasd environment variables in Rst for me
+reasoning	Should I learn Spanish or Japanese first if I want to travel a lot?
+device_control	can u set an alarm for 73:0
+answer_directly	Why is leonardo da vinci famous
+device_control	look up today's news online
+answer_directly	How old is electricity
+reasoning	Break down how to start a podcast
+device_control	Is my batttery low?
+coding	Write a typescript function that flattens nested lists
+coding	Fix this Swift snippet that never terminates
+device_control	Calculate 186 times 21
+device_control	caculate 186 times 21
+answer_directly	what's up
+device_control	look up today's stock market online
+answer_directly	hye, why is bread famous
+device_control	cancel my timer for me
+device_control	Remiind me 2 feed the cat at 8:15 2morrow
+device_control	could you trun the volume up a bit!
+coding	Debug: my Rust program throws a type error
+device_control	Forget that i live in denvre
+coding	i want you to explain closures in PHP now
+coding	Could you what is the idiomatic way to counts words in a file in Java please
+answer_directly	Tell me about Marie Curie
+answer_directly	Why is electricity famous
+reasoning	If 5 machines make 5 widgets in 5 minutes, how long do 100 machines take to make 100 widgets?
+answer_directly	coudl you explain shakespeare in one sentence!
+reasoning	I have two kids and one is a byo; what's the chance the othr is a boy? Reason it out
+coding	hey, write a unit test in bash 4 a function that sorts a list of numbers
+answer_directly	what is the human heart
+coding	why do i get 'cannot brorow as mutable' in rust
+device_control	Connect 2 my Blue2oth headphones.
+coding	how do i reveress a string in bash
+reasoning	i need to choose a college major; how should i think about it
+coding	fix this bash snipet that returns undefined?
+coding	what is the idiomatic way 2 checks if a number is prime in Kotlin!
+device_control	what time is it in Sydney
+device_control	hey jarvis, remind me to check the oven at midnight
+device_control	what time is it in londoon
+device_control	Search the web for good pasta recipes.
+reasoning	copmare public transport vs drivng with renting now
+device_control	ok set brightness to 35
+coding	what is the idiomatic way to cheecks if a number is prime in rust
+reasoning	please walk me through deciding whether 2 moove abroad
+device_control	Hey jarvis, wake me up at 7:30
+device_control	What's the battery level?
+coding	Hey, sohw an example of regular expressions in PHP
+device_control	hey jarvis, creae a file named report.docx containing buy milk
+answer_directly	Where is the Sahara
+reasoning	Outline a study plan for passing a calculus exam in two weeks.
+coding	How can I sort an array of objects by a feld in TypeScript
+reasoning	Three friends split a bill of $87 with 15% tip, how much does each pay? Show the steps.
+coding	Would u why does my C# code fails to compile now
+coding	How can I sort an array of objects by a field in TypeScript?
+device_control	Remind me to buy milk at 7:30
+coding	please explain error hnlng in kotlin please
+reasoning	Can you walk me through deciding whether to move abroad
+reasoning	Hey, should I take the new job or switch careers? think it through for me
+reasoning	break down how to build an emergency fund!
+answer_directly	Where is the Great Wall of China
+reasoning	i have $500 a month 4 groceries 4 a family of four; help me budget it
+coding	hey jarvis, what is the idiomatic way 2 validates an email address in rust now
+coding	Hey jarvis, how do I validates an email address in Java now
+coding	exxplain how pointers work in c
+reasoning	Should I start a business or get a roommate? think it through
+device_control	Look up the weather in chicago online.
+reasoning	Work out how much interest I earn on $5000 at 3% over 4 years
+coding	fix this typescript snipept that leaks memory
+device_control	searcch the web 4 best hiking trails nearby
+coding	wrrite a unit test in C# 4 a function that merges two dictionaries!
+coding	ok whats the idiomatic way to compuets fibonacci numbers in bash
+device_control	open spotify and play my liked sons
+answer_directly	why is Mars famous for me
+reasoning	Should I take the new job or buy a house? think it through
+answer_directly	Hey jarvis, explain chess in one sentence!
+reasoning	Should I adopt a cat or sell my old car? think it through
+device_control	google reiews of the new phone
+answer_directly	Hey, where is mount everest!
+reasoning	figure out the best way to write a boko in a year
+answer_directly	could you what's interesting about the Amazon river
+device_control	stpo the music please
+reasoning	Ok work out how much a $1200 bill costs split five ways with 20% tip please
+device_control	what's 244 plus 65
+coding	Please why does my Kotllin code throws a type error now
+answer_directly	What is Leonardo da Vinci
+coding	debug: my Swift program never terminates
+device_control	could u saev a note: email the lnlord
+coding	Explain closures in TypeScript
+reasoning	Help me decide whether to take a pay cut for a job I love.
+device_control	Turn off the Wi-Fi.
+answer_directly	Please who knows about tea now
+coding	Would you why deos my C# code never terminates please
+device_control	Google today's stock market
+reasoning	compare the pros n cons of renting versus buying a huose.
+device_control	Open resume.pdf
+coding	Fix ths SQL snippet that runs out of memory
+answer_directly	hey jarvis, whats volcanoes now
+device_control	Close all Firefox windows.
+answer_directly	Could you explain Shakespeare in one sentence!
+device_control	Set an alarm for 7:30
+device_control	What's 245 plus 389?
+device_control	What are my reminderrs now
+coding	Can you how do I validates an email address in Swift
+device_control	Set an alarm 4 7 AM
+device_control	Run the command free -m
+answer_directly	whats leonardo da vinci
+answer_directly	whats the boiling point of water?
+coding	How do I loop over a dictionary in Python?
+answer_directly	Would u give me a quick fact about jazz
+reasoning	compare a gap year with cash
+device_control	Pause the video.
+coding	Explain what this regex does: ^\d{3}-\d{4}$
+reasoning	I want you to make a schedule for a vegetarian meal plan for a week
+reasoning	a bat and a bal cost $1.10 in total and the bat costs $1 more than the bal. how much is the ball?
+device_control	I want you 2 unmute now
+coding	Why am I getting a NullPointerException in Java
+answer_directly	tell me a joe
+device_control	close the terminal
+answer_directly	please give me a quick fact about Mars
+answer_directly	Could you expplain Shakespeare in one sentence!
+answer_directly	What's your name
+coding	exlpain closures in typescript
+reasoning	compare the pros and cons of renting versuus buying a house
+coding	Hey jarvis, whats the idiomatic way to validates an email address in rust now
+reasoning	Compare working from home with credit
+coding	Writte a Python function that counts words in a fle now
+device_control	Would u delete draft.txt now
+coding	Hey, show an example of regular expressions in PHP
+answer_directly	What does 'ephmeeral' mean?
+device_control	turn on Bluetooth now
+device_control	hey jarvis, read taxes.xlsx to me for me
+device_control	Is my battery low?
+answer_directly	i had a grreat day
+answer_directly	How old is dolphins
+coding	Write a Python function that reverses a string.
+answer_directly	Thanks a lot
+reasoning	I want you to should I lease a car or sell my old car? think it through 4 me
+answer_directly	Hey, why is bread famous
+device_control	Start a countdown of an hour
+reasoning	what are the pros and cons of buyying a used car
+coding	whats the time complexity of binary search
+device_control	Turn on dark mode.
+reasoning	Hey jarvis, work out how much time a 450 mile trip takes at 55 mph with two stops for me
+answer_directly	Give me a quick fact about the human heart
+device_control	what's playing?
+answer_directly	Who knows about the printing press!
+device_control	Deete notes.txt
+answer_directly	tell me about Mars
+coding	Would you show an exampple of lambdas in Java?
+device_control	Launch the settings app
+device_control	Can you open todo.txt
+coding	Hey jarvis, how do I validates an email address in Javva now
+answer_directly	Hey, how's it going?
+reasoning	figrue out the best way 2 write a book in a year
+coding	I want u to convert this loop to a one-liner in Go 4 me
+answer_directly	hey jarvis, tell me about jaazz
+device_control	could u note that buy milk 4 me
+coding	shwo an example of threads in TypeScript
+device_control	Open Telegram please
+coding	My C++ program segfaults when I access a vec2r, why
+coding	Why do I get 'cannot borrow as mutable' in Rust
+device_control	Open Firefox.
+coding	Please explain error handling in Kotlin please
+reasoning	my houseplant's leaves are turnig yellow; what are the likely causes and how do i narrow it down?
+answer_directly	who knows about bread
+device_control	create a file calld todo.txt with my tasks in it.
+device_control	whhat do u remember about me?
+answer_directly	i'm feelnig a bit sad
+device_control	Save a note: buy milk
+device_control	Mute the sound
+coding	What's the time complexity of binary search
+device_control	Set a timer for 45 minutes
+answer_directly	who knows abot shakespeare
+reasoning	Could you break down how to prepare for a marathon.
+device_control	Turn on WiF-i
+coding	Debug: my haskell program runs out of memory
+coding	Hey jarvis, what is the idiomatic way to validates an email address in rust now
+device_control	Toggle dark mode
+device_control	List the files in my Downloads folderr.
+coding	exxplain lambdas in java now
+reasoning	should i strat a business or get a roommate? think it through
+reasoning	Figure out the best way to save 4 retirement
+coding	convert this loop 2 a one-liner in c++
+coding	Debug: my Kotlin program runs out of memory now
+device_control	please remind me to call mom in 15 seconds
+device_control	Could u what's on my clipboard!
+answer_directly	Who painted the Mnoa Lisa
+coding	How do I set up a virtual environment in Python?
+answer_directly	Explain the Amazon river in one sentence
+coding	pls write a unit test in rust for a function that parses a date
+device_control	Can you delete contacts.txt
+answer_directly	were is bread
+answer_directly	What's ur naame
+answer_directly	pls givve me a quick fact about the french revolution
+reasoning	Compare freelancing with a laptop please
+reasoning	Can you walk me through deciding whether 2 move abroad
+coding	How do I parses a date in JavaScript
+coding	What is the idiomatic way 2 counts words in a file in Ruby
+coding	Would you why des my C# code fails 2 compile now
+reasoning	Hey, what are the pros and cons of adopting a dog
+device_control	Remind me to buy milk at 6 am
+reasoning	can you walk me through deciding whether to moev abroad
+device_control	remember that i take my cofffee black.
+reasoning	Help me plan a home renovation
+coding	can u convert this loop 2 a one-liner in python for me
+reasoning	If a clock takes 6 seconds to srtike 6, how long does it take to strike 12? Explain
+reasoning	make a schedulle 4 a charity fundraiiser.
+answer_directly	Can you give me a quick fact about castles please
+coding	how2 reads environment variables in Haskell
+device_control	Set an alarm for midnight
+coding	write a unit test in Rust for a function that downloads a web page
+device_control	set the volume 2 20 percent
+device_control	please how much storage is left please
+device_control	could you set a timer 4 20 minutes 4 me
+device_control	plya some jazz now
+answer_directly	Which country has the most people?
+answer_directly	please who knows abbout tea now
+reasoning	A recipe serves 4 and uses 3 eggs; how many eggs for 14 people?
+reasoning	pls break down how 2 start a podcast pls
+reasoning	what is the best way 2 prepare for a job interview in a week
+answer_directly	hey, where is mount eerest!
+device_control	show the files in my home direc2ry
+reasoning	help me decide whether 2 take a pay cut 4 a job i love
+reasoning	make a schedule 4 a road trip across the country pls
+coding	Would you write a TypeScript function that flattens nested lists please
+coding	debug: my Go prgoram never terminates
+coding	Would you why does my C# code never terminates please
+answer_directly	could you whats interesting about the amazon river
+device_control	would you unmte
+answer_directly	Where is volcanoes
+reasoning	hey javris, make a schedule for a vegetarian meal plan for a week now
+device_control	What are my reminders now
+device_control	Set an alram for 9 pm
+coding	why does my C++ code fails to compile
+device_control	whats 84 divied by 7?
+answer_directly	How old is the printing press
+reasoning	Should a small company outsource customer support? Weigh it up.
+answer_directly	whats the speed of light?
+device_control	ok open Slack now
+answer_directly	are u there?
+reasoning	hey, figure out the best way 2 build an emergency fund
+reasoning	figure out the best way 2 prepare 4 a marathon
+answer_directly	Where is bred
+coding	Hey jarvis, how do I computes fibonacci numbers in PHP pls
+device_control	cancel my timer 4 me
+reasoning	figure out the best way to prepare for a marathon
+device_control	remember that i'm vegetarian
+answer_directly	What's interesting about the Sahara
+answer_directly	Hey Jarvis, good evening.
+device_control	hey jarvis, find the file ideas.md
+reasoning	hellp me plan a garden 4 beginners
+device_control	Find the file contacts.txt
+answer_directly	Hey jarvi,s explain chess in one setence
+reasoning	estimate how many cups of coffee a city dirnks per day?
+reasoning	Estimate how long it takes to count to a milion
+coding	Write a Rust function that flattens nested lists
+reasoning	Three friends split a bill of $87 with 15% tip, how much does each pay? Show the stepps.
+answer_directly	whats interesting about tigers
+answer_directly	please what's interesting about tea
+reasoning	Wlak me through deciding whether to adopt a cat
+coding	Why does my Rust code say 'borrowed value does not live long enough'?
+device_control	turn off Bluetooth?
+reasoning	estimate how many tennis balls fit in a bathtub
+device_control	can you look up cheap flights to Rome online now
+device_control	Forget that i'm allergic to peanuts
+coding	why does my Haskell code prints the wrong output
+coding	Explain inheritance in PHP
+coding	Wrtie a unit test in PHP 4 a function taht parses a date
+coding	Could u whats the idiomatic way to couts words in a file in Java please
+reasoning	if 3 workers build a walll in 6 hours, how long do 2 workers take
+device_control	What are my reminders
+reasoning	break down how 2 build an emergency fnud!
+device_control	Wake me up at 6:30 tomorrow.
+device_control	Delete notes.txt
+answer_directly	Please whats interesting about Leonardo da Vinci!
+device_control	Remind me 2 email the landlord in half an hour
+device_control	read my notes.
+coding	Fix this Java snippet that gives an off-by-one result
+device_control	could u play some jaz now
+coding	Fix this Ruby snippet that neveer terminates
+coding	Fix this SQL snippet that runs out of memory
+device_control	Read ideas.md to me
+coding	My C++ program segfaults when I access a vector, why?
+coding	Fix this Go snippet that crashes with a null pointer
+device_control	cllose the terminal!
+reasoning	compare solar panels with a big city
+device_control	could you turn the volume up a bit!
+answer_directly	Give me a quick fact about bread
+device_control	Hey jarvis, create a file named report.docx containing buy milk!
+reasoning	If I walk 3 km in 40 minutes, how long will 10 km take at that pace?
+reasoning	break down how to write a book in a year
+coding	Show an example of generics in C#
+device_control	I want you to what time is it in Berlin for me
+reasoning	compare working from hme with credit
+reasoning	I want you to should I lease a car or sell my old car? think it through for me
+reasoning	Compare freelancing witth a laptop pls
+coding	Write a Java class for a bank account.
+reasoning	esimate how manny tennis balls fit in a bathtub
+coding	Write a shell one-liner to count lines in all .py files.
+reasoning	Hey, figure out the best way to build an emergency fund
+reasoning	figure out the best way to get fit in three months
+answer_directly	Can you what's interesting about jazz
+coding	What is the difference between a process and a thread
+reasoning	Plan a three-day trip to Rome on a tight budget.
+reasoning	Ok make a shedule for a home renovation?
+coding	Show an example of closures in Go please
+answer_directly	who knows about the Pacific Ocean please
+coding	What's the difference between a list and a tuple in Python?
+coding	can u how do i validates an email address in swift
+coding	Would you how do I parses a date in Haskell.
+reasoning	Hey, figure out the bst way 2 build an emergency fund
+device_control	please remind me to call mom in 15 seconds.
+coding	Would you write a TypeScript function that flatens nested lists please
+answer_directly	Why is chess famous
+device_control	Open shopping.txt.
+device_control	i want u 2 switch 2 Spotify 4 me
+device_control	search the web for pizza places near me
+coding	write a Haskell function that merges two dictionaries
+coding	show an example of threads in TypeScript
+coding	would you how do i parses a date in haskell
+coding	How do I set up a virtual environment in Python
+coding	Write a unit test in Haskell 4 a function that counts words in a file
+device_control	read my notes
+device_control	googe train times 2 bos2n?
+reasoning	Ok make a schedule 4 a home renovation
+answer_directly	how old is Shakespeare
+coding	Why does my SQL code prints the wrong output?
+coding	convert this loop to a one-liner in Swift
+answer_directly	hey jarvis, what is volcanoes now
+answer_directly	explain jazz in one sentence
+device_control	What time is it?
+answer_directly	where is the great wall of cina
+device_control	remind me 2 buy milk at 7:30
+reasoning	My houselant's leaves are turning yellow; what are the likely causes n how do I narrow it down
+coding	I want you 2 debug: my Go program runns out of memory
+answer_directly	Tell me about castles
+device_control	hey, open steam pls
+device_control	Can you set an alarm for 7:30
+device_control	Launch Thunderbird
+coding	Why is my JavaScript promise returning undefined?
+device_control	i want you to switch to Spotify for me
+reasoning	ok estimate how long it takes to count to a million 4 me
+reasoning	i want you 2 hlep me paln a wedding on a small bugdet
+answer_directly	ok whats tea
+answer_directly	whats the capital of canada?
+reasoning	please should i go back to school or sell my old car? think it through for me
+reasoning	Make a schedule for a road trip across the country please
+device_control	lauch thunderbird
+coding	convert this loop 2 a one-liner in go
+coding	Can you convert tis loop to a one-liner in Python 4 me
+answer_directly	Pleae how old is the great wall of china?
+device_control	What's on my clipboard
+device_control	could you start a countdown of 5 seconds!
+answer_directly	please what's interesting about leonardo da vinci
+device_control	look up 2day's s2ck market online
+device_control	could you play soe jazz now
+coding	Convert this loop to a one-liner in Go
+answer_directly	What's interesting about the Pacific Ocean
+reasoning	beak down how 2 organize a big move
+device_control	list what is in my documents folder
+reasoning	Estimate how many people are in the air right now
+answer_directly	explain the aazon river in one sentece
+answer_directly	I want you to give me a quick fact about Marie Curie?
+reasoning	Help me plan a weekend trip to the coast
+reasoning	Hey, estimate how many cups of coffee a city drinks per day
+answer_directly	tell me about electrricity
+answer_directly	Hi there
+coding	I want you to convert this loop to a one-liner in Rust please
+coding	hey jarvis, how do i flattens nested lists in python
+answer_directly	What is the boiling point of water?
+device_control	puase the music
+device_control	Can you open todo.xt
+coding	how do i read a file line by line in go
+answer_directly	Are you there?
+coding	Hey jarvis, how do I computes fibonacci numbers in PHP please
+device_control	Show me my nottes
+device_control	Read ideas.dm to me
+answer_directly	Who knows about Leonardo da Vinci.
+answer_directly	Can you whats interesting about mars
+device_control	could you how much sotrage is left
+device_control	pls how much s2rage is left pls
+coding	write a Haskell fnction that merges two dictionaries
+device_control	Could you what's on my clipboard!
+answer_directly	What is the largest ocean on Earth?
+answer_directly	what's interesting about honey bees
+coding	Show an example of generics in java
+device_control	Save a note: submit the report
+reasoning	hey, figure out the best way to write a book in a year
+device_control	Close all Firefox windows
+device_control	Google the weather in chicago
+answer_directly	who wrote romeo n juliet?
+device_control	tell me the time
+reasoning	Esimate how many cups of coffee a city drinks per day
+coding	i want u 2 show an example of itera2rs in Rust
+reasoning	Figure out the best way to pay off student loans
+coding	What is the idiomatic way to parses a date in JavaScript
+coding	write a unnit test in haskell 4 a function that downloads a web page
+answer_directly	tell me a joke
+device_control	What's 449 divided by 43
+answer_directly	i want you to give me a quick fact about maie curie?
+coding	Show an example of pointers in Swift
+answer_directly	Say something nice.
+answer_directly	can u why is Mars famous?
+reasoning	could you compare public transport vs driving with a tablet!
+coding	Fix this typescript snippet that leaks memory
+reasoning	Figure out the best way to pay off studetn loans
+answer_directly	why is cofefe famous
+device_control	Read draft.txt to me
+answer_directly	pls tell me abot coffee now
+answer_directly	what's interesting about rainbows
+reasoning	Break down how to pay off student loans
+reasoning	Compare the pros and cons of renting versus buying a house.
+device_control	whats 245 plus 389
+reasoning	compare public transport vs driving with the train
+device_control	delete the file called old.txt
+reasoning	A snail climbs 3 feet by day and slips 2 at night in a 10 foot well; when does it get out?
+answer_directly	do u ever get tired
+answer_directly	Good afternoon
+answer_directly	why is Shakespeare famous for me
+device_control	Close vs code
+coding	Could you convert this looop 2 a one-liner in Swit now
+reasoning	Help me decide between two job offers based on salary, commute, and growth.
+device_control	google reviews of the new phone
+coding	Explain lambdas in Java now
+device_control	Save a note: stetch
+device_control	Forget that I work night shifts
+device_control	fiind my groceries list n read it 2 me
+reasoning	Estimate how long it would take to read 30 books this year.
+answer_directly	whats up
+coding	Write a typescript function that flatens nessted lits
+answer_directly	Tlel me about Marie Curie
+answer_directly	hey jarvis, explain the moon lnng in one sentence.
+answer_directly	tlel me about castles
+answer_directly	I had a great day
+device_control	what is plaiyng right now?
+coding	Fix this python snippet that returns undefined
+coding	Show an example of generics in jva
+answer_directly	See you later
+answer_directly	What's interesting about tigers
+reasoning	If a shirt costs $20 after a 20% disccount, what was the original price? Explain
+answer_directly	ok why is rainbows famous now
+device_control	wha'ts playing now
+coding	Ok what is the idiomatic way to computes fibonacci numbers in Bash!
+answer_directly	hey, nicce to meet you please
+coding	How do I validates an email address in Python
+answer_directly	Please what's interesting about Leonardo da Vinci!
+device_control	Ok close the settings app please
+device_control	open shopping.txt
+coding	Fix this Bash snippet that returns undefined?
+answer_directly	Tell me about the Sahara
+answer_directly	how's the weather treating u
+device_control	what do you remember about me
+answer_directly	Why is coffee famous
+answer_directly	Explain jazz in one sentence.
+answer_directly	Would you give me a quick fact about jazz.
+device_control	create a file named notes.txt containing stretch
+reasoning	A bat and a ball cost $1.10 in total and the bat costs $1 more than the ball. How much is the ball?
+answer_directly	can u give me a quick fact about castles please
+answer_directly	Why is Shakespeare famous
+reasoning	what are the pros and cons of learning two languages at once!
+coding	My C++ program segfaults when I access a vecto,r why?
+answer_directly	Tell me about coffee pls
+reasoning	Please should i sell my old car or lease a car? think it through
+coding	What is the idiomatic way to checks if a number is prime in Rust.
+reasoning	help me plan a weding on a small budget
+reasoning	should I adopt a cat or start a business? think it through for me
+device_control	Set an alarm for 9 pm
+coding	write a unit test in C# for a function that merges two dictionaries!
+device_control	Close the terminal!
+coding	what is a closure in prograamming?
+reasoning	Could u break down how to prepare 4 a marathon
+device_control	Show the files in my Downloads folder
+device_control	calcullate 186 times 21
+device_control	Set a timer for an hour.
+coding	debu: my python program crashes with a null pointer
+coding	Write a unit test in PHP for a function that parses a date
+coding	Could you show an example of interfaces in Python for me
+answer_directly	can you why is Mars famous?
+answer_directly	what's interesting about the printing press
+device_control	can u look up cehap flights to Romme online now
+device_control	Ok read my notes
+device_control	search the web 4 pizza places ner me
+reasoning	If a clock takes 6 seconds to strike 6, how long does it take to strike 12? Explain.
+reasoning	I have two kids and one is a boy; what's the chance the other is a boy? Reason it out.
+reasoning	could you estimate how many people are in the air right now now
+reasoning	could you compare public transport vs driving with a tablet
+device_control	Jot down that the meeting moved to 3pm.
+coding	what is the idiomatic way to checks if a number is prime in Kotlin!
+coding	What's the time complexity of binary search?
+device_control	Set brightness to 20
+device_control	Would you delete draft.txt now
+reasoning	If a clock takes 6 seconds to strike 6, how long does it take to strike 12? Exlpain
+reasoning	Please break down how to start a podcast please
+reasoning	What are the pros and cons of learning two languages at once?
+answer_directly	What does 'ephemeral' mean?
+device_control	Would you unmute.
+answer_directly	What's your favorite color?
+reasoning	Make a schedulle 4 a charity fundraiser
+device_control	could u note tat buy milk for me
+reasoning	I waant u to should I get a roommate or take the new job? think it thruogh for me
+coding	Write a Python function that counts words in a file now
+reasoning	Can you estimate how many words are in a typical novel please
+coding	what dos the 'async' keyword do in javascript?
+answer_directly	Can you whre is blcak holes
+coding	Convert this lopo to a one-liner in Rust
+answer_directly	hey jarvis, good evening
+reasoning	Hey jarvi,s work out how much time a 450 mile trip takes at 55 mph with two stops 4 me
+reasoning	hey, fgure out the besst way to write a book in a year
+coding	Write a Python function that downloads a web page.
+device_control	Set an alarm for minight
+reasoning	whaat are the pros and cons of freelancing
+reasoning	work out how much time a 450 mile trip takes at 55 mph with two stops
+answer_directly	I'm feeling a bit sad
+reasoning	should I lease a car or get a roommate? think it through
+coding	Show an example of closures in Java
+device_control	Locate my invoices folder.
+device_control	google train tmies to Boston
+answer_directly	whats interesting about rainbows
+device_control	What is 56 times 12?
+coding	please write a unit test in rust 4 a function that parses a date
+device_control	Show the files in my Documents folder
+device_control	Hey jarvis, remind me to check the oven at midnight?
+reasoning	If 3 workers build a wall in 6 hours, how long do 2 workers take?
+reasoning	What are the pros and cons of freelancing
+reasoning	Create a schedule to learn French in six months.
+device_control	Remind me to buy mik at 7:30
+coding	Fix ths JavaScript snippet thhat runs out of memory
+reasoning	What is the best way to prepare for a job interview in a week?
+coding	Write a unit test in Kotlin for a function that downloads a web page
+coding	I wat you to convert this loop to a one-liner in Go for me
+reasoning	What are the pros and cons of learning two languages at once
+coding	Show an example of recursion in JavaScript
+device_control	set a timer for half an hour
+coding	Fix thsi Jaava snippet that gives an off-by-one result
+answer_directly	What is jazz please
+coding	Please why does my Kotlin code throws a type error now
+reasoning	what are the pros and cos of electric cars
+answer_directly	give me a quick fact about tigers
+coding	Could you convert this loop to a one-liner in Swift now
+reasoning	Figure out the best way to write a book in a year
+device_control	Add 1,250 and 3,475.
+reasoning	break down how 2 learn 2 code
+coding	Debug: my Bash program hangs on large input
+answer_directly	What's the plural of 'mouse'
+coding	Write a JavaScript function that downloads a web page
+answer_directly	hey, how's it going
+coding	hey jarvis, how do i counts words in a file in rust
+device_control	Hey, run the command whoami for me
+answer_directly	What is the speed of liht?
+device_control	Would you what do you remember about me for me
+reasoning	I want you to help me plan a weddiing on a sall budget
+answer_directly	how old is Shakepeare
+answer_directly	give me a quick fact about the French Revolution
+reasoning	Should I adopt a cat or lease a car? think it through
+reasoning	break down how 2 write a book in a year
+coding	Please explain error hnling in Kotlin please
+coding	Convert this SQL query 2 use a JOIN instead of a subquery.
+device_control	whats playiing
+answer_directly	Ok u're awesome please
+device_control	Run the commn free -m
+device_control	gooogle the weather in chicago
+answer_directly	Hey jarvis, what's intereting about the human heart now
+device_control	google cheap flights to Rome
+device_control	Play some jazz now
+answer_directly	How many days are in a leap year?
+device_control	Would u what do u remember about me for me
+device_control	ok start a countdown of an hour pls
+device_control	Please what are my reminders
+device_control	Ok close the calculator
+answer_directly	hey, nice to meet you please
+device_control	wake me up at 6:30 2morrow.
+reasoning	He,y should I take the new job or switch career? think it through for me
+coding	How do I read a file line by line in Go?
+coding	i want you to show an example of iterators in Rust
+device_control	Hey, what do you remember about me for me
+answer_directly	whats bread
+device_control	hey, show the files in the Pictures folde.
+device_control	hey jarvis, read taxes.xlsx 2 me for me
+answer_directly	Who knows about the Sahara
+answer_directly	What is tea
+coding	Explain interfaces in Python
+device_control	Tell me the time.
+reasoning	Should I take the new job or take the new jo? think it through
+device_control	Turn on Wi-Fi.
+coding	Could you show an example of interfaces in Python 4 me
+device_control	Run the commn whoami
+reasoning	please make a schedule 4 a month of workouts 4 me
+device_control	Can u set a timer 4 5 seconds!
+coding	Would you explain inheritance in PHP!
+coding	What is the difference between a process and a thread?
+reasoning	Make a schedule for a charity fundraiser.
+coding	Would you write a TypeScript function tht flattens nested lsts pls
+device_control	Show me my notes.
+device_control	Could you note that buy milk for me
+reasoning	Should I buy a house or go baack to school? think it through
+device_control	Set a timer for 30 minutes
+reasoning	could you estimate how mny people are in the air right now now
+coding	I want you to debug: my Go program runs out of memory
+answer_directly	please what's intreesting about tea?
+answer_directly	What is the speed of light?
+device_control	Show the files in my home directory
+coding	Write a unit test in Kotlin 4 a function that downloads a web page
+coding	hey jarvis, how do I flattens nested lists in Python!
+reasoning	Ok make a schedule for a weekend trip to the coast pls
+answer_directly	What's the capital of Canada?
+coding	Explain how pointers work in C.
+answer_directly	How old is the french revolution
+reasoning	plan a birthday party 4 twelve kiids on a samll budget
+reasoning	hey, should i tkae the new job or switch careers? think it through 4 me
+answer_directly	say something nicee.
+device_control	please look up movie showtimes 2night online please
+coding	Why do I get 'cannot borrow as mutable' in Rust?
+reasoning	what are the pros n cons of electric cars
+reasoning	help me plan my study time for finals
+answer_directly	Tell me about the Rman Empire in a sentence.
+device_control	could you play some jazz now
+reasoning	Compare renting a studio versus sharing a two-bedroom flat.
+reasoning	figure out the best way 2 start a podcast
+reasoning	what are the pros n cons of learning two languages at once
+answer_directly	How many legs does a spider have?
+reasoning	Heey, what are the pros and cons of adopting a dog
+reasoning	i have $500 a month 4 groceries 4 a famly of four; help me budget it.
+device_control	Hey, what do u remembr about me for me
+answer_directly	who knows aobut lonardo da vinci.
+reasoning	Break down how to get fit in three months
+coding	How do I reverrse a string in Python?
+reasoning	Help me plan a wedding on a small budget
+answer_directly	Thanks, that's all.
+coding	Hey, write a unit test in Bash for a function that sorts a list of numbers
+answer_directly	tll me about chess
+reasoning	Could you help me plan a road trip across the country
+coding	what is the idiomatic way to reads environment variables in Rust for me
+reasoning	Estimate how many piano tuners work in Chicago.
+device_control	Hey jarvis, look up train times to Boston online.
+coding	why does my hakell code crashes with a null pointer
+answer_directly	good night
+reasoning	walk me through deciding whether to buy a house
+device_control	Set brightness 2 35
+coding	Please why dos my Kotlin code throws a type errr now
+reasoning	I want you to should I get a roommate or take the new job? think it through for me
+device_control	How's my battery
+reasoning	Could you estimate how many words are in a typical novel
+device_control	loocate my invoices folder.
+reasoning	would you break down how to learn to cok please
+device_control	tuurn off bluetooth?
+coding	I want u 2 what is the idiomatic way 2 reverrses a string in Swift!
+coding	show an example of closures in TypeScript now
+answer_directly	how many legs does a spider have
+answer_directly	Give me a quick fact about the French Revolution for me
+device_control	ok close the settings app pls
+coding	write a unit test in haskell for a function that counts words in a fle
+device_control	List the files in my Downloads folder.
+coding	writte a javascript function that downloads a web page
+coding	What is a closure in programming?
+device_control	Could you how much storage is left
+reasoning	Work out a plan to pay off $6000 of credit card debt in a year.
+device_control	what's playing now
+device_control	Turn the volume up.
+answer_directly	How's the weather treating you
+device_control	what time is it
+coding	show an exaple of generics in c#
+reasoning	help me paln my study time 4 finaals
+device_control	Search the web 4 best hiking trails nearby
+device_control	start a coundtown of an hour
+device_control	hey, show the files in the Pictures folder.
+reasoning	what are the pros and cons of buying a used car
+reasoning	hey, should i lese a car or buy a housee? think it through now
+coding	what is the idiomatic way to checks if a number is prime in rust
+answer_directly	hey jarvis, tell me about jazz?
+answer_directly	Tell me about the Roman Empire in a setence
+answer_directly	where is tea
+coding	fix this typescript snippet that gievs an off-by-one result
+device_control	Find my groceries list n read it to me
+coding	How do I reverse a string in Python?
+device_control	Set an alarm for 7 AM.
+device_control	What do you remember about me?
+reasoning	walk me through deciding whether 2 buy a house
+device_control	Which song is on?
+reasoning	Help me plan moving to a new apartment
+answer_directly	Good morning!
+device_control	forget what i tod you about my old address
+device_control	Coudl u save a note: email the landlord
+reasoning	A snail clmibs 3 feet by day n slips 2 at night in a 10 foot well; when does it get out?
+device_control	Forget that I'm learning guitar.
+answer_directly	why is mars famous 4 me
+answer_directly	who knows about shakespeare
+device_control	wake me up at 7:30.
+device_control	Launch Spotify
+device_control	google train times to Boston?
+reasoning	Estimate how many cups of coffee a city drinks per day?
+device_control	Turn the volume up a bit
+device_control	turn the volume up
+coding	Coonvert this loop to a one-liner in Rust
+answer_directly	Who knows about tea
+device_control	Would u turn off dark mode
+coding	Can you convert this loop to a one-liner in Python for me
+device_control	i want you 2 what time is it in belin 4 me
+answer_directly	Who invented the telephone
+device_control	Forget what I told you about my old address.
+device_control	whats playing
+answer_directly	Hey jarvis, whats interesting about the human heart now
+reasoning	Break down how 2 get fit in three months
+coding	Would you why does my C# code fails to compile now
+answer_directly	where is castles
+reasoning	Ok make a schedule for a weekend trip 2 the coast please
+coding	What does the 'async' keyword do in JavaScript
+coding	Shw an example of pattern matcching in SQL
+device_control	Could you save a note: email the landlord!
+reasoning	help me decide whether to take a pay cut 4 a job i love
+coding	Why does my CSS grid overflow its container?
+coding	Would you show an example of lambdas in Java?
+device_control	Read draft.txt 2 me
+answer_directly	Who painted the Mona Lisa?
+device_control	hey, how's my battery pls
+reasoning	figure out the best way to start a podcast
+device_control	what tme is it in london
+device_control	what time is it in berlin
+device_control	Set the volume to 75 percent
+reasoning	How would you figure out why my car uses so much gas?
+device_control	Remind me to water the plants at noon
+answer_directly	what is the Amazon river
+answer_directly	what is Mars
+device_control	open fiefox
+coding	Could you what is the iddiomatic way to counts words in a file in Java please
+answer_directly	How are you today
+reasoning	My houseplant's leaves are turning yellow; what are the likely causes and how do I narrow it down?
+device_control	Remind me to feed the cat at 8:15 tomorrow
+answer_directly	Where is bread
+reasoning	Wakl me through deciding whether to take the new job
+device_control	Tunr the volume down a lot
+answer_directly	how old is the Olympics
+coding	What does the 'async' keyword do in JavaScript?
+answer_directly	give me a quick facct abuot bread
+reasoning	Help me plan a garden for beginners
+device_control	Pause the video
+reasoning	what is the best way to prepare for a job interiew in a week?
+answer_directly	i want you to give me a quick fact about marie curie
+answer_directly	Tell me about chess
+device_control	which soong is on?
+reasoning	what are the prs n cons of freelancng
+answer_directly	hey jarvis, explain the moon landing in one sentecne.
+coding	Show an example of pattern matching in SQL
+device_control	Save a note: stretch
+reasoning	Ok make a schedule for a weekend trip to the coast please
+answer_directly	Tell me about jazz
+device_control	coud u set an alarm for 6 am
+coding	explain inheritance in JavaScript
+reasoning	Walk me through deciding whether to take the new job
+device_control	What are my reminders?
+device_control	Liist the files in my Downloads folder.
+coding	Write a unit test in Kotlin 4 a functtion that downloads a web page
+device_control	ok set brightness to 35?
+reasoning	If 5 machines make 5 widgets in 5 minutes, how long do 100 machines take to make 100 widgets
+coding	What is the idiomatic way to sorts a list of numbers in Bash
+device_control	remind me 2 email the lnlord in half an hour
+device_control	List my notes
+coding	Write a C function that swaps two integers.
+reasoning	make a schedule for a wedding on a small budget
+device_control	Set an alarm 4 7:30
+device_control	Could you make the screen dimmer!
+answer_directly	whaats the amazon river
+coding	what is the idiomatic way 2 parses a date in javascript
+coding	Write a function to check if a number is prime in JavaScript.
+device_control	what time is it in london
+device_control	Remind me to water the plants at 8:15 tomorrow
+reasoning	Hey jarvis, make a schedule for a vegetarian meal plan for a week now
+device_control	Tell me the tim.
+coding	ok debug: my go program fails 2 compile now
+reasoning	compare public transport vs driving with renting now
+device_control	How much storage is left
+answer_directly	what's your favorite color
+answer_directly	give me a quick fcat about the human heaart
+answer_directly	can you who knwos about the eiffel tower!
+reasoning	Wakl me through deciding whether 2 move abrroad
+reasoning	Would you break down how to learn to cook please
+device_control	How much s2rage is left
+device_control	Look up how to bake sourdough online
+device_control	start a countdown of 90 minutes
+answer_directly	can u what's interesting about jazz
+answer_directly	plaese give me a quick fact abouut mars
+reasoning	pls should i go back to school or sell my old car? think it through for me
+coding	Debug: my SQL program hangs on large input
+device_control	Open Teleegram pleaes
+device_control	whats playing now
+answer_directly	who knows about the human heart
+device_control	Would you turn off dark mode.
+answer_directly	How old is the human heart
+device_control	Delete the file called old.txt.
+answer_directly	Who invented the telephone?
+answer_directly	Please what's interesting about tea?
+coding	Would u show an example of recursion in Haskell
+reasoning	ok estimate how manny words are in a typical novel please
+coding	how can i sort an array of objects by a field in typescript
+answer_directly	why is leonardo da vincci famous
+answer_directly	what's the plural of 'ouse'?
+device_control	whats playing right now?
+coding	Wrie a Rust function that flattens nested lists
+reasoning	please walk me through deciding whether to move abroad?
+device_control	Delete shopping.txt
+device_control	Forget that i live in denver
+device_control	What do u remember about me?
+device_control	Please look up movie showtimes tonight online please
+coding	Fix this Rust snippet that prints the wrong output
+reasoning	Help me decide between two job offerrs based on salary, commute, and growth.
+device_control	can you set a timer 4 5 secconds!
+reasoning	I want you to help me plan a wedding on a small budget
+answer_directly	tell me about electricity
+answer_directly	please give me a quick fact about the French Revolution!
+device_control	Remember that I'm vegetarian.
+coding	Why does my Haskell code crashes with a null pointer
+coding	Debug: my SQL progam hangs on large input
+answer_directly	Hey jarvis, tell me about glaciers please
+device_control	set a timer for 15 seconds
+reasoning	could u fiigure out the best way 2 build an emergency fund now
+answer_directly	whaat is tea
+reasoning	Break down how to organize a big move
+answer_directly	Where is electricity
+device_control	create a file naemd todo.txt containign stertch
+device_control	Open Spotify and play my liked songs.
+answer_directly	Can you where is black holes
+answer_directly	Where is the Nile
+device_control	Could you set a timer for 20 minutes for me
+answer_directly	tell me about tigers
+coding	Explain how pointers work in C
+device_control	Mute my microphone.
+coding	Ok explain interfaces in JavaScript.
+reasoning	breka down how to build an emergency fund!
+coding	wriet a function 2 check if a number is prime in javascript
+reasoning	hey, should I lease a car or buy a house? think it through now
+coding	debug: my Go program never terminates
+coding	Write a unit test in Haskell for a function that counts words in a file
+coding	Explain inheritance in Pyhton please
+answer_directly	Hey jaris, give me a quick fact about chess
+reasoning	Figure out the best way to save for retirement.
+reasoning	Hlep me decide between two job offers based on salary, commute, and growth.
+answer_directly	Tell me a joke.
+device_control	Create a file called todo.txt with my tasks in it.
+reasoning	should a small company outsource customer support? weigh it up
+coding	Convert this loop to a one-liner in C++
+coding	Why is my JavaScript promise returning undefined
+answer_directly	give me a quick fat about tigers
+coding	Please write a unit test in Rust for a function that parses a date
+device_control	hey jarvis, look up train times 2 bos2n online.
+reasoning	Can you wokr out how much time a 450 mile trip takes at 55 mph with two stops
+coding	can u whats the idiomatic way 2 merges two dictionaries in c++
+coding	what is the idomatic way 2 reads environment variables in Russt for me
+reasoning	Should I buy a house or go back to school? think it through
+answer_directly	whats interesting about the printing press
+device_control	would u turn off dark mode.
+device_control	Take a note: dentist on Friday.
+device_control	Lower the screen brightness to 30 percent.
+device_control	Ok start a countdown of an hour please
+coding	why does my sql code prints the wrong otput?
+reasoning	Please make a schedule for a month of workouts for me
+answer_directly	Hey jarvis, give me a quick fact about chess
+device_control	can u mtue the sound for me
+reasoning	ok work out how much a $1200 bill costs split five ways wiith 20% tip please
+reasoning	Outline a study plan for passing a calculus exam in two weeks
+device_control	Mute my microphone
+reasoning	Should I learn Spanish or Japanese first if I want 2 travel a lot
+reasoning	Which weighs more, a pound of feathers or a pound of bricks? Explain why people get this wrong
+device_control	Jot dwn that the meeting moved to 3pm.
+reasoning	Hey jarvis, work out how much time a 450 mile tip takes at 55 mph with two stops 4 me
+coding	Why does my CSS grid overflow its container
+device_control	what's 245 plsu 389
+device_control	Connect to my Bluetooth headphones.
+device_control	Create a file named todo.txt containing stretch
+reasoning	ok worrk out how much a $1200 bill costs split fiive ways with 20% tip pls
+device_control	turn off bluetooth
+device_control	Remind me to buy milk at 6 am?
+answer_directly	Ok where is coffee please
+device_control	Remind me to email the landlord in half an hour
+answer_directly	Who knows about Leonardo da Vinci
+device_control	remind me 2 water the plants at 8:15 2morrow
+reasoning	Break down how to build an emergency fund
+device_control	stop the music please
+coding	Write a unit test in Haskell for a function that downloads a web page
+answer_directly	Can u give me a quick fact about castles pleasse
+coding	I want you to what is the idiomatic way to reverses a string in Swift!
+reasoning	Outline a study plan 4 passing a calculus exam in two weeks
+reasoning	could you break down how to start a podcast 4 me
+reasoning	figure out the best way to learn to cook
+reasoning	Ok make a schedule for a home renovation?
+answer_directly	What's the plural of 'mouse'?
+answer_directly	which country has the most people
+answer_directly	gve me a quick fact abouut shakespeare

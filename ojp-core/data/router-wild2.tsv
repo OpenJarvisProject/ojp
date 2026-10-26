@@ -1,0 +1,44 @@
+answer_directly	heyyy
+answer_directly	what's the biggest animal on earth
+answer_directly	thx mate
+answer_directly	is a tomato a fruit or a veg
+answer_directly	tell me a bedtime story about a dragon
+answer_directly	whats the capital of australia
+answer_directly	you free to chat for a bit?
+answer_directly	who built the pyramids
+answer_directly	why do cats purr
+answer_directly	what rhymes with orange lol
+answer_directly	describe the color blue to someone who can't see
+answer_directly	do you believe in aliens
+coding	how do i read stdin in rust
+coding	pls fix: def add(a b): return a+b
+coding	what does git rebase do
+coding	node says Cannot find module 'express' help
+coding	write a function to check palindromes in js
+coding	why is my docker container exiting immediately
+coding	difference between let and const
+coding	python: how to sort dict by value
+coding	explain what a mutex is, with code
+coding	vim how do I quit lol
+reasoning	should i buy a house or keep renting for 5 more years
+reasoning	how many weeks until i can save 3000 if i put away 250 a week
+reasoning	help me plan a surprise party for my wife next month
+reasoning	my sales dropped 30% this quarter, what could explain it
+reasoning	which is cheaper over a year, a 15 dollar monthly plan or a 150 annual one
+reasoning	give me a study schedule for 4 exams in 10 days
+reasoning	if i drive 120 miles at 40 mph then 60 miles at 60 mph whats my average speed
+reasoning	im torn between two cities to move to, how do i decide
+reasoning	plan my meals for a week on 60 bucks
+reasoning	think through whether i should accept a lower paying but remote job
+device_control	vol 30
+device_control	lights out for the screen, dim it
+device_control	whats the weather like, search it
+device_control	timer 3 minutes
+device_control	add milk to my notes
+device_control	open the browser
+device_control	what's my wifi status
+device_control	next song
+device_control	how many reminders do i have
+device_control	run uptime
+device_control	pause
+device_control	read my todo file

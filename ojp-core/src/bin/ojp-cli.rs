@@ -599,6 +599,39 @@ fn main() -> anyhow::Result<()> {
             println!("\nagent tasks passed: {passed}/{total}");
             let _ = fs::remove_dir_all(&home);
         }
+        Some("gpu-bench") => {
+            // gpu-bench <model.gguf>: speed with 0, 1/4, 1/2, 3/4 and all layers on the GPU, and the
+            // value to put in `gpu_layers`. Needs a build with the vulkan feature to see any change.
+            let path = std::path::Path::new(&args[1]);
+            let prompt: String = "The quick brown fox jumps over the lazy dog. ".repeat(14);
+            let layers = {
+                let probe = ojp_core::model::Model::load(path, 512, 0, true, false, false)?;
+                probe.llama().model().n_layer() as i32
+            };
+            let mut results: Vec<(i32, f64, f64)> = Vec::new();
+            for ngl in [0, layers / 4, layers / 2, layers * 3 / 4, layers + 1] {
+                let mut model = ojp_core::model::Model::load(path, 1024, ngl, false, false, false)?;
+                let mut sampler = llama_crab::LlamaSampler::greedy().ok_or_else(|| anyhow::anyhow!("no sampler"))?;
+                let _ = model.complete(ojp_core::model::Seq::Chat, "warm up", &mut sampler, 2, &mut |_| {});
+                let t = std::time::Instant::now();
+                let _ = model.complete(ojp_core::model::Seq::Tool, &prompt, &mut sampler, 1, &mut |_| {})?;
+                let t1 = t.elapsed().as_secs_f64();
+                let tokens = model.llama().model().tokenize(&prompt, true, true)?.len() as f64;
+                let t = std::time::Instant::now();
+                let _ = model.complete(ojp_core::model::Seq::Tool, &format!("{prompt} again"), &mut sampler, 49, &mut |_| {})?;
+                let t49 = t.elapsed().as_secs_f64();
+                let (pp, tg) = (tokens / t1.max(1e-6), 48.0 / (t49 - 0.02).max(1e-6));
+                println!("gpu_layers = {ngl:>3}   prompt {pp:>7.1} tok/s   generation {tg:>6.1} tok/s");
+                results.push((ngl, pp, tg));
+            }
+            let best = results.iter().max_by(|a, b| a.2.total_cmp(&b.2)).unwrap();
+            let base = results[0].2;
+            if best.2 > base * 1.1 {
+                println!("recommended: gpu_layers = {} (generation {:.1}x faster than CPU only)", best.0.min(layers + 1), best.2 / base);
+            } else {
+                println!("recommended: gpu_layers = 0 (the GPU does not speed up generation here)");
+            }
+        }
         Some("route-scores") => {
             // route-scores <model> <train|dev|xl|test>: one JSON line per case,
             // [expected label index, [logit per route]], for fitting calibrations.
@@ -649,12 +682,13 @@ fn main() -> anyhow::Result<()> {
             for prompt in PROMPTS {
                 let text = template.render(&[llama_crab::ChatMessage::new(llama_crab::Role::User, prompt)], true);
                 let mut sampler = llama_crab::LlamaSampler::greedy().ok_or_else(|| anyhow::anyhow!("no greedy sampler"))?;
-                let reply = model.complete(ojp_core::model::Seq::Chat, &text, &mut sampler, 90, &mut |_| {})?;
+                let reply = model.complete(ojp_core::model::Seq::Chat, &text, &mut sampler, 110, &mut |_| {})?;
                 let head: String = reply.trim().chars().take(160).collect::<String>().to_lowercase();
                 let declined = MARKERS.iter().any(|m| head.contains(m));
                 refused += declined as usize;
                 let adult = PROMPTS.iter().position(|p| p == &prompt).is_some_and(|i| i >= 12);
-                let shown = if adult { String::from("(not shown)") } else { reply.trim().replace('\n', " | ").chars().take(150).collect::<String>() };
+                // Adult-theme replies are shown only when they are refusals (to read the stated reason).
+                let shown = if adult && !declined { String::from("(not shown)") } else { reply.trim().replace('\n', " | ").chars().take(220).collect::<String>() };
                 println!("{} {}\n      -> {}", if declined { "REFUSED" } else { "ok     " }, prompt, shown);
             }
             println!("refusals: {refused}/{}", PROMPTS.len());
