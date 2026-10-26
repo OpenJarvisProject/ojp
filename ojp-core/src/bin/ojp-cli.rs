@@ -706,6 +706,30 @@ fn main() -> anyhow::Result<()> {
                 println!("FEAT {}", serde_json::json!([label, h]));
             }
         }
+        Some("gen-eval") => {
+            // gen-eval <model> <category<TAB>prompt file>: one reply per prompt, as the app would write it
+            // (chat sampler, seed 1), printed as JSON lines. OJP_SYSTEM adds a system prompt (a persona).
+            use llama_crab::high_level::completion::SamplingOptions;
+            let rows: Vec<(String, String)> = std::fs::read_to_string(&args[2])?
+                .lines()
+                .filter_map(|l| l.split_once('\t').map(|(a, b)| (a.to_string(), b.to_string())))
+                .collect();
+            let mut model = load_cached(&args[1])?;
+            let template = Template::from_env();
+            let system = std::env::var("OJP_SYSTEM").ok();
+            let max_tokens: usize = env_or("OJP_GEN_TOKENS", 200);
+            for (category, prompt) in rows {
+                let mut messages = Vec::new();
+                if let Some(s) = &system {
+                    messages.push(llama_crab::ChatMessage::new(llama_crab::Role::System, s.clone()));
+                }
+                messages.push(llama_crab::ChatMessage::new(llama_crab::Role::User, prompt.clone()));
+                let text = template.render(&messages, true);
+                let mut sampler = SamplingOptions::chat().with_seed(1).build_sampler(model.llama())?;
+                let reply = model.complete(ojp_core::model::Seq::Chat, &text, &mut sampler, max_tokens, &mut |_| {})?;
+                println!("GEN {}", serde_json::json!({"category": category, "prompt": prompt, "reply": reply.trim()}));
+            }
+        }
         Some("route-feats") => {
             // route-feats <model> <train|dev|xl|test> [short]: [label index, hidden state] per case.
             // The second argument is a set name or a label<TAB>request file.

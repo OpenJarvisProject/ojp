@@ -1,0 +1,1 @@
+cargo:rustc-env=MIME_TYPES_GENERATED_PATH=/media/ojp/target-vk/release/build/mime_guess-91a93caee2539ca3/out/mime_types_generated.rs

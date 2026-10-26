@@ -1,0 +1,18 @@
+{
+	"InstallScripts" : 
+	[
+		"/media/ojp/target-vk/release/build/llama-crab-sys-75c85abe0e909ed7/out/build/cmake_install.cmake",
+		"/media/ojp/target-vk/release/build/llama-crab-sys-75c85abe0e909ed7/out/build/ggml/cmake_install.cmake",
+		"/media/ojp/target-vk/release/build/llama-crab-sys-75c85abe0e909ed7/out/build/ggml/src/cmake_install.cmake",
+		"/media/ojp/target-vk/release/build/llama-crab-sys-75c85abe0e909ed7/out/build/ggml/src/ggml-cpu/cmake_install.cmake",
+		"/media/ojp/target-vk/release/build/llama-crab-sys-75c85abe0e909ed7/out/build/ggml/src/ggml-vulkan/cmake_install.cmake",
+		"/media/ojp/target-vk/release/build/llama-crab-sys-75c85abe0e909ed7/out/build/src/cmake_install.cmake",
+		"/media/ojp/target-vk/release/build/llama-crab-sys-75c85abe0e909ed7/out/build/vendor/cmake_install.cmake",
+		"/media/ojp/target-vk/release/build/llama-crab-sys-75c85abe0e909ed7/out/build/vendor/hash/cmake_install.cmake",
+		"/media/ojp/target-vk/release/build/llama-crab-sys-75c85abe0e909ed7/out/build/vendor/miniaudio/cmake_install.cmake",
+		"/media/ojp/target-vk/release/build/llama-crab-sys-75c85abe0e909ed7/out/build/vendor/nlohmann/cmake_install.cmake",
+		"/media/ojp/target-vk/release/build/llama-crab-sys-75c85abe0e909ed7/out/build/vendor/sheredom/cmake_install.cmake",
+		"/media/ojp/target-vk/release/build/llama-crab-sys-75c85abe0e909ed7/out/build/vendor/stb/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
