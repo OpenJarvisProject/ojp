@@ -204,6 +204,16 @@ const EXAMPLES: &[(&str, &str)] = &[
     ("Show me what I wrote down.", r#"[{"tool": "notes_list", "args": {}}]"#),
 ];
 
+/// Extra instructions for Qwen3.5-based models only (their planner guessed file names and mixed
+/// up the user's files with remembered facts).
+const QWEN35_RULES: &str = "\nThe user's own files and documents (a resume, budget, recipes, taxes, notes files) are on this computer: use find_files, search_text or read_file for them, never recall. recall is only for facts the user told you in chat. Call read_file only with an exact path the user gave or find_files returned; when you only know a loose file name (resume, recipes, budget), call find_files first; use search_text to look for words inside files.";
+
+const QWEN35_EXAMPLES: &[(&str, &str)] = &[
+    ("What does my lease say about pets?", r#"[{"tool": "find_files", "args": {"query": "lease"}}]"#),
+    ("What is the deductible in my insurance paperwork?", r#"[{"tool": "find_files", "args": {"query": "insurance"}}]"#),
+    ("Summarize my cover letter.", r#"[{"tool": "find_files", "args": {"query": "cover letter"}}]"#),
+];
+
 /// What a tool call did.
 pub struct Outcome {
     pub tool: &'static str,
@@ -236,9 +246,15 @@ pub fn ask(model: &mut Model, template: Template, request: &str) -> Result<Vec<V
 /// Ask the model what to do next, given what earlier steps found. After the
 /// first step it may also answer `done`.
 /// The planner's chat prompt: tool list, worked examples, the request and what earlier steps found.
-fn planner_messages(request: &str, steps: &[Step], with_done: bool) -> Vec<ChatMessage> {
-    let mut messages = vec![ChatMessage::new(Role::System, system_prompt_for(with_done))];
-    for (user, calls) in EXAMPLES {
+fn planner_messages(template: Template, request: &str, steps: &[Step], with_done: bool) -> Vec<ChatMessage> {
+    let mut system = system_prompt_for(with_done);
+    let qwen35 = template.qwen35_tuned();
+    if qwen35 {
+        system.push_str(QWEN35_RULES);
+    }
+    let mut messages = vec![ChatMessage::new(Role::System, system)];
+    let extra: &[(&str, &str)] = if qwen35 { QWEN35_EXAMPLES } else { &[] };
+    for (user, calls) in EXAMPLES.iter().chain(extra) {
         messages.push(ChatMessage::new(Role::User, *user));
         messages.push(ChatMessage::new(Role::Assistant, *calls));
     }
@@ -268,7 +284,7 @@ fn planner_messages(request: &str, steps: &[Step], with_done: bool) -> Vec<ChatM
 
 pub fn plan(model: &mut Model, template: Template, request: &str, steps: &[Step]) -> Result<Vec<Value>> {
     let with_done = !steps.is_empty();
-    let messages = planner_messages(request, steps, with_done);
+    let messages = planner_messages(template, request, steps, with_done);
     let prompt = template.render(&messages, true);
     // SAFETY: llama_sampler_init_grammar parses the grammar during the call.
     let grammar = unsafe { LlamaSampler::grammar(model.llama().model(), &grammar(with_done), "root") }.context("tool grammar rejected")?;
@@ -334,6 +350,7 @@ pub fn ask_fast(model: &mut Model, template: Template, probe: Option<&ToolProbe>
     if let (Some(probe), Some(hidden)) = (probe, hidden)
         && let Some((tool, p)) = probe.predict(hidden)
         && p >= TOOL_PROBE_MIN_CONFIDENCE
+        && (tool != "read_file" || has_path(request))
         && let Ok(calls) = plan_forced(model, template, request, tool)
     {
         return Ok(calls);
@@ -341,11 +358,20 @@ pub fn ask_fast(model: &mut Model, template: Template, probe: Option<&ToolProbe>
     ask(model, template, request)
 }
 
+/// Whether the request names a file path or a file with an extension (read_file needs an exact path;
+/// with only a loose name the full planner should find the file first).
+fn has_path(request: &str) -> bool {
+    request.split_whitespace().any(|w| {
+        let w = w.trim_matches(|c: char| !c.is_alphanumeric() && c != '/' && c != '.' && c != '~' && c != '_' && c != '-');
+        w.contains('/') || w.rsplit_once('.').is_some_and(|(stem, ext)| !stem.is_empty() && (2..=4).contains(&ext.len()) && ext.chars().all(|c| c.is_ascii_alphanumeric()))
+    })
+}
+
 /// Generate the call for one known tool. The prompt is the planner's own (fixed tool
 /// list and examples, so its cache is reused), but the grammar allows only that tool:
 /// the probe has chosen the tool, the model only writes the arguments.
 fn plan_forced(model: &mut Model, template: Template, request: &str, tool: &str) -> Result<Vec<Value>> {
-    let messages = planner_messages(request, &[], false);
+    let messages = planner_messages(template, request, &[], false);
     let prompt = template.render(&messages, true);
     // SAFETY: llama_sampler_init_grammar parses the grammar during the call.
     let grammar = unsafe { LlamaSampler::grammar(model.llama().model(), &grammar_for(false, Some(tool)), "root") }.context("tool grammar rejected")?;
@@ -497,7 +523,25 @@ fn run_trusted(call: &Value) -> Result<Outcome> {
     eprintln!("[tool call: {call}]");
     let name = call["tool"].as_str().context("no tool name")?;
     let tool = REGISTRY.iter().find(|t| t.name == name).with_context(|| format!("unknown tool {name:?}"))?;
-    let text = (tool.run)(&call["args"])?;
+    let text = match (tool.run)(&call["args"]) {
+        Ok(t) => t,
+        Err(e) if name == "read_file" && format!("{e:#}").contains("doesn't exist") => {
+            // A guessed path ("recipe.txt" for recipes.txt): if exactly one file in the home folder
+            // matches the name's stem, read that one instead of failing.
+            let path = call["args"]["path"].as_str().unwrap_or("");
+            let stem = Path::new(path).file_stem().and_then(|s| s.to_str()).unwrap_or("");
+            let found = find_files(stem).ok().and_then(|r| {
+                let mut lines = r.lines();
+                (lines.next()? .starts_with("1 match")).then(|| lines.next().map(str::to_string)).flatten()
+            });
+            let Some(found) = found else { return Err(e) };
+            let mut fixed = call.clone();
+            fixed["args"]["path"] = Value::String(found.clone());
+            let text = ext::read_file(&found).map_err(|_| e)?;
+            return Ok(Outcome { tool: tool.name, kind: tool.kind, call: fixed, text });
+        }
+        Err(e) => return Err(e),
+    };
     Ok(Outcome { tool: tool.name, kind: tool.kind, call: call.clone(), text })
 }
 
@@ -1306,6 +1350,33 @@ mod tests {
         assert!(open_url("javascript:alert(1)").is_err());
         unsafe { std::env::set_var("OJP_TOOLS_DRY_RUN", "1") };
         assert!(open_url("https://example.com/path?x=1").is_ok());
+    }
+
+    #[test]
+    fn read_file_with_a_guessed_name_finds_the_one_match() {
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!("ojp-didyoumean-{}", std::process::id()));
+        std::fs::create_dir_all(home.join("Documents")).unwrap();
+        std::fs::write(home.join("Documents/recipes.txt"), "Soup: simmer 30 minutes.").unwrap();
+        let old_home = std::env::var("HOME").ok();
+        unsafe { std::env::set_var("HOME", &home) };
+        let out = run_call(&json!({"tool": "read_file", "args": {"path": "~/Documents/recipe.txt"}}));
+        let none = run_call(&json!({"tool": "read_file", "args": {"path": "~/Documents/zzz-nothing.txt"}}));
+        match old_home {
+            Some(h) => unsafe { std::env::set_var("HOME", h) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+        let _ = std::fs::remove_dir_all(&home);
+        assert!(out.unwrap().text.contains("simmer 30 minutes"));
+        assert!(none.is_err());
+    }
+
+    #[test]
+    fn has_path_spots_paths_and_extensions_only() {
+        assert!(has_path("Show me notes.txt in my Documents."));
+        assert!(has_path("read ~/Documents/a"));
+        assert!(!has_path("Check my recipes file: how long does the soup simmer?"));
+        assert!(!has_path("What's in my budget."));
     }
 
     #[test]

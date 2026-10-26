@@ -74,6 +74,21 @@ for r in RIDDLE:
 for _ in range(160):
     t = pick(dev).format(tm=pick(dev_t).format(n=random.choice([2, 5, 10, 15, 20, 30, 45, 90])), r=pick(rr), h=pick(hh), vd=pick(["up", "down", "up a bit", "down a lot"]), v=random.choice([10, 20, 35, 50, 75, 90]), bd=pick(["brighter", "dimmer"]), app=pick(apps), onoff=pick(["on", "off"]), sw=pick(sws), mus=pick(mus), city=pick(cities), fold=pick(folds), fn=pick(fns), q=pick(qs), a=random.randint(2, 999), b=random.randint(2, 99), op=pick(["plus", "minus", "times", "divided by"]), cmd=pick(cmds), fact=pick(facts))
     gen.append(("device_control", dress(t, 0.5)))
+webq = ["rust tutorials", "python decorators", "react hooks guide", "docker compose examples", "git rebase tutorial", "css grid cheat sheet", "linux commands list", "java streams examples", "kubernetes basics", "sql join types", "typescript generics", "bash scripting tips"]
+for _ in range(40):
+    q = pick(webq)
+    gen.append(("device_control", dress(pick(["search the web for {q}", "google {q}", "look up {q} online", "find {q} on the internet", "web search: {q}", "search online for {q}"]).format(q=q), 0.4)))
+filesx = ["resume", "budget", "recipes", "tax return", "lease", "insurance policy", "cover letter", "notes file", "meeting notes", "contract", "todo list", "grocery list", "passport info"]
+for _ in range(60):
+    f = pick(filesx)
+    gen.append(("device_control", dress(pick(["what does my {f} say", "what's in my {f}", "summarize my {f}", "check my {f} for me", "open my {f} and tell me what it says", "what is written in my {f}", "look in my {f} and tell me the details", "read me my {f}"]).format(f=f), 0.4)))
+likes = ["drink", "eat for breakfast", "watch on weekends", "listen to", "do on holidays", "cook"]
+things = ["dog", "cat", "sister", "boss", "best friend", "favourite colour", "car"]
+for _ in range(45):
+    gen.append(("device_control", dress(pick(["what do I like to {l}", "what is my {t} called", "what's my {t}'s name", "where do I live", "what did I tell you about my {t}", "do you remember my {t}", "who is my {t}", "what do you know about my {t}"]).format(l=pick(likes), t=pick(things)), 0.4)))
+spend = ["food", "rent", "fun", "groceries", "transport", "subscriptions"]
+for _ in range(45):
+    gen.append(("device_control", dress(pick(["how much do I spend on {x} each month", "what's my monthly {x} budget", "how much is my {x} per month", "what is my rent", "what's my salary", "what is my wifi password", "when is my dentist appointment", "when is my flight"]).format(x=pick(spend)), 0.4)))
 seen = set(); out = []
 for l, q in rows + gen:
     k = q.strip().lower()

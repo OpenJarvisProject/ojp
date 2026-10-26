@@ -1,5 +1,5 @@
 write_file	Create readme.md and write feed the cat in it!
-multi	look python decorators explained up on the web, then find where i wrote down bank account
+multi	look pizza near me up on the web, then launch Thunderbird
 web_search	Please web search: how to bake bread!
 run_command	Could you run ls -la now
 get_time	tell me the time
@@ -8,61 +8,61 @@ volume	Can you put the sound at 25.
 clipboard	Ok what's on my clipboard
 calculate	ok what's sine of 30 degrees!
 now_playing	What's playing.
-multi	Please take me to openstreetmap.org, and please remember my manager is Priya now
-reminders_list	Hey, what timers are running now
+multi	Please save this about me: my dog is called Max and what is my dog called?
+reminders_list	I want you to what reminders do I have?
 system_status	Hey jarvis, any low resources on this machine.
 multi	please show me gitlab.com, and nudge me in 45 minutes to pay the electricity bill
-multi	Could you cat draft.txt and also who sings this.
+multi	Could you compute 12 squared and what day of the week is it for me
 tag_add	Make a new tag named work for running, gym, yoga?
 forget	forget what I told you about drinks.
 web_search	search online for train times to Boston?
 open_url	Hey, show me gitlab.com.
-reminders_list	Ok do I have any timers
+reminders_list	Ok show active timers and reminders?
 now_playing	What's on the speakers please
 set_timer	Give me a 25 minute countdown
 write_file	Hey jarvis, store renew the passport in shopping.txt
-multi	I want you to what's pending on my timers and also in 8 minutes remind me to pick up the parcel
+multi	I want you to where did I save the holiday photos and then set a timer for 25 minutes
 run_command	Use the terminal to run df -h please
 notes_list	Could you show me what I wrote down
-multi	in 15 minutes remind me to renew the passport, then how much battery do I have please
-multi	Could you execute ps aux, and search inside my documents for meeting!
+multi	i want you to what's today and then how much disk space is free!
+multi	Could you google the weather in Denver and also previous track.
 note_add	Save a note that says buy milk?
 recall	Can you what do you know about my job
 set_timer	Ring after 10 minutes
 tag_add	Add a tag called fitness for running, gym, yoga!
-search_text	Hey jarvis, check my files: what is my bank account please
+search_text	Hey jarvis, search my files for doctor for me
 notes_list	List my saved notes for me
 mute	Hey jarvis, turn the sound back on please
 recall	Can you recall what I said about my hobbies?
 write_file	Hey jarvis, create report.txt and write submit the form in it please
 remind	Can you reminder: pick up the parcel, 5 minutes
-list_dir	I want you to list the files in the projects folder
+list_dir	I want you to show me what's in the projects folder for me
 remember	hey, don't forget that I work night shifts?
 note_add	I want you to jot down book a table for Friday?
-search_text	search inside my documents for passport number?
-multi	Ok start Kate and can you make the volume 45 for me
-find_files	Where is my thesis please
+search_text	what do my documents say about passport number?
+multi	Ok show the contents of Downloads and then what's on my clipboard?
+find_files	hey jarvis, check my thesis file
 run_command	Execute uptime!
-multi	Search online for how to bake bread and also remember that i prefer tea to coffee
+multi	Search online for best hiking boots and then make a note: feed the cat for me
 clipboard	can you read my clipboard?
 web_search	could you search the web for train times to Boston.
-list_dir	Browse documents
+list_dir	Browse videos!
 run_command	please run the command df -h now
 clipboard	Read my clipboard!
 open_url	Load the website news.ycombinator.com now
-read_file	Read me report.txt?
+read_file	Read the file report.txt.
 read_file	Can you print budget.csv?
-find_files	Find the file called tax return?
-multi	Hit play and also which track is this!
+find_files	Hey, help me find my budget now
+multi	How much free space do I have, and please remember I don't eat pork
 notes_list	Please read my notes back to me?
-multi	Hey, show active timers and reminders, then browse to openstreetmap.org for me
+multi	Hey, tell me the time, then run ps aux now
 remind	i want you to in 15 minutes remind me to back up the laptop!
 notes_list	Ok show me what I wrote down!
-list_dir	Could you list the files in Videos for me
+list_dir	Could you what do I have in my home folder for me
 mute	Stop the noise, mute everything
 clipboard	hey, show me what I copied
 recall	I want you to look up what I told you about food now
-search_text	look through my files for birthday please
+search_text	please search my files for password.
 recall	ok who is my manager now
 web_fetch	Can you go to openstreetmap.org and tell me what it says
 forget	Erase what you know about drinks for me
@@ -76,12 +76,12 @@ open_url	load the website openstreetmap.org
 remember	i want you to I want you to remember I drive a blue car for me
 clipboard	Please read my clipboard!
 remind	please set a reminder to stretch in 15 minutes
-multi	Hey, look up what I told you about my hobbies, and bring up Firefox.
-find_files	can you locate my holiday photos please
-multi	Search the web for cheap flights to Rome and also mute the sound
+multi	Hey, open my resume and tell me what it says and then get the file manager going
+find_files	hey, which file is my recipe for me
+multi	Search online for how to bake bread and also remember that i prefer tea to coffee
 volume	can you make the volume 15 please
 now_playing	Name of the song playing right now now
-find_files	search for files named budget now
+find_files	what does my receipt say!
 remember	Could you I want you to remember my favourite colour is green.
 write_file	I want you to create draft.txt and write pay the electricity bill in it for me
 set_timer	can you begin a countdown of 60 minutes
@@ -89,25 +89,25 @@ open_app	Can you fire up Steam
 memories_list	can you tell me everything you remember about me
 set_timer	Hey jarvis, timer for 30 minutes?
 clipboard	Read my clipboard now
-find_files	Ok search for files named recipe!
+find_files	check my cv file
 remind	Please remind me to renew the passport in 10 minutes now
 now_playing	Hey jarvis, what am I listening to
 tags_list	hey jarvis, show the memory categories for me
 web_fetch	Please go to wikipedia.org and tell me what it says
-find_files	Hey, locate my receipt!
+find_files	Please open my thesis and tell me what it says please
 system_status	How's my battery?
 open_url	Can you navigate to https://reddit.com
 open_app	can you launch Slack for me
-list_dir	What's in my Pictures folder.
+list_dir	What's in my my home folder folder
 reminders_list	what's pending on my timers
 web_fetch	Ok summarize the page https://openstreetmap.org
-search_text	dig through my files for the salary!
+search_text	hey jarvis, check my files: what is my bank account
 mute	Hey, silence the speakers now
-search_text	Ok check my files: what is my salary?
-multi	Ok start Slack, then what notes do I have
-list_dir	Hey, show the contents of downloads please
+search_text	Ok find where I wrote down salary?
+multi	Ok show the contents of Music, and how much is 18% tip on 64 dollars
+list_dir	Hey, show the contents of my home folder!
 system_status	how much disk space is free for me
-search_text	Hey jarvis, find where I wrote down doctor
+search_text	How much do I spend on doctor each month
 calculate	What is 2 to the power of 10?
 write_file	Create plan.md and write submit the form in it now
 run_command	Please run the command date now
@@ -123,13 +123,13 @@ media	hey, skip this song
 forget	Hey jarvis, forget that I don't eat pork for me
 tags_list	ok what tags are there for memories.
 recall	hey jarvis, what do you know about where I live please
-multi	Load the website gitlab.com, then open up the file manager for me please
+multi	Load the website openstreetmap.org, and pause the video please
 media	skip to the next one!
-search_text	Could you grep my notes for rent
+search_text	Find where I wrote down insurance.
 volume	Hey, volume to 45 percent please now
-read_file	Please cat draft.txt please
+read_file	Please show me what's inside notes.txt for me
 reminders_list	please what timers are running.
-multi	Hey jarvis, adjust the speaker volume to 70, then get Signal going.
+multi	Hey jarvis, check the clipboard, then show the contents of Music
 open_url	I want you to open docs.rs in the browser please
 get_time	i want you to what's today's date
 run_command	Hey, in the shell run whoami
@@ -137,27 +137,27 @@ web_search	google train times to Boston please
 tags_list	please what tags exist
 mute	ok turn the sound back on
 get_time	Could you what time is it
-multi	Ok which of my files mentions salary and restore the sound for me
-multi	Please save this about me: I'm allergic to peanuts and are there any reminders set
-search_text	Hey jarvis, look through my files for doctor for me
+multi	Ok what is my dog called and turn the volume up to 5 now
+multi	Please run uptime in the terminal, then how much disk space is free!
+search_text	I want you to dig through my files for the flight
 volume	hey jarvis, turn the volume down to 20 percent!
 mute	Turn the sound back on
 get_time	hey jarvis, what time is it for me
 run_command	Hey, use the terminal to run date now
-multi	how's my computer doing, then can you run free -m
+multi	how's my battery, then list my pending reminders now
 system_status	any low resources on this machine?
-multi	Check my documents and tell me address and then open OBS please
+multi	Check the clipboard and also execute free -m now
 calculate	Ok can you tell me sine of 30 degrees
 media	I want you to stop the song for a second?
 open_url	Visit youtube.com please
 web_search	I want you to google pizza near me now
 remind	Ping me in 90 minutes about stretch
 note_add	I want you to put this in my notes: pay the electricity bill!
-find_files	Find budget on this computer!
+find_files	Find recipe on this computer?
 remember	Please store this fact: I live in Denver
-multi	Can you what's in my notes and save this about me: I drive a blue car.
+multi	Can you what is my monthly passport number budget, and name of the song playing right now for me
 note_add	Ok jot down check the oven now
-multi	Hey, ping me in 40 minutes about renew the passport and then what's the current song
+multi	Hey, play the music, then show me what I copied
 memories_list	What do you remember about me
 reminders_list	what reminders do I have
 open_app	Can you switch to the settings
@@ -165,32 +165,32 @@ read_file	Could you read the file plan.md
 forget	Delete the memory about where I live.
 notes_list	Ok show my notes?
 set_timer	Ring after 90 minutes?
-search_text	look through my files for doctor!
+search_text	please what do my documents say about password
 forget	Hey jarvis, stop remembering my family.
 clipboard	Can you what's on my clipboard now
 web_search	ok google latest linux kernel
-read_file	Print notes.txt
-multi	Recall what I said about my birthday, and calculate 25 percent of 480 now
-reminders_list	Show active timers and reminders
-multi	Hey, nudge me in 60 minutes to email Jane the report, and open up Chrome for me now
+read_file	Read me shopping.txt.
+multi	Read log.txt in my Documents and what timers are running.
+reminders_list	Show active timers and reminders for me
+multi	Hey, pause the music and also make a note: water the plants?
 tag_add	Hey jarvis, add a tag called music for exam, homework.
-multi	Show active timers and reminders, and hit play!
+multi	Search the web for cheap flights to Rome and also mute the sound
 tag_add	Hey, new memory tag finance: guitar, piano
 set_timer	Begin a countdown of 25 minutes
-multi	Jot down stretch, then search for files named insurance policy now
+multi	Kill the audio and what did I copy
 write_file	Could you overwrite readme.md with call the dentist
-multi	I want you to save this about me: I'm learning the guitar and then bring up the settings please
+multi	I want you to what's pending on my timers and also in 8 minutes remind me to pick up the parcel
 memories_list	Can you what do you know about me
 web_search	Hey, look best hiking boots up on the web
 memories_list	Can you list my memories please
 volume	can you make the volume 25.
-read_file	Tell me what's written in readme.md please
+read_file	What does ideas.md say please
 web_fetch	Please get the text of github.com?
 write_file	make a new file budget.csv with the text pick up the parcel
 volume	Raise the volume to 65 for me
 read_file	Could you read the file plan.md now
 clipboard	check the clipboard please
-reminders_list	Hey jarvis, list my pending reminders
+reminders_list	Hey jarvis, list my pending reminders!
 mute	I want you to kill the audio
 reminders_list	what timers are running?
 system_status	Ok how's my battery?
@@ -200,16 +200,16 @@ get_time	hey, time check!
 note_add	hey jarvis, note to self: book a table for Friday please
 web_fetch	fetch https://gitlab.com and tell me what it says
 list_dir	what files are in Music
-multi	Show me what I copied and then how's my battery
+multi	Show me what I copied and then any low resources on this machine
 mute	Mute
 remind	Can you remind me to email jane the report in 40 minutes.
 note_add	Hey, make a note: feed the cat.
 set_timer	Let me know when 45 minutes are up?
 web_search	Web search: how to bake bread
 media	Please hit pause!
-list_dir	List Videos
+list_dir	List videos for me
 open_app	please run kate
-reminders_list	Any reminders coming up?
+reminders_list	Can you any reminders coming up
 web_search	Look cheap flights to Rome up on the web?
 memories_list	What have I told you so far for me
 remind	I want you to tell me to back up the laptop after 25 minutes!
@@ -219,41 +219,41 @@ now_playing	Ok what video is playing now
 note_add	Could you scribble down stretch
 open_app	Bring up Dolphin please
 mute	Could you mute it please
-find_files	I want you to find recipe on this computer
+find_files	What is written in my tax return for me
 system_status	Hey jarvis, how much disk space is free.
-multi	Ok print shopping.txt and then wake me in 5 minutes?
-multi	What does todo.txt say and then kill the audio?
+multi	Ok pause the music, and what do I like to drink?
+multi	What did i jot down and also give me a 20 minute countdown
 forget	Forget what I told you about my car
 remember	Hey jarvis, keep in mind that my sister is called Mia for me
-multi	I want you to calculate 100 divided by 7, then can you search for cheap flights to Rome
+multi	I want you to don't let me forget to check the oven, 90 minutes from now, and find where I wrote down bank account?
 web_fetch	I want you to fetch https://docs.rs and tell me what it says
 open_app	Bring up Slack now
 write_file	I want you to make a new file todo.txt with the text book a table for Friday
 open_url	Hey jarvis, open openstreetmap.org in the browser.
-multi	i want you to tell me to check the oven after 90 minutes, then what do I like to drink for me
+multi	i want you to look pizza near me up on the web and turn the volume up to 15 now
 set_timer	Start the egg timer, 30 minutes now
 memories_list	Hey, tell me everything you remember about me.
 media	Please skip to the next one?
 multi	Cat shopping.txt, then list my pending reminders?
-multi	Hey jarvis, read report.txt in my documents, and which track is this for me
-multi	could you read the file shopping.txt and ring after 20 minutes please
+multi	Hey jarvis, show my notes and also set a timer for 45 minutes
+multi	compute 7 times 8 plus 3, then bring the sound back
 read_file	Could you tell me what's written in draft.txt.
 multi	work out 3.5 times 4, and keep in mind that my birthday is in June now
 clipboard	please show me what i copied now
-list_dir	What files are in Music?
+list_dir	What's in my Desktop folder
 now_playing	Hey, what's the current song
 web_fetch	i want you to go to docs.rs and tell me what it says.
 note_add	jot down back up the laptop for me
 list_dir	list the files in Desktop for me
 calculate	ok what is 17 times 23 now
-find_files	Help me find my insurance policy.
+find_files	Hey, search for files named cv please
 remind	In 3 minutes remind me to water the plants please
 tags_list	what tags exist.
 remind	i want you to ping me in 8 minutes about email Jane the report!
 web_search	could you look up how to bake bread online
 memories_list	tell me everything you remember about me.
-multi	Could you mute and then compute 2 to the power of 10?
-multi	Ok show the contents of Music, and how much is 18% tip on 64 dollars
+multi	Could you previous track and also which track is this please
+multi	Ok show me what's in Documents and then search inside my documents for budget
 remember	Can you note for the future: I drive a blue car
 tag_add	please create a memory tag finance with words meeting, boss, project
 system_status	How much free space do I have please
@@ -265,21 +265,21 @@ run_command	In the shell run uptime!
 remind	I want you to don't let me forget to submit the form, 30 minutes from now for me
 open_app	Hey jarvis, open the calculator
 forget	Could you erase what you know about food
-multi	google python decorators explained, and find wedding photos on this computer for me
+multi	could you turn the sound off and then what's my address please
 notes_list	hey jarvis, what's in my notes for me
 remind	ok don't let me forget to feed the cat, 60 minutes from now please
-list_dir	Hey, how many files are in the projects folder?
+list_dir	Hey, show me what's in Desktop.
 set_timer	Could you can you time 45 minutes for me?
-multi	What's playing and what did I jot down.
+multi	What's my address and then open OBS please
 memories_list	Hey, show me all the memories.
 recall	Do you remember my hobbies
 forget	Please remove drinks from your memory
 note_add	could you write down: call the dentist!
 set_timer	I want you to timer for 12 minutes for me
 run_command	Can you can you run whoami
-read_file	Show me what's inside shopping.txt
+read_file	Tell me what's written in readme.md please
 volume	Could you can you make the volume 75?
-multi	Grep my notes for salary and then read my clipboard.
+multi	Hey jarvis, can you run free -m, then mute my computer for me
 volume	Hey jarvis, can you make the volume 50 please
 now_playing	what video is playing for me
 tag_add	Could you new memory tag school: salary, rent, bills
@@ -288,12 +288,12 @@ tags_list	could you what tags exist for me
 write_file	Can you overwrite readme.md with book a table for Friday?
 write_file	can you write take the bins out to shopping.txt
 run_command	Run whoami
-multi	Ok show the contents of Downloads and then what's on my clipboard?
+multi	Ok set a reminder to feed the cat in 8 minutes and also run the command free -m please
 forget	Can you delete the memory about my dog
 now_playing	Hey, what video is playing please
 tag_add	Could you new memory tag music: guitar, piano!
 multi	Add a note: call the dentist and then what files are in Pictures for me
-multi	Please restore the sound and also open and read ~/ideas.md for me
+multi	Please open up discord for me and also note to self: pay the electricity bill please
 get_time	I want you to what's the time?
 open_app	hey, open the settings now
 tags_list	what tags are there for memories now
@@ -317,7 +317,7 @@ calculate	Please can you tell me sine of 30 degrees
 web_fetch	What does archlinux.org say.
 web_fetch	hey jarvis, read the article at archlinux.org to me
 system_status	hey, check system status now
-multi	Could you google the weather in Denver and also previous track.
+multi	Could you ls the projects folder and do you know what time it is now
 memories_list	Show everything you remember now
 tags_list	Ok show the memory categories
 write_file	I want you to save the text pick up the parcel into ideas.md in my Documents now
@@ -326,30 +326,30 @@ recall	Do you remember my job
 remember	hey jarvis, keep in mind that I'm learning the guitar
 run_command	Ok use the terminal to run free -m please
 tags_list	List the memory tags now
-reminders_list	Show active timers and reminders for me
-multi	Hey jarvis, remind me to renew the passport in 60 minutes and then list my pending reminders
+reminders_list	Show my reminders
+multi	Hey jarvis, tell me what's written in report.txt, then search the web for rust tutorials?
 set_timer	Hey, let me know when 10 minutes are up
 set_timer	Hey jarvis, start the egg timer, 30 minutes now
-reminders_list	Could you do I have any timers?
+reminders_list	Could you what timers are running?
 forget	Hey jarvis, forget what I told you about where I live now
 mute	Ok mute the sound please
-reminders_list	Hey, list my pending reminders
+reminders_list	Hey, what timers are running now
 volume	Turn the volume down to 45 percent please
-multi	i want you to what is 3.5 times 4 and also are there any reminders set for me
+multi	i want you to visit archlinux.org and also current time please
 forget	could you delete the memory about my family for me
 clipboard	Hey jarvis, show me what I copied please
 set_timer	Could you start a 3 minute timer
 get_time	hey jarvis, tell me the time
 recall	Please recall what I said about my hobbies.
-multi	Please what's pending on my timers and what files are in Downloads?
+multi	Please what's in my the projects folder folder, then how's my computer doing for me
 open_url	i want you to browse to wikipedia.org for me
 tag_add	Can you add a tag called music for plants, flowers
-multi	Hey jarvis, put this in my notes: pick up the parcel, then work out the square root of 144!
+multi	Hey jarvis, remind me to renew the passport in 60 minutes and then list my pending reminders
 system_status	please how's my battery?
 note_add	Could you write down: stretch please
 open_url	Hey jarvis, visit openstreetmap.org
 remind	tell me to stretch after 5 minutes?
-multi	Ok run df -h, and put the sound at 50
+multi	Ok print shopping.txt and then wake me in 5 minutes?
 recall	look up what I told you about my job for me
 system_status	How much battery do I have for me
 memories_list	Ok tell me everything you remember about me
@@ -360,10 +360,10 @@ now_playing	What song is this!
 get_time	what's today!
 media	Ok play the previous song again?
 web_search	Ok search online for how to bake bread please
-read_file	could you cat draft.txt please
+read_file	hey jarvis, display the contents of plan.md
 now_playing	What's the current song for me
-search_text	Search my files for doctor for me
-search_text	Ok search my files for flight for me
+search_text	What do my documents say about deadline now
+search_text	Ok what's my passport number now
 note_add	I want you to jot down check the oven
 remember	Save this about me: my favourite colour is green.
 get_time	can you do you know what time it is!
@@ -373,9 +373,9 @@ note_add	Hey, save a note that says take the bins out?
 calculate	I want you to what's 45 plus 38
 memories_list	Ok what have I told you so far please
 get_time	What's the time.
-multi	hey jarvis, which of my files mentions deadline and then count down 7 minutes
+multi	hey jarvis, show me what I copied and also list Pictures.
 volume	Change the volume level to 5
-find_files	which file is my contract please
+find_files	where did I save the contract now
 notes_list	Hey jarvis, show me what I wrote down for me
 open_url	Please open https://wikipedia.org.
 web_fetch	Hey jarvis, fetch https://github.com and tell me what it says!
@@ -384,21 +384,21 @@ web_fetch	Can you fetch https://archlinux.org and tell me what it says
 memories_list	Show me all the memories
 memories_list	i want you to list my memories
 system_status	can you any low resources on this machine?
-reminders_list	Can you what reminders are pending.
+reminders_list	Can you what's pending on my timers
 system_status	Could you how's my battery.
 clipboard	Hey, check the clipboard now
 write_file	Save the text submit the form into report.txt in my Documents now
 recall	Can you who is my manager
-list_dir	What's in my the projects folder folder please
-search_text	please search inside my documents for password
+list_dir	browse Downloads!
+search_text	search my files for birthday please
 mute	I want you to mute
 multi	please pull up openstreetmap.org in my browser and then volume 50!
-multi	Could you what's the uptime, and i want you to remember I prefer tea to coffee
+multi	Execute uptime, then show me what's in downloads!
 run_command	execute pwd
 memories_list	Ok tell me everything you remember about me.
-list_dir	Hey, show me what's in Desktop.
+list_dir	Hey, show the contents of downloads please
 now_playing	Name of the song playing right now
-multi	Please save this about me: my dog is called Max and what is my dog called?
+multi	Please save this about me: I'm allergic to peanuts and are there any reminders set
 get_time	what's the date today
 web_search	Hey jarvis, find information about python decorators explained on the internet
 volume	Can you put the sound at 50.
@@ -406,7 +406,7 @@ remind	Hey, tell me to book a table for Friday after 5 minutes.
 clipboard	what did I copy please
 recall	hey jarvis, look up what I told you about food now
 calculate	3.5 times 4?
-multi	Hey jarvis, can you run free -m, then mute my computer for me
+multi	Hey jarvis, open my thesis and tell me what it says and then can you tell me 25 percent of 480
 now_playing	Hey jarvis, what's playing
 read_file	Hey jarvis, what does budget.csv say please
 system_status	how long has the computer been on
@@ -415,19 +415,19 @@ set_timer	Ring after 20 minutes now
 write_file	Could you store renew the passport in readme.md
 clipboard	What's on my clipboard
 read_file	print readme.md!
-multi	I want you to read report.txt in my Documents and i want you to remember I don't eat pork.
+multi	I want you to save this about me: I'm learning the guitar and then bring up the settings please
 calculate	Sine of 30 degrees? for me
 tag_add	new memory tag school: guitar, piano please
 remember	Please remember I don't eat pork please
 tags_list	list the memory tags.
 mute	Bring the sound back please
-search_text	please look through my files for password.
+search_text	search inside my documents for meeting?
 clipboard	ok check the clipboard please
-find_files	Can you find my receipt files?
+find_files	Can you check my budget file for me
 media	Hey, play the previous song again now
 open_app	could you start chrome
 web_search	I want you to search online for the weather in Denver?
-search_text	could you what do my documents say about budget?
+search_text	can you how much do I spend on wifi password each month.
 system_status	I want you to how much ram is free?
 mute	please turn the sound back on
 list_dir	can you list the files in Documents!
@@ -437,15 +437,15 @@ tag_add	Ok add a tag called work for mum, dad, cousins
 open_url	Hey jarvis, load the website youtube.com.
 volume	Ok volume to 75 percent please.
 multi	Please what notes do I have, and look up what I told you about my birthday.
-multi	What files are in Desktop and also please remember my sister is called Mia
+multi	What does todo.txt say and then kill the audio?
 write_file	Store water the plants in plan.md now
 remember	store this fact: I live in Denver
-find_files	Hey, find the file called cv please
+find_files	Please locate my wedding photos please
 tags_list	what tags exist for me
 notes_list	could you show my notes now
 notes_list	could you show me what I wrote down for me
 calculate	i want you to how much is 3.5 times 4
-find_files	I want you to find my wedding photos files for me
+find_files	What is written in my invoice?
 open_url	visit github.com?
 open_app	Hey jarvis, switch to Thunderbird.
 clipboard	Show me what I copied.
@@ -454,25 +454,25 @@ tags_list	could you what tags are there for memories
 system_status	Hey jarvis, how much memory is used
 note_add	Can you make a note: book a table for Friday now
 volume	Volume to 85 percent please
-find_files	can you find my holiday photos files please
+find_files	hey, find my tax return files for me
 set_timer	hey, start the egg timer, 45 minutes
 remember	please remember that I don't eat pork?
-find_files	Hey jarvis, where is my passport scan.
-multi	Please what do my documents say about birthday and then show the contents of pictures now
+find_files	I want you to check my lecture notes file please
+multi	Please volume 15, and what reminders do I have now
 write_file	could you create plan.md and write water the plants in it!
 open_url	Ok show me wikipedia.org for me
 read_file	Can you show me what's inside draft.txt.
-multi	What's the time and tell me to book a table for Friday after 8 minutes?
-multi	Find information about python decorators explained on the internet, then are there any reminders set for me
-multi	Could you what is 12 squared and then how much battery do I have!
-multi	Show me what I copied and then any low resources on this machine
+multi	What's on my clipboard, then summarize my insurance policy
+multi	Hey jarvis, adjust the speaker volume to 70, then get Signal going.
+multi	Could you what's in my receipt, then read my notes back to me!
+multi	Show active timers and reminders, and hit play!
 write_file	create budget.csv and write submit the form in it for me
 open_app	Hey, run Signal
 forget	Hey jarvis, please forget my favourite colour is green!
 notes_list	i want you to what did I jot down!
 open_url	Please open https://openstreetmap.org!
 system_status	I want you to check system status?
-multi	Ok tell me the time and then figure out 17 times 23.
+multi	Ok start Kate and can you make the volume 45 for me
 calculate	work out 18% tip on 64 dollars
 remember	please save this about me: I work night shifts for me
 open_url	Pull up reddit.com in my browser please
@@ -481,7 +481,7 @@ open_app	switch to Steam now
 web_search	Could you search online for the weather in Denver?
 volume	i want you to turn the volume up to 85 please
 run_command	Could you run free -m in the terminal
-list_dir	Browse videos!
+list_dir	Can you how many files are in my home folder
 now_playing	which track is this
 clipboard	Could you what's in the clipboard now
 forget	Ok forget what I told you about my family.
@@ -489,41 +489,41 @@ volume	I want you to adjust the speaker volume to 30!
 recall	What is my dog called please
 open_url	Can you visit gitlab.com!
 mute	Ok turn the sound off please
-multi	Could you turn the volume down to 90 percent and then skip this song
+multi	Could you what time is it and then open youtube.com in the browser please
 calculate	Calculate 25 percent of 480 please
-multi	Ok look through my files for rent, then what's in my notes
+multi	Ok look latest linux kernel up on the web, then tell me my clipboard text please
 recall	Ok look up what I told you about my car please
-find_files	Hey jarvis, where is my resume.
+find_files	I want you to open my thesis and tell me what it says please
 now_playing	what's playing
 write_file	Create a file called draft.txt containing stretch please
 recall	Who is my manager now
 note_add	Can you jot down water the plants please
 volume	Could you volume 75?
-read_file	Please what does readme.md say for me
+read_file	Print notes.txt
 write_file	can you make a new file plan.md with the text stretch please
 recall	what do you know about my car!
 volume	Please volume to 85 percent please
-find_files	Hey, find lecture notes on this computer
+find_files	Look for my passport scan
 note_add	note to self: pay the electricity bill please
 tag_add	hey, add the words exam, homework to the fitness tag?
 get_time	i want you to current time please
-list_dir	Ok what's in my the projects folder folder
+list_dir	Please list the files in Music
 forget	I want you to delete the memory about drinks
-multi	Hey, pause the music and also make a note: water the plants?
+multi	Hey, ping me in 40 minutes about renew the passport and then what's the current song
 volume	put the sound at 100 please
 set_timer	Ring after 90 minutes please
 clipboard	Hey jarvis, paste the clipboard contents here.
-multi	Ok help me find my contract, and play the music!
+multi	Ok check system status, and name of the song playing right now
 remind	Hey, remind me to book a table for Friday in 30 minutes!
 clipboard	Ok check the clipboard?
 web_fetch	hey, read the article at duckduckgo.com to me
-multi	Could you what time is it and then open youtube.com in the browser please
+multi	Could you what's the uptime, and i want you to remember I prefer tea to coffee
 mute	Bring the sound back for me
 now_playing	Can you what am I listening to please
 multi	run whoami in the terminal and jot down pay the electricity bill!
 volume	hey, change the volume level to 20.
 set_timer	ok count down 12 minutes!
-multi	Please what's the date today and pull up duckduckgo.com in my browser
+multi	Please what's pending on my timers and what files are in Downloads?
 clipboard	Hey jarvis, check the clipboard!
 write_file	i want you to save the text check the oven into shopping.txt in my Documents for me
 forget	remove my family from your memory
@@ -531,7 +531,7 @@ note_add	Write down: pick up the parcel!
 forget	Hey jarvis, remove my car from your memory now
 remember	Please store this fact: I'm learning the guitar please
 mute	Hey, mute my computer!
-search_text	Could you grep my notes for insurance
+search_text	Could you grep my notes for address?
 open_url	could you load the website gitlab.com!
 recall	what do I like to drink now
 get_time	can you current time please?
@@ -540,72 +540,72 @@ write_file	please write submit the form to ideas.md now
 now_playing	Could you what song is playing?
 clipboard	please what's on my clipboard.
 calculate	compute 7 times 8 plus 3 for me
-multi	i want you to compute the square root of 144 and then raise the volume to 35 for me
-multi	how's my battery, then list my pending reminders now
+multi	how's my computer doing, then can you run free -m
+multi	hey, who sings this, then what is 17 times 23
 multi	Ok can you time 60 minutes for me, and read my clipboard
-multi	Ok what day is it, and list Downloads.
+multi	Ok start Slack, then what notes do I have
 system_status	Please what's my cpu load
-reminders_list	Please do I have any timers
+reminders_list	Show active timers and reminders
 volume	Could you put the sound at 35
 reminders_list	list my pending reminders
-find_files	hey, where is my recipe.
+find_files	ok what's in my holiday photos.
 web_fetch	read the article at docs.rs to me
 volume	could you set the volume to 50 now
 web_search	hey, google best hiking boots
 open_app	hey jarvis, launch the settings
 clipboard	show me what I copied
 open_url	could you go to wikipedia.org.
-multi	Ok grep my notes for address, and what do you know about my job?
-search_text	Search my files for doctor
+multi	Ok check my recipe file, then jot down call the dentist for me
+search_text	Search my files for rent now
 web_fetch	Please what does openstreetmap.org say
-multi	I want you to bring the sound back and scribble down book a table for Friday!
+multi	I want you to browse to openstreetmap.org, and what's the cube of 9 please
 forget	hey jarvis, erase what you know about my family for me
 tag_add	Add a tag called travel for running, gym, yoga
 notes_list	ok what's in my notes now
-multi	I want you to remember my dog is called Max and also put this in my notes: buy milk now
+multi	I want you to scribble down book a table for friday and then read report.txt in my documents please
 reminders_list	What's pending on my timers?
 multi	ok previous track, then run the command df -h
 media	Hey, skip to the next one for me
-multi	Hey, please remember my manager is Priya and also search my files for rent
+multi	Hey, read plan.md in my Documents and save this about me: my favourite colour is green
 forget	Forget that i'm learning the guitar.
 remind	Ping me in 30 minutes about pay the electricity bill?
 tag_add	could you make a new tag named finance for exam, homework?
 web_fetch	hey, get the text of duckduckgo.com?
-multi	Kill the audio and what did I copy
-multi	Hey, execute git status, and what notes do I have
+multi	Let me know when 90 minutes are up, then navigate to https://archlinux.org
+multi	Hey, look up what I told you about my hobbies, and bring up Firefox.
 remind	Hey jarvis, reminder: submit the form, 7 minutes
-multi	i want you to visit archlinux.org and also current time please
+multi	i want you to tell me to check the oven after 90 minutes, then what do I like to drink for me
 open_app	Hey jarvis, bring up the settings
 recall	Where do i live
 web_fetch	I want you to read the page at https://github.com for me
 system_status	Please how much memory is used please
-list_dir	What's in my my home folder folder
+list_dir	What's in my the projects folder folder please
 recall	What do I like to drink for me
 list_dir	what do I have in my home folder now
 calculate	Could you work out 999 minus 457!
 notes_list	Show my notes?
-find_files	Search for files named budget
+find_files	find contract on this computer.
 recall	do you remember my family.
 get_time	Hey jarvis, what day is it
 web_search	Google cheap flights to Rome!
 remember	I want you to save this about me: my dog is called Max?
 memories_list	Hey, list my memories now
 open_app	can you get Steam going
-multi	Show the contents of Desktop and also turn the sound off please
+multi	Show me what I copied and then how's my battery
 now_playing	who sings this
 remember	Hey, I want you to remember my manager is Priya?
 notes_list	Hey jarvis, list my saved notes
 run_command	Hey, execute ps aux for me
 web_search	Search online for rust tutorials
-search_text	Look through my files for rent now
+search_text	Look through my files for budget?
 run_command	Hey, run pwd in the terminal
 media	Ok next song!
 tags_list	Hey jarvis, show the memory categories for me
 web_fetch	hey jarvis, read the article at reddit.com to me
-multi	Hey, what's in my notes, then what am I listening to now
-search_text	I want you to grep my notes for salary?
+multi	Hit play and also which track is this!
+search_text	I want you to what is my monthly wifi password budget?
 clipboard	What did I copy.
-reminders_list	Please are there any reminders set!
+reminders_list	Please do I have any timers
 get_time	Could you what's the date now
 mute	Please kill the audio please
 remember	Please store this fact: my birthday is in June
@@ -619,50 +619,50 @@ volume	i want you to make it louder, 70?
 notes_list	Can you what did I jot down for me
 web_search	Could you look up best hiking boots online please
 multi	ok how's my battery, and set a timer for 40 minutes
-multi	Load the website openstreetmap.org, and pause the video please
+multi	Look for my invoice, and ls Pictures!
 clipboard	Could you paste the clipboard contents here?
 remind	remind me to back up the laptop in 45 minutes!
 set_timer	Start a 90 minute timer.
-search_text	can you check my documents and tell me birthday
+search_text	What do my documents say about rent
 media	Please play the previous song again now
 open_url	Hey jarvis, navigate to https://youtube.com now
 media	Hit play please
 system_status	Hey jarvis, what's the uptime
 write_file	ok overwrite notes.txt with back up the laptop please
 web_search	I want you to look movie showtimes tonight up on the web
-multi	could you search for files named recipe and also what's in the clipboard
+multi	could you read the file shopping.txt and ring after 20 minutes please
 get_time	i want you to what's the date
-find_files	Can you search for files named passport scan
+find_files	Check my thesis file please
 tags_list	Please what tags are there for memories now
 web_search	google movie showtimes tonight now
 multi	what am I listening to, and bring up Dolphin please
-find_files	Hey, search for files named tax return
+find_files	Summarize my tax return
 recall	recall what I said about my job
 reminders_list	What timers are running please
-find_files	Ok locate my receipt
+find_files	can you what's in my holiday photos please
 run_command	In the shell run free -m now
 web_fetch	Can you go to reddit.com and tell me what it says
-search_text	check my files: what is my meeting now
+search_text	What is my monthly flight budget please
 calculate	how much is 15% of 240 please
-read_file	Hey, display the contents of shopping.txt
+read_file	Hey, read shopping.txt in my Documents
 system_status	Hey, how full is my disk!
 read_file	Display the contents of shopping.txt now
 now_playing	What am i listening to.
 get_time	Can you what's the time for me
 media	Please skip this song?
-find_files	could you search for files named passport scan for me
-list_dir	Can you how many files are in my home folder
+find_files	i want you to where did I save the receipt!
+list_dir	Can you what files are in Documents now
 open_app	bring up Firefox?
 run_command	Ok use the terminal to run uptime.
-find_files	I want you to find lecture notes on this computer
+find_files	What does my wedding photos say
 tag_add	Create a memory tag fitness with words guitar, piano.
-search_text	I want you to dig through my files for the bank account
-list_dir	Hey jarvis, what files are in Videos
+search_text	I want you to look through my files for salary?
+list_dir	Hey, how many files are in the projects folder?
 web_search	could you find information about rust tutorials on the internet.
 notes_list	Could you what did I jot down for me
-list_dir	I want you to how many files are in Music now
+list_dir	I want you to list the files in the projects folder
 open_url	show me gitlab.com
-multi	Ok check system status, and name of the song playing right now
+multi	Ok check my files: what is my salary and restore the sound for me
 web_fetch	Could you summarize the page https://openstreetmap.org
 calculate	Can you tell me 2 to the power of 10 for me
 note_add	hey, note that I need to buy milk for me
@@ -674,21 +674,21 @@ clipboard	Please paste the clipboard contents here!
 clipboard	could you what did I copy.
 tags_list	i want you to show the memory categories?
 calculate	I want you to how much is 25 percent of 480
-multi	Put the sound at 65 and find information about the weather in Denver on the internet!
+multi	Print report.txt, then show me what's in Downloads
 tags_list	can you what tags exist please
 web_fetch	can you fetch https://github.com and tell me what it says
 multi	Ok bring up Firefox and also play the previous song again?
-multi	Volume to 50 percent please, then reminder: renew the passport, 45 minutes for me
+multi	Start a 30 minute timer and also don't forget that my birthday is in June now
 clipboard	Could you what's in the clipboard
-multi	Hey, run cat /etc/os-release and look for my invoice!
+multi	Hey, show active timers and reminders, then browse to openstreetmap.org for me
 web_search	Hey jarvis, look up movie showtimes tonight online.
-list_dir	Browse Videos
+list_dir	Browse documents
 multi	Can you read the file plan.md and then show the contents of Desktop now
 open_app	hey, run Spotify
 run_command	Can you run pwd
 recall	hey, what did I tell you about drinks!
 tag_add	Hey, add a tag called work for salary, rent, bills.
-find_files	Hey jarvis, where did I save the tax return.
+find_files	Hey, where is my tax return
 recall	Ok what's my favourite colour now
 note_add	scribble down book a table for Friday
 system_status	please how's my battery please
@@ -697,24 +697,24 @@ mute	Turn the sound off
 web_search	Ok search the web for best hiking boots for me
 memories_list	hey, show everything you remember.
 recall	could you look up what i told you about my family
-multi	I want you to read notes.txt in my Documents and then how much is the square root of 144
-search_text	hey jarvis, grep my notes for bank account
+multi	I want you to remember my dog is called Max and also put this in my notes: buy milk now
+search_text	hey, check my documents and tell me budget?
 mute	kill the audio!
-multi	Ok look latest linux kernel up on the web, then tell me my clipboard text please
+multi	Ok find budget on this computer, and play the music!
 remind	Hey, don't let me forget to pay the electricity bill, 20 minutes from now!
 memories_list	I want you to what do you know about me please
 reminders_list	What reminders do i have
 write_file	Can you write water the plants to shopping.txt.
 mute	Hey jarvis, silence the speakers
 mute	Could you turn the sound off now
-search_text	Hey jarvis, dig through my files for the salary?
-multi	Hey jarvis, what did I tell you about my birthday, and check my documents and tell me bank account for me
+search_text	Hey jarvis, which of my files mentions doctor
+multi	Hey jarvis, what's today and then use the terminal to run df -h?
 recall	Ok do you remember drinks
 memories_list	Please what do you know about me
 forget	Delete the memory about where i live please
 recall	Can you what is my dog called now
-multi	Could you switch to Kate and then check my files: what is my phone number.
-reminders_list	Ok show active timers and reminders?
+multi	Could you what is 12 squared and then how much battery do I have!
+reminders_list	Ok show my reminders please
 web_fetch	Ok fetch https://openstreetmap.org and tell me what it says
 remember	Could you remember that my manager is Priya please
 open_app	run Signal
@@ -722,21 +722,21 @@ run_command	Could you use the terminal to run whoami for me
 web_fetch	Could you fetch https://news.ycombinator.com and tell me what it says
 set_timer	hey jarvis, let me know when 25 minutes are up please
 note_add	Could you scribble down take the bins out
-multi	Hey, what song is this, then run the settings
+multi	Hey, what's in my notes, then what am I listening to now
 forget	ok remove allergies from your memory now
-find_files	Hey, look for my insurance policy
+find_files	Summarize my cv.
 now_playing	Hey, which track is this
 system_status	How much battery do I have.
 tag_add	create a memory tag family with words meeting, boss, project for me
 set_timer	Start the egg timer, 60 minutes.
 forget	Hey, delete the memory about drinks!
-multi	hey, who sings this, then what is 17 times 23
-multi	Run Steam and any low resources on this machine
+multi	hey, what's in my notes and then save this about me: I prefer tea to coffee please
+multi	Ring after 30 minutes and also open https://reddit.com please
 tags_list	Ok what tags exist please
 now_playing	Please what's on the speakers please
 remember	Hey, store this fact: my birthday is in june now
 open_url	Hey jarvis, visit docs.rs
-search_text	I want you to check my documents and tell me budget
+search_text	I want you to look through my files for flight please
 tags_list	Hey jarvis, what tags exist now
 mute	I want you to restore the sound!
 get_time	Can you what's the date?
@@ -745,11 +745,11 @@ clipboard	Read my clipboard for me
 write_file	Can you overwrite plan.md with take the bins out
 tags_list	hey jarvis, what tags are there for memories
 open_url	Hey, load the website openstreetmap.org
-find_files	Which file is my recipe
+find_files	hey jarvis, what is written in my cv.
 forget	Delete the memory about food
-multi	can you wake me in 3 minutes and also add a note: take the bins out
-multi	Please open up discord for me and also note to self: pay the electricity bill please
-read_file	Please show me what's inside notes.txt for me
+multi	can you navigate to https://duckduckgo.com, then show me what's inside report.txt
+multi	Please look up what I told you about my birthday and pause the music
+read_file	Please what does readme.md say for me
 mute	Kill the audio for me
 run_command	type ls ~/Downloads in the terminal and show me the output please
 remind	In 15 minutes remind me to call the dentist
@@ -757,34 +757,34 @@ volume	Make it louder, 10?
 remember	Store this fact: I'm allergic to peanuts.
 remind	In 8 minutes remind me to water the plants for me
 write_file	Can you save the text call the dentist into draft.txt in my Documents please
-multi	Ok pause the music, and what do I like to drink?
+multi	Ok look through my files for address, and what do you know about my job?
 mute	i want you to mute the sound
 clipboard	I want you to what's in the clipboard for me
 get_time	What's today's date
-search_text	Please dig through my files for the passport number?
+search_text	Please how much do i spend on insurance each month!
 system_status	Hey jarvis, how full is my disk now
 notes_list	hey jarvis, what did i jot down?
-multi	hey jarvis, show me what's in Music and also work out the square root of 144 please
+multi	google python decorators explained, and where did I save the wedding photos for me
 calculate	Hey, compute 999 minus 457
 system_status	I want you to how much free space do I have now
-multi	Ok show me what's in Documents and then search my files for budget
+multi	Ok search my files for rent, then what's in my notes
 forget	Erase what you know about food please
 now_playing	could you what's playing now
 forget	i want you to please forget I live in Denver
 notes_list	Please list my saved notes
 open_url	can you go to openstreetmap.org?
 note_add	Can you write down: back up the laptop
-list_dir	What do I have in Videos.
-read_file	Hey, what does draft.txt say
+list_dir	What files are in Downloads now
+read_file	Ok what does draft.txt say
 tag_add	could you add the words flights, hotels to the fitness tag!
 media	Hey, pause the video now
-multi	I want you to scribble down book a table for friday and then read report.txt in my documents please
+multi	I want you to what's today, and who is my manager
 notes_list	show my notes
-search_text	hey, what do my documents say about budget?
+search_text	i want you to dig through my files for the budget now
 get_time	What day of the week is it
 open_url	hey, take me to gitlab.com?
 open_url	Navigate to https://duckduckgo.com
-multi	Hey jarvis, show my notes and also set a timer for 45 minutes
+multi	Hey jarvis, what did I tell you about my birthday, and what's my bank account for me
 system_status	Hey, how long has the computer been on.
 run_command	could you run ls ~/Downloads in the terminal.
 system_status	hey, check system status?
@@ -792,13 +792,13 @@ multi	ok list my pending reminders and then kill the audio.
 media	skip this song
 multi	show my notes, and what timers are running now
 calculate	What is 7 times 8 plus 3 please
-reminders_list	I want you to what timers are running.
+reminders_list	Ok do I have any timers
 recall	what do you know about drinks.
 run_command	Type whoami in the terminal and show me the output now
 open_url	pull up archlinux.org in my browser?
 now_playing	I want you to what's on the speakers for me
 recall	Hey, who is my manager!
-multi	fire up firefox, and please remember i'm learning the guitar for me
+multi	could you set a timer for 30 minutes, and who sings this.
 write_file	Hey, store take the bins out in shopping.txt
 web_search	I want you to search the web for the weather in Denver?
 clipboard	Tell me my clipboard text now
@@ -809,32 +809,32 @@ note_add	Please note to self: pick up the parcel
 web_fetch	get the text of archlinux.org for me
 tags_list	show the memory categories
 tags_list	i want you to show the memory categories!
-read_file	Ok what does draft.txt say
+read_file	Please cat draft.txt please
 web_fetch	please go to wikipedia.org and tell me what it says please
 remember	I want you to remember that my dog is called Max
 open_url	Can you take me to archlinux.org?
-read_file	Read me shopping.txt.
+read_file	Read the file shopping.txt
 memories_list	Hey jarvis, tell me everything you remember about me now
 read_file	Hey jarvis, tell me what's written in plan.md
 open_app	ok get Blender going now
 remind	Hey, don't let me forget to email jane the report, 12 minutes from now!
-reminders_list	Show my reminders
-list_dir	Please list the files in Music
+reminders_list	What reminders are pending
+list_dir	Show the contents of Documents?
 read_file	Display the contents of log.txt?
 volume	Turn the volume down to 25 percent
 memories_list	show me all the memories now
 get_time	Hey jarvis, what time is it
-multi	Print report.txt, then show me what's in Downloads
-multi	Start a 30 minute timer and also don't forget that my birthday is in June now
+multi	Previous track and also keep in mind that I'm allergic to peanuts please
+multi	Show the contents of Desktop and also turn the sound off please
 remember	Note for the future: I'm allergic to peanuts.
 note_add	Hey jarvis, save a note that says feed the cat.
-find_files	locate my resume
+find_files	please check my budget file
 now_playing	Ok what song is this!
 now_playing	Could you who sings this
 multi	ok show me what I copied and tell me what's written in ideas.md for me
 tag_add	new memory tag gardening: plants, flowers?
 tag_add	Hey jarvis, new memory tag music: meeting, boss, project please
-search_text	Could you dig through my files for the address?
+search_text	Could you find where I wrote down salary
 multi	what timers are running, then list my saved notes.
 volume	Hey jarvis, volume to 10 percent please for me
 notes_list	Read me my notes for me
@@ -845,17 +845,17 @@ remember	Could you remember that my dog is called Max
 system_status	how's my battery
 run_command	ok use the terminal to run cat /etc/os-release please
 get_time	can you what's the date?
-multi	Figure out 999 minus 457 and then what's on the speakers please
+multi	Find information about python decorators explained on the internet, then are there any reminders set for me
 web_fetch	Hey jarvis, summarize the page https://github.com now
 multi	shut the speakers up, and previous track?
-reminders_list	Could you what timers are running?
+reminders_list	Hey jarvis, list my pending reminders
 forget	Can you forget that I'm learning the guitar please
 memories_list	Please show everything you remember please
 recall	please who is my manager
 calculate	quick maths: 17 times 23
 media	Pause the video for me
 volume	volume 20!
-search_text	Could you check my files: what is my salary
+search_text	Check my files: what is my phone number.
 mute	Hey jarvis, shut the speakers up
 note_add	note to self: feed the cat
 note_add	I want you to note to self: take the bins out for me
@@ -866,13 +866,13 @@ write_file	write renew the passport to shopping.txt for me
 remind	Hey, reminder: email Jane the report, 90 minutes
 calculate	Hey, work out 7 times 8 plus 3
 memories_list	Hey, list my memories for me
-multi	Hey, read plan.md in my Documents and save this about me: my favourite colour is green
+multi	Hey, run cat /etc/os-release and look for my invoice!
 get_time	I want you to what time is it?
 tags_list	Could you show the memory categories please
 tag_add	ok create a memory tag school with words mum, dad, cousins.
 set_timer	please ring after 3 minutes now
-multi	could you run free -m and then calculate 3.5 times 4
-read_file	Read the file shopping.txt
+multi	could you find my recipe files and also what's in the clipboard
+read_file	Show me what's inside shopping.txt
 memories_list	show me all the memories
 run_command	run whoami.
 set_timer	Ok can you time 2 minutes for me.
@@ -884,14 +884,14 @@ now_playing	what song is this?
 multi	please what files are in Downloads, and what time is it!
 media	play the previous song again
 notes_list	can you what's in my notes!
-multi	Could you previous track and also which track is this please
+multi	Could you show me what's in the projects folder and also are there any reminders set!
 note_add	Put this in my notes: back up the laptop for me
-multi	Please note to self: book a table for Friday, then read me report.txt for me
+multi	Please look python decorators explained up on the web and check my files: what is my meeting.
 tag_add	Please add a tag called finance for flights, hotels
 reminders_list	could you show active timers and reminders?
 tags_list	What tags are there for memories
 reminders_list	can you show my reminders
-multi	Can you which of my files mentions passport number, and name of the song playing right now for me
+multi	Can you what's in my notes and save this about me: I drive a blue car.
 reminders_list	Any reminders coming up
 web_fetch	ok read the page at https://github.com
 clipboard	Show me what I copied
@@ -902,55 +902,55 @@ note_add	Jot down water the plants.
 remind	in 30 minutes remind me to pick up the parcel
 set_timer	Start the egg timer, 40 minutes!
 remember	I want you to keep in mind that I don't eat pork
-multi	Could you compute 12 squared and what day of the week is it for me
+multi	Could you execute ps aux, and what do my documents say about meeting!
 calculate	can you what is 100 divided by 7?
 media	Hit play
 clipboard	Could you check the clipboard please
 media	Hey jarvis, pause the music!
 now_playing	What's the current song
 list_dir	please browse Videos
-multi	Please resume the music, then let me know when 10 minutes are up please
+multi	Please restore the sound and also open and read ~/ideas.md for me
 notes_list	Please show me what I wrote down!
 notes_list	Please what notes do I have for me
 memories_list	please tell me everything you remember about me
 open_url	Hey, open docs.rs in the browser for me
 forget	Stop remembering my dog for me
-multi	Let me know when 90 minutes are up, then navigate to https://archlinux.org
+multi	List the files in the projects folder, and wake me in 90 minutes
 open_url	Could you visit youtube.com!
 clipboard	Can you tell me my clipboard text.
 get_time	What's today's date please
-multi	Ring after 30 minutes and also open https://reddit.com please
-multi	Please what's today, then type uptime in the terminal and show me the output?
+multi	Remember that I drive a blue car, then search online for train times to Boston
+multi	Please what's the date today and pull up duckduckgo.com in my browser
 volume	could you raise the volume to 20
 multi	Browse to gitlab.com and display the contents of plan.md
-read_file	Hey, read shopping.txt in my Documents
+read_file	Hey, tell me what's written in plan.md!
 media	Can you pause the music for me
 clipboard	hey jarvis, check the clipboard
-multi	can you put this in my notes: water the plants and list the files in Documents.
+multi	can you get VS Code going and also which track is this now
 now_playing	Which track is this please
 calculate	can you can you tell me 18% tip on 64 dollars
 tag_add	Hey, add the words exam, homework to the gardening tag now
 note_add	Could you scribble down call the dentist
-multi	Could you ls the projects folder and do you know what time it is now
+multi	Could you pause the video, and which of my files mentions birthday
 forget	ok forget that I'm learning the guitar!
 tags_list	Can you list the memory tags!
 memories_list	could you show everything you remember.
 notes_list	i want you to list my saved notes please
-multi	hey, visit duckduckgo.com and grep my notes for insurance for me
-search_text	Grep my notes for budget
-multi	Ok set a reminder to feed the cat in 8 minutes and also run the command free -m please
+multi	hey, how much is 17 times 23, then open https://news.ycombinator.com please
+search_text	Hey jarvis, find where I wrote down bank account please
+multi	Ok run df -h, and put the sound at 50
 volume	Ok volume 85?
 open_app	Run Dolphin?
 open_app	launch Telegram!
 remember	please keep in mind that my manager is priya please
-read_file	Hey, tell me what's written in plan.md!
+read_file	Hey, tell me what's written in report.txt!
 web_fetch	Please what does duckduckgo.com say
 remind	Could you in 20 minutes remind me to feed the cat please
 remind	Reminder: back up the laptop, 15 minutes?
 web_search	please web search: how to bake bread now
 now_playing	hey, what's on the speakers for me
 tag_add	I want you to make a new tag named gardening for salary, rent, bills
-multi	What's on my clipboard, then where is my insurance policy
+multi	What song is playing, then show me what's in Pictures?
 system_status	How much disk space is free
 open_url	Ok show me duckduckgo.com please
 clipboard	please show me what I copied.
@@ -960,56 +960,56 @@ reminders_list	hey, show my reminders
 volume	please turn the volume down to 100 percent.
 remind	ok ping me in 45 minutes about feed the cat
 run_command	in the shell run ls -la
-multi	Hey, locate my resume and then get the file manager going
-search_text	Hey, look through my files for address please
+multi	Hey, nudge me in 60 minutes to email Jane the report, and open up Chrome for me now
+search_text	I want you to grep my notes for bank account
 now_playing	Please who sings this?
 tag_add	Add the words flights, hotels to the school tag for me
-multi	Please look up what I told you about my birthday and pause the music
+multi	Please jot down buy milk and then compute the square root of 144!
 write_file	hey jarvis, store back up the laptop in draft.txt
 note_add	Add a note: stretch.
-multi	Save this about me: I live in Denver, and quick maths: the square root of 144 for me
+multi	Run Steam and any low resources on this machine
 run_command	hey jarvis, can you run whoami
 volume	Volume 5!
-multi	can you check the clipboard and also remind me to book a table for Friday in 8 minutes for me
+multi	calculate 18% tip on 64 dollars, then play the music
 recall	where do I live
 open_app	Run Chrome!
 multi	run the command whoami, and fire up Signal please
-multi	Ok what is my dog called and turn the volume up to 5 now
+multi	Ok tell me the time and then figure out 17 times 23.
 mute	I want you to turn the sound off?
 note_add	Ok jot down stretch.
-multi	Ok where is my recipe, then jot down call the dentist for me
-find_files	Hey, where is my thesis now
+multi	Ok what day is it, and list Downloads.
+find_files	What does my insurance policy say please
 memories_list	Ok list my memories
 note_add	Scribble down take the bins out
-multi	can you do you know what time it is and also check system status please
+multi	can you can you time 8 minutes for me, and show me what's inside notes.txt for me
 get_time	What's today!
 web_search	I want you to web search: movie showtimes tonight now
 memories_list	What do you know about me now
-multi	I want you to help me find my boarding pass and then wake me in 90 minutes
+multi	I want you to read notes.txt in my Documents and then how much is the square root of 144
 multi	ok what files are in Desktop and what's the date today!
-list_dir	Show the contents of Documents?
+list_dir	Show the contents of Pictures!
 remember	Note for the future: I'm allergic to peanuts
 calculate	Calculate 18% tip on 64 dollars please
-list_dir	What files are in Downloads now
+list_dir	What files are in Music?
 set_timer	start the egg timer, 12 minutes please
 forget	Could you stop remembering my birthday for me
-list_dir	List videos for me
+list_dir	Ok how many files are in Desktop please
 read_file	Can you display the contents of plan.md
-search_text	I want you to which of my files mentions bank account
+search_text	I want you to what's my budget
 remember	I want you to remember I'm learning the guitar
 forget	remove allergies from your memory
 multi	Please can you search for how to bake bread and then hit play!
 multi	store this fact: i work night shifts and then who sings this now
 write_file	make a new file shopping.txt with the text stretch.
-multi	hey, how much is 17 times 23, then open https://news.ycombinator.com please
+multi	hey, are there any reminders set, then navigate to https://docs.rs please
 mute	Mute?
 get_time	Can you what's today?
 recall	hey, what did I tell you about allergies!
 recall	I want you to what is my dog called please
 open_app	start LibreOffice!
 set_timer	Can you time 20 minutes for me?
-multi	Hey jarvis, locate my thesis and then can you tell me 25 percent of 480
-multi	compute 7 times 8 plus 3, then bring the sound back
+multi	Hey jarvis, read report.txt in my documents, and which track is this for me
+multi	can you wake me in 3 minutes and also add a note: take the bins out
 system_status	could you any low resources on this machine
 tag_add	ok new memory tag family: meeting, boss, project
 now_playing	Which track is this
@@ -1022,98 +1022,98 @@ remember	Hey jarvis, please remember I prefer tea to coffee please
 multi	Ok calculate 45 plus 38, and what video is playing
 remember	Store this fact: I live in Denver
 multi	Ping me in 7 minutes about take the bins out and also mute it
-list_dir	Could you what do I have in my home folder for me
-multi	Could you save a note that says stretch, and remind me to submit the form in 25 minutes
+list_dir	Hey jarvis, show the contents of downloads for me
+multi	Could you start GIMP and raise the volume to 90 for me
 remember	please note for the future: I'm allergic to peanuts
 system_status	Please how much disk space is free.
 set_timer	Wake me in 40 minutes.
-search_text	dig through my files for the budget
+search_text	could you check my files: what is my budget?
 remind	don't let me forget to check the oven, 15 minutes from now
 tags_list	What tags are there for memories.
 tags_list	Hey, what tags exist
 open_app	Fire up Chrome
-multi	What did i jot down and also give me a 20 minute countdown
+multi	Volume to 50 percent please, then reminder: renew the passport, 45 minutes for me
 remind	Hey, reminder: check the oven, 40 minutes now
 calculate	ok figure out 18% tip on 64 dollars.
 mute	hey jarvis, stop the noise, mute everything for me
-multi	I want you to what's today, and who is my manager
+multi	Jot down stretch, then where is my insurance policy now
 forget	Remove my hobbies from your memory for me
 recall	What do you know about my car for me
 calculate	Hey jarvis, how much is 999 minus 457!
-multi	Could you find my receipt files, then read my notes back to me!
-multi	Previous track and also keep in mind that I'm allergic to peanuts please
-list_dir	Hey, show the contents of my home folder!
+multi	Could you keep in mind that I drive a blue car, then summarize my thesis!
+multi	Please what's today, then type uptime in the terminal and show me the output?
+list_dir	How many files are in Pictures please
 get_time	please what time is it.
 forget	can you delete the memory about food please
 tag_add	Hey, make a new tag named travel for mum, dad, cousins now
-multi	Read log.txt in my Documents and what timers are running.
-multi	Could you show me what's in the projects folder and also are there any reminders set!
+multi	Put the sound at 65 and find information about the weather in Denver on the internet!
+multi	Could you start a 10 minute timer, then can you make the volume 70
 forget	can you stop remembering my family
-read_file	i want you to open and read ~/log.txt
+read_file	ok open and read ~/plan.md.
 get_time	ok what's the date for me
 read_file	Hey jarvis, read me plan.md for me
 set_timer	Could you 90 minute timer please.
 notes_list	List my saved notes!
-find_files	i want you to find receipt on this computer!
+find_files	open my resume and tell me what it says
 mute	Can you shut the speakers up?
 open_app	please switch to LibreOffice?
 write_file	I want you to write back up the laptop to ideas.md please
 tags_list	Ok what tags are there for memories please
 run_command	Ok use the terminal to run cat /etc/os-release
-find_files	please where is my budget
+find_files	what does my passport scan say
 open_app	Open the terminal!
 get_time	what time is it now
 now_playing	Could you what am I listening to
 system_status	any low resources on this machine
 calculate	I want you to figure out 17 times 23.
 open_url	Hey, browse to youtube.com now
-multi	Write down: stretch and then any reminders coming up for me
-read_file	Hey jarvis, what does shopping.txt say
-find_files	Where is my recipe!
+multi	What's playing and what did I jot down.
+read_file	Hey, display the contents of shopping.txt
+find_files	find holiday photos on this computer
 open_app	Run Signal.
-multi	Hey jarvis, tell me what's written in report.txt, then search the web for rust tutorials?
+multi	Hey jarvis, what is 17 times 23, and can you make the volume 30
 web_search	Could you look up pizza near me online please
-multi	look pizza near me up on the web, then launch Thunderbird
+multi	in 15 minutes remind me to renew the passport, then how much battery do I have please
 remember	Keep in mind that my favourite colour is green?
-multi	Hey jarvis, what's today and then use the terminal to run df -h?
+multi	Hey, dig through my files for the deadline and also let me know when 7 minutes are up now
 remind	Please remind me to check the oven in 7 minutes.
 set_timer	can you time 5 minutes for me now
-multi	Could you begin a countdown of 7 minutes, then locate my contract for me
+multi	Could you browse to gitlab.com and also open my contract and tell me what it says please
 web_search	Can you search for best hiking boots
 memories_list	Tell me everything you remember about me now
-reminders_list	Ok show my reminders please
-find_files	Please locate my thesis please
+reminders_list	Ok what timers are running.
+find_files	check my thesis file
 remember	Save this about me: I'm allergic to peanuts now
-list_dir	What's in my Desktop folder
+list_dir	What's in my Downloads folder please
 media	I want you to skip to the next one
 memories_list	Could you list my memories
-multi	Please use the terminal to run git status, then ping me in 40 minutes about take the bins out for me
+multi	Please take me to openstreetmap.org, and please remember my manager is Priya now
 tags_list	what tags exist
 run_command	Please run uname -a in the terminal now
 volume	Please adjust the speaker volume to 25
-read_file	Can you read me budget.csv?
+read_file	Can you read the file budget.csv?
 mute	Mute the sound
 volume	Can you turn the volume down to 5 percent
 mute	Ok unmute the speakers for me
-read_file	can you display the contents of log.txt.
-multi	Could you browse to gitlab.com and also locate my contract please
-multi	can you can you time 8 minutes for me, and show me what's inside notes.txt for me
+read_file	could you cat draft.txt please
+multi	Could you cat draft.txt and also who sings this.
+multi	browse to wikipedia.org, and bring up Spotify?
 system_status	Hey jarvis, check system status
 clipboard	Paste the clipboard contents here?
 tag_add	Create a memory tag work with words plants, flowers please
-multi	I want you to don't let me forget to check the oven, 90 minutes from now, and check my files: what is my bank account?
+multi	I want you to look up cheap flights to rome online and then what's my favourite colour
 tag_add	Can you make a new tag named finance for plants, flowers?
-reminders_list	I want you to what reminders do I have?
+reminders_list	I want you to what timers are running.
 open_app	Ok open the settings please
 open_app	ok switch to Discord for me
-multi	Please jot down buy milk and then compute the square root of 144!
-multi	could you can you search for the weather in Denver and what's in my notes for me
+multi	Please check my documents and tell me birthday and then show the contents of pictures now
+multi	cat notes.txt, then jot down renew the passport please
 mute	Mute it?
-list_dir	List Desktop
+list_dir	List Videos
 system_status	hey, how's my battery
 open_url	can you load the website openstreetmap.org for me
-reminders_list	Ok what timers are running.
-list_dir	Show the contents of Pictures!
+reminders_list	Please are there any reminders set!
+list_dir	What do I have in Videos.
 open_app	Hey jarvis, open Signal
 get_time	Ok do you know what time it is?
 volume	Hey jarvis, volume 90 for me
@@ -1123,31 +1123,31 @@ tags_list	hey, which tags do you use for my memories
 volume	Can you make it louder, 100?
 web_search	search the web for rust tutorials for me
 run_command	Could you run the command git status!
-read_file	Hey, tell me what's written in report.txt!
+read_file	Hey, what does draft.txt say
 run_command	Could you run uptime
 web_search	please find information about latest linux kernel on the internet now
 notes_list	could you read my notes back to me
 recall	please look up what I told you about drinks for me
-read_file	What does ideas.md say please
+read_file	can you display the contents of log.txt.
 tag_add	Hey, create a memory tag school with words flights, hotels
-multi	cat notes.txt, then jot down renew the passport please
+multi	can you put this in my notes: water the plants and list the files in Documents.
 open_app	Bring up Dolphin now
 media	Please play the previous song again.
 forget	hey, remove drinks from your memory
 media	I want you to pause the video
 run_command	can you run git status for me
 remind	Ok ping me in 2 minutes about buy milk.
-find_files	Find wedding photos on this computer
+find_files	Hey, look for my insurance policy
 web_search	Search online for movie showtimes tonight for me
 now_playing	i want you to who sings this
 notes_list	can you list my saved notes.
 open_app	i want you to run Spotify now
-multi	browse to wikipedia.org, and bring up Spotify?
-reminders_list	Hey, do I have any timers please
-search_text	Ok look through my files for bank account
+multi	What's the time and tell me to book a table for Friday after 8 minutes?
+reminders_list	Hey, list my pending reminders
+search_text	Ok how much do I spend on flight each month for me
 remember	ok I want you to remember my dog is called Max please
 note_add	Hey, make a note: check the oven please
-multi	Could you any low resources on this machine, then save a note that says book a table for Friday
+multi	Could you begin a countdown of 7 minutes, then open my contract and tell me what it says for me
 read_file	print todo.txt please
 web_search	Web search: rust tutorials
 open_url	i want you to open https://wikipedia.org now
@@ -1164,40 +1164,40 @@ tag_add	Please add a tag called travel for mum, dad, cousins
 calculate	Figure out 25 percent of 480
 tags_list	Show the memory categories
 remember	Could you keep in mind that my manager is Priya now
-find_files	Hey jarvis, locate my cv
+find_files	Hey, what's in my tax return please
 set_timer	I want you to wake me in 25 minutes!
-multi	Hey jarvis, what is 17 times 23, and can you make the volume 30
+multi	Hey, bring up Discord, and how much ram is free
 run_command	Hey jarvis, in the shell run cat /etc/os-release
 calculate	999 minus 457?
-multi	hey jarvis, show me what I copied and also list Pictures.
+multi	fire up firefox, and please remember i'm learning the guitar for me
 tag_add	Ok add the words mum, dad, cousins to the fitness tag now
 mute	mute my computer please
-find_files	Hey jarvis, help me find my holiday photos.
+find_files	Hey, summarize my thesis now
 calculate	Please how much is 12 squared
 tag_add	hey, new memory tag travel: exam, homework?
 calculate	ok work out 7 times 8 plus 3
-list_dir	I want you to show me what's in the projects folder for me
+list_dir	List Desktop
 mute	Could you shut the speakers up.
 volume	Please make it louder, 25
 note_add	Hey, make a note: back up the laptop
 media	Hey jarvis, go back to the last song.
-reminders_list	Can you what's pending on my timers
+reminders_list	Could you do I have any timers?
 set_timer	Let me know when 45 minutes are up.
 tag_add	make a new tag named finance for flights, hotels now
 write_file	can you put pick up the parcel into a file named budget.csv.
-multi	show me what's in Videos, then search inside my documents for rent
-list_dir	I want you to browse my home folder
+multi	show me what's in Videos, then check my files: what is my rent
+list_dir	I want you to how many files are in Music now
 calculate	Quick maths: 15% of 240
 memories_list	tell me everything you remember about me?
-find_files	Hey jarvis, look for my insurance policy.
+find_files	Hey, where is my cv!
 media	Ok next track please now
 memories_list	I want you to what have I told you so far for me
 memories_list	Hey jarvis, what have I told you so far for me
 open_app	ok fire up the file manager
-list_dir	How many files are in Pictures please
+list_dir	I want you to browse my home folder
 volume	Ok turn the volume up to 75!
 media	Hey jarvis, next song please
-multi	can you navigate to https://duckduckgo.com, then show me what's inside report.txt
+multi	can you do you know what time it is and also check system status please
 mute	mute it now
 open_url	Visit docs.rs?
 write_file	Save the text call the dentist into todo.txt in my Documents.
@@ -1205,17 +1205,17 @@ mute	Mute my computer please
 web_search	Hey, search the web for train times to Boston
 remind	Remind me to call the dentist in 60 minutes
 web_fetch	Can you go to openstreetmap.org and tell me what it says.
-search_text	Check my files: what is my insurance.
-multi	Hey, play the music, then show me what I copied
-reminders_list	Can you any reminders coming up
-list_dir	Hey jarvis, show the contents of downloads for me
+search_text	Check my files: what is my budget
+multi	Hey, please remember my manager is Priya and also how much do I spend on rent each month
+reminders_list	Can you what reminders are pending.
+list_dir	Hey jarvis, what files are in Videos
 multi	Play the previous song again and then how's my battery please
 media	Please previous track!
 remind	Hey jarvis, reminder: renew the passport, 90 minutes?
 mute	Hey, turn the sound back on.
 multi	Can you open and read ~/ideas.md, and show active timers and reminders
 remember	I want you to remember my sister is called Mia
-search_text	Please search inside my documents for rent now
+search_text	Please what do my documents say about rent now
 reminders_list	can you show active timers and reminders
 system_status	ok how much disk space is free for me
 memories_list	what do you know about me
@@ -1225,29 +1225,29 @@ set_timer	Can you set a timer for 30 minutes please
 open_app	Ok run the file manager.
 media	Go back to the last song please
 media	i want you to next track please
-multi	can you get VS Code going and also which track is this now
+multi	can you check the clipboard and also remind me to book a table for Friday in 8 minutes for me
 media	Go back to the last song for me
 system_status	How's my battery
 set_timer	hey jarvis, begin a countdown of 20 minutes now
-multi	hey, what's in my notes and then save this about me: I prefer tea to coffee please
+multi	hey, what did I copy and then take a note: pay the electricity bill
 recall	could you what did I tell you about food
 volume	Ok turn the volume down to 85 percent for me
-multi	Could you start a 10 minute timer, then can you make the volume 70
+multi	Could you turn the volume down to 90 percent and then skip this song
 run_command	run uptime in the terminal please
 set_timer	i want you to start a 60 minute timer!
-multi	calculate 18% tip on 64 dollars, then play the music
+multi	Write down: stretch and then any reminders coming up for me
 now_playing	Could you what's playing
-multi	List the files in the projects folder, and wake me in 90 minutes
-search_text	ok check my files: what is my passport number
+multi	Load the website gitlab.com, then open up the file manager for me please
+search_text	search inside my documents for meeting now
 media	Skip this song
 system_status	How's my computer doing
 note_add	please scribble down renew the passport please
 now_playing	I want you to what's the current song?
-search_text	hey, find where I wrote down address!
+search_text	hey, which of my files mentions address!
 set_timer	Could you wake me in 8 minutes!
 tags_list	Which tags do you use for my memories please
 volume	Adjust the speaker volume to 100 for me
-read_file	hey, read the file budget.csv
+read_file	i want you to open and read ~/log.txt
 forget	Delete the memory about my job?
 tags_list	could you what tags exist please
 remember	I want you to remember my favourite colour is green!
@@ -1257,35 +1257,35 @@ remind	Can you nudge me in 25 minutes to check the oven
 mute	can you turn the sound back on
 notes_list	Please show my notes!
 volume	Can you make the volume 60!
-multi	Hey, tell me the time, then run ps aux now
+multi	Hey, what song is this, then run the settings
 run_command	can you run whoami please
 run_command	use the terminal to run ls -la
 web_fetch	Hey jarvis, get the text of docs.rs please
-read_file	hey, display the contents of shopping.txt!
+read_file	hey, read the file budget.csv
 remind	Can you tell me to back up the laptop after 15 minutes
-multi	Please run uptime in the terminal, then how much disk space is free!
+multi	Please resume the music, then let me know when 10 minutes are up please
 multi	Can you what files are in desktop and then change the volume level to 45.
 media	Hit play!
 write_file	Hey, create todo.txt and write stretch in it
-multi	Could you pause the video, and find where I wrote down birthday
+multi	Could you save a note that says stretch, and remind me to submit the form in 25 minutes
 get_time	What's today
-multi	Check the clipboard and also execute free -m now
+multi	Could you any low resources on this machine, then save a note that says book a table for Friday
 write_file	Hey jarvis, store back up the laptop in readme.md for me
 remember	hey jarvis, don't forget that my favourite colour is green
 remind	Can you nudge me in 30 minutes to email Jane the report please
 read_file	Hey jarvis, open and read ~/draft.txt now
-multi	i want you to look pizza near me up on the web and turn the volume up to 15 now
+multi	i want you to compute the square root of 144 and then raise the volume to 35 for me
 run_command	Hey jarvis, run whoami.
-multi	Could you keep in mind that I drive a blue car, then where is my thesis!
+multi	Could you mute and then compute 2 to the power of 10?
 multi	Can you who sings this and then search online for train times to Boston please
-list_dir	What's in my Downloads folder please
+list_dir	What's in my Pictures folder.
 open_app	Bring up GIMP for me
 reminders_list	What reminders do I have.
 remember	keep in mind that my sister is called Mia
 multi	please how much disk space is free, and reminder: back up the laptop, 7 minutes now
 tags_list	ok which tags do you use for my memories.
 remember	keep in mind that I prefer tea to coffee please
-multi	could you remind me to renew the passport in 12 minutes, then show me what's inside plan.md for me
+multi	could you can you search for the weather in Denver and what's in my notes for me
 now_playing	Can you what's the current song please
 web_fetch	Summarize the page https://youtube.com for me
 tag_add	Create a memory tag travel with words meeting, boss, project?
@@ -1293,9 +1293,9 @@ run_command	Hey jarvis, in the shell run ls -la.
 memories_list	Can you what do you remember about me
 multi	Please what's in my notes and then what's in my the projects folder folder for me
 reminders_list	hey, what timers are running?
-multi	Search online for best hiking boots and then make a note: feed the cat for me
+multi	Save this about me: I live in Denver, and quick maths: the square root of 144 for me
 recall	please what do i like to drink
-find_files	Find my wedding photos files
+find_files	Hey jarvis, find the file called insurance policy.
 run_command	could you in the shell run free -m for me
 mute	Mute the sound now
 calculate	Figure out 100 divided by 7.
@@ -1307,18 +1307,18 @@ calculate	Calculate 999 minus 457
 web_search	Please search the web for best hiking boots?
 reminders_list	hey jarvis, list my pending reminders please
 multi	Ok can you run cat /etc/os-release, and what's 999 minus 457
-multi	Hey jarvis, check the clipboard, then show the contents of Music
-search_text	Search inside my documents for flight
+multi	Hey jarvis, put this in my notes: pick up the parcel, then work out the square root of 144!
+search_text	Search my files for insurance for me
 mute	Ok turn the sound back on
-find_files	Could you where did I save the resume now
+find_files	Find recipe on this computer
 system_status	Hey jarvis, check system status!
-multi	Please volume 15, and what reminders do I have now
+multi	Please use the terminal to run git status, then ping me in 40 minutes about take the bins out for me
 open_app	Run Signal!
 remember	hey jarvis, please remember my manager is Priya
 notes_list	Please what did i jot down please
 notes_list	Please list my saved notes please
 note_add	Jot down call the dentist.
-multi	Execute uptime, then show me what's in downloads!
+multi	Figure out 999 minus 457 and then what's on the speakers please
 set_timer	I want you to give me a 40 minute countdown?
 multi	Cat budget.csv, and what's the time for me
 notes_list	can you read me my notes for me
@@ -1326,45 +1326,45 @@ calculate	can you quick maths: 17 times 23
 media	can you skip this song?
 now_playing	Could you what am i listening to
 remind	ok ping me in 7 minutes about check the oven.
-multi	i want you to what's today and then how much disk space is free!
+multi	i want you to what is 3.5 times 4 and also are there any reminders set for me
 now_playing	can you who sings this now
-search_text	what do my documents say about phone number
+search_text	what do my documents say about wifi password?
 forget	ok stop remembering my birthday.
-search_text	Which of my files mentions flight please
+search_text	What do my documents say about flight
 calculate	can you figure out 17 times 23
 open_url	Please take me to youtube.com
 note_add	add a note: pay the electricity bill!
 note_add	Note that I need to stretch for me
 web_fetch	Get the text of reddit.com.
-multi	Could you start GIMP and raise the volume to 90 for me
+multi	Could you switch to Kate and then find where I wrote down phone number.
 note_add	Can you scribble down take the bins out
 multi	Make a note: submit the form, then how full is my disk
 remember	Note for the future: I'm learning the guitar
 get_time	hey, current time please
-multi	could you set a timer for 30 minutes, and who sings this.
+multi	could you remind me to renew the passport in 12 minutes, then show me what's inside plan.md for me
 write_file	Hey, create a file called budget.csv containing take the bins out!
-find_files	Find passport scan on this computer for me
+find_files	Hey jarvis, find the file called lecture notes?
 set_timer	start a 60 minute timer
-find_files	Locate my tax return for me
+find_files	can you what is written in my holiday photos please
 clipboard	check the clipboard for me
 memories_list	List my memories.
-multi	Remember that I drive a blue car, then search online for train times to Boston
+multi	Recall what I said about my birthday, and calculate 25 percent of 480 now
 now_playing	I want you to what's on the speakers
-multi	I want you to look up cheap flights to rome online and then what's my favourite colour
-multi	could you turn the sound off and then check my documents and tell me address please
+multi	I want you to read report.txt in my Documents and i want you to remember I don't eat pork.
+multi	could you run free -m and then calculate 3.5 times 4
 open_url	Hey, open https://docs.rs.
 media	hit play please
-multi	hey, are there any reminders set, then navigate to https://docs.rs please
+multi	hey jarvis, show me what's in Music and also work out the square root of 144 please
 calculate	can you tell me sine of 30 degrees
-list_dir	Ok how many files are in Desktop please
+list_dir	Ok what's in my the projects folder folder
 web_search	Web search: cheap flights to rome now
-reminders_list	Hey jarvis, what timers are running!
+reminders_list	Hey, do I have any timers please
 memories_list	ok what do you remember about me for me
 tags_list	what tags are there for memories for me
 reminders_list	What reminders are pending please
 calculate	calculate sine of 30 degrees now
 web_fetch	Get the text of docs.rs for me
-read_file	please what does shopping.txt say?
+read_file	please print shopping.txt!
 web_fetch	Read the page at https://docs.rs!
 write_file	Please make a new file draft.txt with the text water the plants
 write_file	Hey, write water the plants to notes.txt!
@@ -1373,17 +1373,17 @@ remember	Could you save this about me: i'm learning the guitar!
 mute	Hey jarvis, silence the speakers?
 recall	Hey jarvis, what do I like to drink please
 list_dir	ls Pictures?
-read_file	display the contents of notes.txt for me
+read_file	hey, display the contents of shopping.txt!
 get_time	Hey jarvis, what day of the week is it
-reminders_list	Hey jarvis, list my pending reminders!
-multi	hey, what did I copy and then take a note: pay the electricity bill
+reminders_list	Hey jarvis, what timers are running!
+multi	hey, visit duckduckgo.com and look through my files for insurance for me
 web_search	Could you search online for rust tutorials?
 media	ok next song for me
 get_time	Please what's the date for me
 write_file	ok make a new file shopping.txt with the text renew the passport
 remind	Please remind me to check the oven in 10 minutes please
 multi	please next song and then do you remember drinks!
-multi	I want you to browse to openstreetmap.org, and what's the cube of 9 please
+multi	I want you to calculate 100 divided by 7, then can you search for cheap flights to Rome
 clipboard	Paste the clipboard contents here
 tag_add	Please add a tag called music for salary, rent, bills please
 tag_add	Hey, add a tag called school for running, gym, yoga for me
@@ -1391,21 +1391,21 @@ notes_list	Hey jarvis, read my notes back to me
 list_dir	browse my home folder!
 multi	tell me my clipboard text and run free -m in the terminal?
 calculate	hey jarvis, what's 1234 divided by 8 please
-find_files	Can you look for my resume please
+find_files	Can you which file is my lecture notes!
 set_timer	hey, set a timer for 12 minutes please
 calculate	Hey, 18% tip on 64 dollars??
-search_text	Ok dig through my files for the bank account
+search_text	Ok grep my notes for bank account
 mute	Can you mute
 remind	hey jarvis, remind me to pick up the parcel in 15 minutes?
 recall	Ok what is my dog called?
-list_dir	Can you what files are in Documents now
+list_dir	Could you list the files in Videos for me
 write_file	hey, overwrite report.txt with stretch.
 media	Previous track for me
 now_playing	Hey, what video is playing!
-search_text	I want you to grep my notes for flight please
+search_text	I want you to what is my monthly bank account budget
 forget	please forget I prefer tea to coffee
 media	Stop the song for a second now
-multi	What song is playing, then show me what's in Pictures?
+multi	What files are in Desktop and also please remember my sister is called Mia
 write_file	can you write pay the electricity bill to ideas.md
 web_fetch	hey, get the text of youtube.com
 memories_list	could you what do you know about me
@@ -1417,10 +1417,10 @@ mute	could you kill the audio
 notes_list	show my notes.
 tags_list	What tags exist now
 tags_list	list the memory tags
-multi	How much is the square root of 144, and what do i have in pictures now
+multi	I want you to bring the sound back and scribble down book a table for Friday!
 write_file	Please store back up the laptop in readme.md
-read_file	can you tell me what's written in notes.txt now
-multi	Look for my invoice, and ls Pictures!
+read_file	display the contents of notes.txt for me
+multi	Look through my files for salary and then read my clipboard.
 open_app	switch to the file manager
 tag_add	Add a tag called music for mum, dad, cousins
 tag_add	Please new memory tag travel: exam, homework.
@@ -1432,7 +1432,7 @@ get_time	I want you to what day is it!
 open_url	Ok take me to archlinux.org please
 volume	hey jarvis, put the sound at 60 please
 open_url	Show me docs.rs?
-multi	How much free space do I have, and please remember I don't eat pork
+multi	How much is the square root of 144, and what do i have in pictures now
 calculate	Can you tell me 2 to the power of 10!
 reminders_list	can you any reminders coming up.
 web_search	Can you can you search for best hiking boots please

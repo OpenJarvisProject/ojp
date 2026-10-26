@@ -406,7 +406,12 @@ impl Engine {
             let done = if acts.is_empty() { String::new() } else { format!("Already done: {}\n", acts.join(" ")) };
             self.history[last] = ChatMessage::new(
                 Role::User,
-                format!("{request}\n\n{done}[Looked up on this computer: {}]\nAnswer in one or two short sentences using only that.", facts.join("\n")),
+                format!(
+                    "{request}\n\n{done}[Looked up on this computer: {}]\nAnswer in one or two short sentences using only that.{}",
+                    facts.join("\n"),
+                    // Qwen3.5-based models paraphrased and invented numbers; this keeps them to the text.
+                    if self.template.qwen35_tuned() { " Copy names and numbers exactly as written and add nothing." } else { "" }
+                ),
             );
             let phrased = self.answer(on_event);
             self.history[last] = ChatMessage::new(Role::User, request);

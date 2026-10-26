@@ -35,6 +35,12 @@ impl Template {
         })
     }
 
+    /// Qwen3.5-only prompt tuning is on for the thinking-off ChatML format (OJP_QWEN35_TUNING=0 turns
+    /// it off, to measure what it adds).
+    pub fn qwen35_tuned(self) -> bool {
+        self == Template::ChatMlNoThink && std::env::var("OJP_QWEN35_TUNING").map_or(true, |v| v != "0")
+    }
+
     pub fn render(self, messages: &[ChatMessage], add_generation_prompt: bool) -> String {
         match self {
             Template::Builtin(t) => render_builtin(t, messages, &[], add_generation_prompt),
