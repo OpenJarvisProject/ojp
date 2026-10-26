@@ -89,6 +89,9 @@ impl Route {
 pub struct Decision {
     pub route: Route,
     pub elapsed: Duration,
+    /// The router model's hidden state for this request, when a probe was used
+    /// (the tool probe reads the same state).
+    pub hidden: Option<Vec<f32>>,
 }
 
 /// Stateless: classifies with whichever model it is handed, so any loaded
@@ -155,6 +158,11 @@ impl Router {
         Router { grammar, template, probe: None }
     }
 
+    /// The hidden state at the answer position for `request` (probe routers' input).
+    pub fn hidden(&self, model: &mut Model, request: &str) -> Result<Vec<f32>> {
+        model.last_hidden(Seq::Route, &self.short_prompt(request))
+    }
+
     pub fn has_probe(&self) -> bool {
         self.probe.is_some()
     }
@@ -206,7 +214,7 @@ impl Router {
             && let Ok(hidden) = model.last_hidden(Seq::Route, &self.short_prompt(request))
             && let Some(route) = probe.classify(&hidden)
         {
-            return Ok(Decision { route, elapsed: start.elapsed() });
+            return Ok(Decision { route, elapsed: start.elapsed(), hidden: Some(hidden) });
         }
         let prompt = self.build_prompt(request);
 
@@ -237,7 +245,7 @@ impl Router {
         let Some(route) = Route::from_label(label) else {
             bail!("router produced {label:?}, which the grammar should have made impossible");
         };
-        Ok(Decision { route, elapsed: start.elapsed() })
+        Ok(Decision { route, elapsed: start.elapsed(), hidden: None })
     }
 }
 

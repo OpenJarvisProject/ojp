@@ -67,6 +67,10 @@ enum Main {
 
 pub struct Engine {
     router_llm: Option<Model>,
+    /// Picks the tool for a single-tool request from the router's hidden state (see tools::ToolProbe).
+    tool_probe: Option<tools::ToolProbe>,
+    /// The router model's hidden state for the request being handled, when it routed with a probe.
+    route_hidden: Option<Vec<f32>>,
     main: Option<Main>,
     router: Router,
     template: Template,
@@ -198,8 +202,11 @@ impl Engine {
                 }
             }
         }
+        let tool_probe = config.models.router.as_ref().and_then(|r| tools::ToolProbe::find(r));
         Ok(Engine {
             router_llm,
+            tool_probe,
+            route_hidden: None,
             main,
             router,
             template,
@@ -281,8 +288,12 @@ impl Engine {
             (_, Some(Main::Local(model))) | (Some(model), _) => model,
             (None, _) => return Route::AnswerDirectly,
         };
+        self.route_hidden = None;
         let route = match self.router.classify(classifier, request) {
-            Ok(decision) => decision.route,
+            Ok(decision) => {
+                self.route_hidden = decision.hidden;
+                decision.route
+            }
             Err(e) => {
                 on_event(Event::Notice(format!("routing failed ({e:#}), answering directly")));
                 Route::AnswerDirectly
@@ -479,6 +490,9 @@ impl Engine {
             (_, Some(Main::Local(model))) | (Some(model), _) => model,
             (None, _) => bail!("device control needs a local model"),
         };
+        if steps.is_empty() {
+            return tools::ask_fast(model, self.template, self.tool_probe.as_ref(), self.route_hidden.as_deref(), request);
+        }
         tools::plan(model, self.template, request, steps)
     }
 

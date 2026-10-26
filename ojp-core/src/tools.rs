@@ -125,8 +125,14 @@ fn system_prompt_for(with_done: bool) -> String {
 
 /// The GBNF grammar accepting exactly the registry's call shapes.
 fn grammar(with_done: bool) -> String {
+    grammar_for(with_done, None)
+}
+
+/// The same, restricted to one tool when `only` is given (a single call, no `done`).
+fn grammar_for(with_done: bool, only: Option<&str>) -> String {
     let mut alternatives: Vec<String> = REGISTRY
         .iter()
+        .filter(|t| only.is_none_or(|n| t.name == n))
         .map(|t| {
             let args: Vec<String> = t
                 .args
@@ -150,8 +156,9 @@ fn grammar(with_done: bool) -> String {
     if with_done {
         alternatives.push("\"done\\\", \\\"args\\\": {\"".to_string());
     }
+    let repeat = if only.is_some() { "" } else { " ( \", \" one ){0,2}" };
     format!(
-        "root ::= \"[\" one ( \", \" one ){{0,2}} \"]\"\none ::= \"{{\\\"tool\\\": \\\"\" call \"}}}}\"\ncall ::= ( {} )\nint ::= [0-9] | [1-9] [0-9] | [1-9] [0-9] [0-9]\n",
+        "root ::= \"[\" one{repeat} \"]\"\none ::= \"{{\\\"tool\\\": \\\"\" call \"}}}}\"\ncall ::= ( {} )\nint ::= [0-9] | [1-9] [0-9] | [1-9] [0-9] [0-9]\n",
         alternatives.join("\n         | ")
     )
 }
@@ -265,6 +272,105 @@ pub fn plan(model: &mut Model, template: Template, request: &str, steps: &[Step]
     match serde_json::from_str::<Value>(text.trim()) {
         Ok(Value::Array(calls)) if !calls.is_empty() => Ok(calls),
         _ => bail!("tool calls didn't parse: {text:?}"),
+    }
+}
+
+
+/// A linear classifier over tool names (plus "multi") on the router model's hidden
+/// state at the router prompt (scripts/make-tool-probe.sh). When it is confident the
+/// request needs exactly one known tool, only that tool's call is generated, from a
+/// short prompt, instead of choosing among every tool with a 2,000-token prompt.
+pub struct ToolProbe {
+    labels: Vec<String>,
+    weights: Vec<Vec<f32>>,
+    bias: Vec<f32>,
+}
+
+/// Below this probability the full planner decides instead.
+const TOOL_PROBE_MIN_CONFIDENCE: f32 = 0.6;
+
+impl ToolProbe {
+    pub fn load(path: &std::path::Path) -> Result<ToolProbe> {
+        let v: Value = serde_json::from_slice(&std::fs::read(path)?)?;
+        let labels: Vec<String> = serde_json::from_value(v["labels"].clone())?;
+        let weights: Vec<Vec<f32>> = serde_json::from_value(v["weights"].clone())?;
+        let bias: Vec<f32> = serde_json::from_value(v["bias"].clone())?;
+        if labels.is_empty() || weights.len() != labels.len() || bias.len() != labels.len() || weights.iter().any(|w| w.len() != weights[0].len()) {
+            bail!("tool probe has the wrong shape");
+        }
+        Ok(ToolProbe { labels, weights, bias })
+    }
+
+    /// `<router file>.tools.json`, when it exists.
+    pub fn find(router: &std::path::Path) -> Option<ToolProbe> {
+        let mut name = router.as_os_str().to_owned();
+        name.push(".tools.json");
+        ToolProbe::load(std::path::Path::new(&name)).ok()
+    }
+
+    /// The most likely tool and its probability, if it is a single real tool.
+    fn predict(&self, hidden: &[f32]) -> Option<(&str, f32)> {
+        if hidden.len() != self.weights[0].len() {
+            return None;
+        }
+        let scores: Vec<f32> = self.weights.iter().zip(&self.bias).map(|(w, b)| b + w.iter().zip(hidden).map(|(w, h)| w * h).sum::<f32>()).collect();
+        let max = scores.iter().cloned().fold(f32::MIN, f32::max);
+        let total: f32 = scores.iter().map(|s| (s - max).exp()).sum();
+        let (i, best) = scores.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1))?;
+        let label = self.labels[i].as_str();
+        (label != "multi" && REGISTRY.iter().any(|t| t.name == label)).then(|| (label, 1.0 / total * (best - max).exp()))
+    }
+}
+
+/// `ask`, taking the fast path when a tool probe is confident. `hidden` is the
+/// router model's state for this request (see `Router::hidden`).
+pub fn ask_fast(model: &mut Model, template: Template, probe: Option<&ToolProbe>, hidden: Option<&[f32]>, request: &str) -> Result<Vec<Value>> {
+    if let (Some(probe), Some(hidden)) = (probe, hidden)
+        && let Some((tool, p)) = probe.predict(hidden)
+        && p >= TOOL_PROBE_MIN_CONFIDENCE
+        && let Ok(calls) = plan_forced(model, template, request, tool)
+    {
+        return Ok(calls);
+    }
+    ask(model, template, request)
+}
+
+/// Generate the arguments for one known tool from a short prompt: the tool's
+/// line, its worked examples, then the request.
+fn plan_forced(model: &mut Model, template: Template, request: &str, tool: &str) -> Result<Vec<Value>> {
+    let t = REGISTRY.iter().find(|t| t.name == tool).context("unknown tool")?;
+    let args: Vec<String> = t
+        .args
+        .iter()
+        .map(|a| match &a.kind {
+            ArgKind::Int { max } => format!("{}: int 0-{max}", a.name),
+            ArgKind::Text { .. } => format!("{}: str", a.name),
+            ArgKind::Choice(c) => format!("{}: {}", a.name, c.join("|")),
+        })
+        .collect();
+    let mut messages = vec![ChatMessage::new(
+        Role::System,
+        format!(
+            "You control this computer through tools. Call this tool with the right arguments:\n- {}({})  // {}\nRespond with ONLY a JSON array with one call, like [{{\"tool\": \"{}\", \"args\": {{...}}}}], and nothing else.",
+            t.name, args.join(", "), t.doc, t.name
+        ),
+    )];
+    for (user, calls) in EXAMPLES {
+        if serde_json::from_str::<Vec<Value>>(calls).is_ok_and(|c| c.len() == 1 && c[0]["tool"] == tool) {
+            messages.push(ChatMessage::new(Role::User, *user));
+            messages.push(ChatMessage::new(Role::Assistant, *calls));
+        }
+    }
+    messages.push(ChatMessage::new(Role::User, request));
+    let prompt = template.render(&messages, true);
+    // SAFETY: llama_sampler_init_grammar parses the grammar during the call.
+    let grammar = unsafe { LlamaSampler::grammar(model.llama().model(), &grammar_for(false, Some(tool)), "root") }.context("tool grammar rejected")?;
+    let greedy = LlamaSampler::greedy().context("greedy sampler")?;
+    let mut sampler = LlamaSampler::chain(vec![grammar, greedy], true).context("sampler chain")?;
+    let text = model.complete(Seq::Tool, &prompt, &mut sampler, 150, &mut |_| {})?;
+    match serde_json::from_str::<Value>(text.trim()) {
+        Ok(Value::Array(calls)) if calls.len() == 1 => Ok(calls),
+        _ => bail!("forced tool call didn't parse: {text:?}"),
     }
 }
 

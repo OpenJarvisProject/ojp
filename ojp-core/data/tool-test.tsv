@@ -1,0 +1,73 @@
+set_timer	Set a timer for 10 minutes.
+set_timer	Start a 5 minute timer.
+set_timer	Wake me up in 45 minutes.
+volume	Set the volume to 40.
+volume	Turn the volume down to 15 percent.
+volume	Make it louder, 80 please.
+mute	Mute the sound.
+mute	Unmute my speakers.
+media	Pause the music.
+media	Skip this song.
+media	Go back to the previous track.
+open_app	Open Firefox.
+open_app	Launch the terminal.
+open_app	Start Spotify.
+open_url	Open github.com in the browser.
+open_url	Go to https://example.com
+note_add	Take a note: buy oat milk.
+note_add	Remember that the wifi password is on the fridge.
+calculate	What's 17 times 23?
+calculate	Calculate 15% of 240.
+calculate	What is the square root of 144 plus 5?
+calculate	How much is 1234 divided by 8?
+calculate	What's 2 to the power of 10?
+get_time	What time is it?
+get_time	What's today's date?
+get_time	What day is it?
+system_status	How much battery do I have left?
+system_status	How much free disk space do I have?
+system_status	How's my computer doing?
+system_status	How much RAM is free?
+now_playing	What song is playing?
+now_playing	What am I listening to right now?
+clipboard	What's on my clipboard?
+clipboard	Read my clipboard.
+find_files	Find my tax return files.
+find_files	Where is my resume?
+find_files	Search for files named budget.
+notes_list	What notes do I have?
+notes_list	Read my notes back to me.
+set_timer	Give me a 15 minute countdown.
+volume	Put the speaker volume at 55.
+mute	Shut the speakers up for now.
+mute	Turn the sound back on.
+media	Stop the song for a moment.
+media	Next track, please.
+open_app	Bring up the calculator app.
+open_url	Open wikipedia.org for me.
+note_add	Write down: dentist on Friday at 9.
+calculate	How much is 144 divided by 12?
+calculate	What's 9 times 9 times 9?
+get_time	Tell me what time it is now.
+get_time	What's the date today?
+system_status	Is my laptop plugged in and how full is the battery?
+system_status	How much memory is being used?
+now_playing	What's playing at the moment?
+clipboard	Show me the text I copied last.
+find_files	Look for my passport scan.
+notes_list	List my saved notes.
+mute	Mute it.
+multi	Open Firefox and set a timer for 10 minutes.
+multi	Mute the sound and tell me what time it is.
+multi	Set the volume to 30 and then pause the music.
+multi	Take a note that I need milk and remind me in 20 minutes.
+multi	What's 12 times 12, and what time is it?
+multi	Open the calculator and mute my speakers.
+multi	Skip to the next song and turn the volume to 25.
+remind	Remind me to call Sam in 15 minutes.
+remind	Remind me about the oven in 12 minutes.
+reminders_list	What reminders are pending?
+reminders_list	Do I have any timers running?
+volume	Set the volume to 70.
+media	Pause the video.
+calculate	How much is 81 divided by 9?

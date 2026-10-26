@@ -380,15 +380,24 @@ fn main() -> anyhow::Result<()> {
             // Actions are only printed, never run.
             unsafe { std::env::set_var("OJP_TOOLS_DRY_RUN", "1") };
             let mut model = load_cached(model_path)?;
-            let router = Router::new(Template::from_env());
+            // OJP_ROUTER_PROBE routes with a probe (as in route-eval); OJP_TOOL_PROBE=<json> also lets a
+            // tool probe pick single-tool requests from the same hidden state.
+            let probe = std::env::var("OJP_ROUTER_PROBE").ok().map(|p| ojp_core::router::Probe::load(std::path::Path::new(&p))).transpose()?;
+            let router = Router::new(Template::from_env()).with_probe(probe);
+            // OJP_HIDDEN_MODEL=<gguf>: a separate router model (with the probes) classifies and feeds
+            // the tool probe, as in the app; `model_path` then only plans and writes the arguments.
+            let mut hid_model = std::env::var("OJP_HIDDEN_MODEL").ok().map(|p| load_cached(&p)).transpose()?;
+            let tool_probe = std::env::var("OJP_TOOL_PROBE").ok().map(|p| ojp_core::tools::ToolProbe::load(std::path::Path::new(&p))).transpose()?;
             for (set_name, cases) in [("SEEN (tuned against)", TOOL_CASES), ("UNSEEN (written after tuning)", TOOL_CASES_UNSEEN)] {
             println!("\n=== {set_name} ===");
             let (mut routed, mut chose, mut args_ok, mut full, mut total_ms) = (0, 0, 0, 0, 0u128);
             let mut by_tool: std::collections::BTreeMap<&str, (usize, usize)> = Default::default();
             for (request, tool, check) in cases {
                 let start = std::time::Instant::now();
-                let route_ok = router.classify(&mut model, request).map(|d| d.route == Route::DeviceControl).unwrap_or(false);
-                let call = ojp_core::tools::ask(&mut model, Template::from_env(), request).map(|c| c.into_iter().next().unwrap_or_default());
+                let decision = router.classify(hid_model.as_mut().unwrap_or(&mut model), request);
+                let route_ok = decision.as_ref().map(|d| d.route == Route::DeviceControl).unwrap_or(false);
+                let hidden = decision.ok().and_then(|d| d.hidden);
+                let call = ojp_core::tools::ask_fast(&mut model, Template::from_env(), tool_probe.as_ref(), hidden.as_deref(), request).map(|c| c.into_iter().next().unwrap_or_default());
                 total_ms += start.elapsed().as_millis();
                 let (tool_ok, detail) = match &call {
                     Err(e) => (false, format!("{e:#}")),
@@ -425,7 +434,8 @@ fn main() -> anyhow::Result<()> {
                 println!("\n=== MULTI-STEP and reminders (unseen) ===");
                 let mut ok = 0;
                 for (request, expected) in TOOL_CASES_MULTI {
-                    let got: Vec<String> = ojp_core::tools::ask(&mut model, Template::from_env(), request)
+                    let hidden = router.hidden(hid_model.as_mut().unwrap_or(&mut model), request).ok();
+                    let got: Vec<String> = ojp_core::tools::ask_fast(&mut model, Template::from_env(), tool_probe.as_ref(), hidden.as_deref(), request)
                         .map(|calls| calls.iter().map(|c| c["tool"].as_str().unwrap_or("?").to_string()).collect())
                         .unwrap_or_default();
                     let pass = got.iter().map(String::as_str).eq(expected.iter().copied());
@@ -648,6 +658,19 @@ fn main() -> anyhow::Result<()> {
                 println!("{} {}\n      -> {}", if declined { "REFUSED" } else { "ok     " }, prompt, shown);
             }
             println!("refusals: {refused}/{}", PROMPTS.len());
+        }
+        Some("tool-feats") => {
+            // tool-feats <model> <file.tsv>: ["label", hidden state at the router prompt] per request.
+            let rows: Vec<(String, String)> = std::fs::read_to_string(&args[2])?
+                .lines()
+                .filter_map(|l| l.split_once('\t').map(|(a, b)| (a.to_string(), b.to_string())))
+                .collect();
+            let mut model = load_cached(&args[1])?;
+            let router = Router::new(Template::from_env());
+            for (label, request) in rows {
+                let h = router.features(&mut model, &request, true)?;
+                println!("FEAT {}", serde_json::json!([label, h]));
+            }
         }
         Some("route-feats") => {
             // route-feats <model> <train|dev|xl|test> [short]: [label index, hidden state] per case.
