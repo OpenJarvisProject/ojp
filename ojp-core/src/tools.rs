@@ -235,8 +235,8 @@ pub fn ask(model: &mut Model, template: Template, request: &str) -> Result<Vec<V
 
 /// Ask the model what to do next, given what earlier steps found. After the
 /// first step it may also answer `done`.
-pub fn plan(model: &mut Model, template: Template, request: &str, steps: &[Step]) -> Result<Vec<Value>> {
-    let with_done = !steps.is_empty();
+/// The planner's chat prompt: tool list, worked examples, the request and what earlier steps found.
+fn planner_messages(request: &str, steps: &[Step], with_done: bool) -> Vec<ChatMessage> {
     let mut messages = vec![ChatMessage::new(Role::System, system_prompt_for(with_done))];
     for (user, calls) in EXAMPLES {
         messages.push(ChatMessage::new(Role::User, *user));
@@ -263,6 +263,12 @@ pub fn plan(model: &mut Model, template: Template, request: &str, steps: &[Step]
             format!("Results:\n{}\n{NEXT}", results.join("\n")),
         ));
     }
+    messages
+}
+
+pub fn plan(model: &mut Model, template: Template, request: &str, steps: &[Step]) -> Result<Vec<Value>> {
+    let with_done = !steps.is_empty();
+    let messages = planner_messages(request, steps, with_done);
     let prompt = template.render(&messages, true);
     // SAFETY: llama_sampler_init_grammar parses the grammar during the call.
     let grammar = unsafe { LlamaSampler::grammar(model.llama().model(), &grammar(with_done), "root") }.context("tool grammar rejected")?;
@@ -335,33 +341,11 @@ pub fn ask_fast(model: &mut Model, template: Template, probe: Option<&ToolProbe>
     ask(model, template, request)
 }
 
-/// Generate the arguments for one known tool from a short prompt: the tool's
-/// line, its worked examples, then the request.
+/// Generate the call for one known tool. The prompt is the planner's own (fixed tool
+/// list and examples, so its cache is reused), but the grammar allows only that tool:
+/// the probe has chosen the tool, the model only writes the arguments.
 fn plan_forced(model: &mut Model, template: Template, request: &str, tool: &str) -> Result<Vec<Value>> {
-    let t = REGISTRY.iter().find(|t| t.name == tool).context("unknown tool")?;
-    let args: Vec<String> = t
-        .args
-        .iter()
-        .map(|a| match &a.kind {
-            ArgKind::Int { max } => format!("{}: int 0-{max}", a.name),
-            ArgKind::Text { .. } => format!("{}: str", a.name),
-            ArgKind::Choice(c) => format!("{}: {}", a.name, c.join("|")),
-        })
-        .collect();
-    let mut messages = vec![ChatMessage::new(
-        Role::System,
-        format!(
-            "You control this computer through tools. Call this tool with the right arguments:\n- {}({})  // {}\nRespond with ONLY a JSON array with one call, like [{{\"tool\": \"{}\", \"args\": {{...}}}}], and nothing else.",
-            t.name, args.join(", "), t.doc, t.name
-        ),
-    )];
-    for (user, calls) in EXAMPLES {
-        if serde_json::from_str::<Vec<Value>>(calls).is_ok_and(|c| c.len() == 1 && c[0]["tool"] == tool) {
-            messages.push(ChatMessage::new(Role::User, *user));
-            messages.push(ChatMessage::new(Role::Assistant, *calls));
-        }
-    }
-    messages.push(ChatMessage::new(Role::User, request));
+    let messages = planner_messages(request, &[], false);
     let prompt = template.render(&messages, true);
     // SAFETY: llama_sampler_init_grammar parses the grammar during the call.
     let grammar = unsafe { LlamaSampler::grammar(model.llama().model(), &grammar_for(false, Some(tool)), "root") }.context("tool grammar rejected")?;
