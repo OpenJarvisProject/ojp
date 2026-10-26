@@ -27,6 +27,21 @@ pub enum Seq {
 const SEQS: usize = 3;
 const ALL_SEQS: [Seq; SEQS] = [Seq::Route, Seq::Chat, Seq::Tool];
 
+/// CPU threads for evaluation; 0 = pick automatically (see `auto_threads`).
+static THREADS: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+
+pub fn set_threads(n: i32) {
+    THREADS.store(n, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Physical cores on x86 (hyper-threads share a core's memory bandwidth, and 12 threads on 6 cores
+/// measured 15x slower than 6 when anything else was running), at most 4 on Arm (efficiency cores
+/// slow the fast ones down).
+pub fn auto_threads() -> i32 {
+    let logical = std::thread::available_parallelism().map_or(4, |n| n.get() as i32);
+    if cfg!(any(target_arch = "aarch64", target_arch = "arm")) { logical.clamp(2, 4) } else { (logical / 2).clamp(2, 8) }
+}
+
 pub struct Model {
     llama: Llama,
     /// Tokens currently in the KV cache per sequence, in position order.
@@ -79,6 +94,11 @@ impl Model {
         let n_seq = if light { 1 } else { SEQS as u32 };
         let mut params = LlamaParams::new(path).with_n_ctx(n_ctx * n_seq).with_n_gpu_layers(gpu_layers);
         params.context = params.context.with_n_seq_max(n_seq);
+        let threads = match std::env::var("OJP_THREADS").ok().and_then(|v| v.parse::<i32>().ok()).unwrap_or_else(|| THREADS.load(std::sync::atomic::Ordering::Relaxed)) {
+            0 => auto_threads(),
+            n => n,
+        };
+        params.context = params.context.with_n_threads(threads).with_n_threads_batch(threads);
         let ubatch = std::env::var("OJP_N_UBATCH").ok().and_then(|v| v.parse::<u32>().ok());
         // A light (classify-only) router reads about 60 tokens per request, so its scratch buffers can be tiny.
         if let Some(ub) = ubatch.or(if light { Some(32) } else { low_memory.then_some(128) }) {

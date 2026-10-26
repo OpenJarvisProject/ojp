@@ -41,6 +41,8 @@ n_ctx = 4096
 # hidden state (scripts/make-router-probe.sh). By default it is looked up next to
 # the router as <router file>.probe.json; set this to use another file.
 # router_probe = "models/router.gguf.probe.json"
+# CPU threads for generation (0 = automatic: the physical cores on a PC, at most 4 on a phone).
+threads = 0
 # Use less RAM for the main model (about 250 MB less for a 0.8B) at about 10%
 # slower answers: no repacked weight copies, smaller scratch buffers. The small
 # router always runs this way, since it is meant to stay light.
@@ -228,6 +230,7 @@ pub struct Models {
     pub gpu_layers: i32,
     pub n_ctx: u32,
     pub low_memory: bool,
+    pub threads: i32,
     pub chat_template: String,
 }
 
@@ -296,6 +299,7 @@ impl Default for Models {
             gpu_layers: 0,
             n_ctx: 4096,
             low_memory: false,
+            threads: 0,
             chat_template: "chatml".into(),
         }
     }

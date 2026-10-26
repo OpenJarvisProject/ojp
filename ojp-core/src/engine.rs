@@ -84,6 +84,7 @@ pub struct Engine {
 
 impl Engine {
     pub fn new(config: &Config) -> Result<Engine> {
+        crate::model::set_threads(config.models.threads);
         let mut status = Vec::new();
         // A probe router next to a main model only classifies, so it needs one short sequence.
         // (Tool calls run on the main model when it is local; with a remote main they run on the router.)
