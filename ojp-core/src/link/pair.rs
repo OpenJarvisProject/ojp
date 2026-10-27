@@ -12,6 +12,7 @@ use sha2::{Digest, Sha256};
 use spake2::{Ed25519Group, Identity as SpakeId, Password, Spake2};
 
 use super::wire::{Channel, Msg, PARAMS_PAIR, read_frame, write_frame};
+use super::net::{PAIR_PORT, local_ips};
 use super::{Identity, Peer, Peers, Perms, hex};
 
 const PAIR_SERVICE: &str = "_ojppair._tcp.local.";
@@ -62,8 +63,9 @@ fn secure(mut stream: TcpStream, code: &str, initiator: bool) -> Result<Channel>
 
 /// Swap identities over the secured session and trust the other device.
 fn exchange(mut ch: Channel, me: &Identity, my_port: u16) -> Result<Peer> {
-    ch.send(&Msg::Pair { name: me.name.clone(), kind: me.kind.clone(), public: hex(&me.public_key()), port: my_port })?;
-    let Some(Msg::Pair { name, kind, public, port }) = ch.recv()? else { bail!("the other device didn't introduce itself") };
+    let ips = local_ips().iter().map(ToString::to_string).collect();
+    ch.send(&Msg::Pair { name: me.name.clone(), kind: me.kind.clone(), public: hex(&me.public_key()), port: my_port, ips })?;
+    let Some(Msg::Pair { name, kind, public, port, ips }) = ch.recv()? else { bail!("the other device didn't introduce itself") };
     if public == hex(&me.public_key()) {
         bail!("that is this device");
     }
@@ -71,10 +73,18 @@ fn exchange(mut ch: Channel, me: &Identity, my_port: u16) -> Result<Peer> {
         bail!("the other device sent a broken key");
     }
     super::ensure_name(&name).context("the other device has an unusable name")?;
-    let addrs = match (ch.peer_addr(), port) {
-        (Some(a), p) if p != 0 => vec![SocketAddr::new(a.ip(), p).to_string()],
-        _ => Vec::new(),
-    };
+    // Where it was seen first, then every address it says it has (LAN, VPN), so later connections
+    // work from anywhere one of them is reachable.
+    let mut addrs: Vec<String> = Vec::new();
+    if port != 0 {
+        let seen = ch.peer_addr().map(|a| a.ip().to_string());
+        for ip in seen.into_iter().chain(ips) {
+            let a = if ip.contains(':') { format!("[{ip}]:{port}") } else { format!("{ip}:{port}") };
+            if a.parse::<SocketAddr>().is_ok() && !addrs.contains(&a) {
+                addrs.push(a);
+            }
+        }
+    }
     let peer = Peer { name, kind, public, addrs, perms: Perms::default() };
     let mut peers = Peers::load();
     peers.upsert(peer.clone());
@@ -85,7 +95,9 @@ fn exchange(mut ch: Channel, me: &Identity, my_port: u16) -> Result<Peer> {
 /// Show a code and wait for another device to enter it. `announce` is called
 /// once the code and port are ready (print or display them there).
 pub fn host(me: &Identity, my_port: u16, timeout: Duration, announce: &mut dyn FnMut(&Offer)) -> Result<Peer> {
-    let listener = TcpListener::bind("0.0.0.0:0")?;
+    let listener = (PAIR_PORT..PAIR_PORT + 10)
+        .find_map(|p| TcpListener::bind(("0.0.0.0", p)).ok())
+        .map_or_else(|| TcpListener::bind("0.0.0.0:0"), Ok)?;
     listener.set_nonblocking(true)?;
     let port = listener.local_addr()?.port();
     let code = new_code();
@@ -119,23 +131,34 @@ pub fn join(me: &Identity, code: &str, my_port: u16, addr: Option<SocketAddr>) -
     if digits(code).len() != 8 {
         bail!("the code is 8 digits, like 1234-5678");
     }
-    let addr = match addr {
-        Some(a) => a,
+    // The address given, or every device found waiting to pair on this network (scan first, then mDNS).
+    let candidates: Vec<SocketAddr> = match addr {
+        Some(a) => vec![a],
         None => {
-            let found = super::net::browse(PAIR_SERVICE, Duration::from_secs(4));
-            match found.as_slice() {
-                [] => bail!("didn't find a device waiting to pair on this network (is pairing open on the other one? you can also give its address)"),
-                [one] => one.addr,
-                many => bail!(
-                    "several devices are waiting to pair ({}); give the address of the right one",
-                    many.iter().map(|f| format!("{} at {}", f.name, f.addr)).collect::<Vec<_>>().join(", ")
-                ),
+            let mut found: Vec<SocketAddr> = super::net::scan(&[PAIR_PORT]);
+            if found.is_empty() {
+                found = super::net::browse(PAIR_SERVICE, Duration::from_secs(3)).into_iter().map(|f| f.addr).collect();
             }
+            if found.is_empty() {
+                bail!("didn't find a device waiting to pair on this network (is pairing open on the other one? you can also give its address)");
+            }
+            found
         }
     };
-    let stream = TcpStream::connect_timeout(&addr, Duration::from_secs(5)).with_context(|| format!("connecting to {addr}"))?;
-    let ch = secure(stream, code, true)?;
-    exchange(ch, me, my_port)
+    // Try each in turn: the one showing this code accepts it; any other just sees one wrong try.
+    let mut last = anyhow::anyhow!("nothing to try");
+    for addr in candidates {
+        let attempt = TcpStream::connect_timeout(&addr, Duration::from_secs(5))
+            .with_context(|| format!("connecting to {addr}"))
+            .map_err(anyhow::Error::from)
+            .and_then(|stream| secure(stream, code, true))
+            .and_then(|ch| exchange(ch, me, my_port));
+        match attempt {
+            Ok(peer) => return Ok(peer),
+            Err(e) => last = e,
+        }
+    }
+    Err(last)
 }
 
 #[cfg(test)]
@@ -167,8 +190,9 @@ mod tests {
         let hosted = host_thread.join().unwrap().unwrap();
         assert_eq!((joined.name.as_str(), joined.kind.as_str()), ("alpha", "desktop"));
         assert_eq!((hosted.name.as_str(), hosted.kind.as_str()), ("beta", "phone"));
-        assert_eq!(joined.addrs, vec!["127.0.0.1:1111".to_string()]);
-        assert_eq!(hosted.addrs, vec!["127.0.0.1:2222".to_string()]);
+        assert_eq!(joined.addrs[0], "127.0.0.1:1111", "the address it was seen at comes first");
+        assert!(joined.addrs.iter().all(|a| a.ends_with(":1111")));
+        assert_eq!(hosted.addrs[0], "127.0.0.1:2222");
         std::fs::remove_dir_all(dir).ok();
     }
 }

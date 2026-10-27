@@ -2,7 +2,7 @@
 //! accepts only paired devices, a client, discovery (mDNS, so addresses can
 //! change), and a background check of which peers are reachable.
 use std::collections::HashMap;
-use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, Weak};
@@ -22,6 +22,83 @@ const MAX_CONNECTIONS: usize = 8;
 pub const DEFAULT_PORT: u16 = 47600;
 /// A reply may take this long to start or continue (a big model on a slow CPU).
 const REPLY_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// Pairing waits on a port from here, so another device can find it by looking for that port.
+pub const PAIR_PORT: u16 = 47620;
+
+fn real_interface(name: &str) -> bool {
+    !(name == "lo" || ["docker", "br-", "veth", "virbr", "lxc", "vmnet", "podman"].iter().any(|p| name.starts_with(p)))
+}
+
+/// This device's own IPv4 addresses worth sharing with a peer: LAN and VPN (Tailscale, Netbird),
+/// not loopback, link-local or container bridges.
+pub fn local_ips() -> Vec<Ipv4Addr> {
+    if_addrs::get_if_addrs()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|i| real_interface(&i.name) && !i.is_loopback())
+        .filter_map(|i| match i.addr {
+            if_addrs::IfAddr::V4(a) if !a.ip.is_link_local() => Some(a.ip),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Devices on the local network that accept connections on one of `ports`. This works where
+/// multicast discovery doesn't (another program holding the mDNS port, a locked-down Wi-Fi).
+/// It only looks at this device's own /24 on each real network interface, and only at the given ports.
+pub(crate) fn scan(ports: &[u16]) -> Vec<SocketAddr> {
+    let mut targets: Vec<SocketAddr> = Vec::new();
+    for iface in if_addrs::get_if_addrs().unwrap_or_default() {
+        if !real_interface(&iface.name) || iface.is_loopback() {
+            continue;
+        }
+        let if_addrs::IfAddr::V4(a) = iface.addr else { continue };
+        if a.ip.is_link_local() || a.ip.octets()[0] == 100 {
+            // 100.x is a VPN: its peers are reached by stored address, not by scanning.
+            continue;
+        }
+        let (ip, mut mask) = (u32::from(a.ip), u32::from(a.netmask));
+        // Big networks are not scanned whole: the 254 neighbours in this device's own /24.
+        if mask < 0xFFFF_FF00 {
+            mask = 0xFFFF_FF00;
+        }
+        let net = ip & mask;
+        for host in 1..(!mask) {
+            let candidate = net | host;
+            // (Normally a device doesn't look for itself; OJP_LINK_SCAN_SELF=1 allows it, for testing on one machine.)
+            if candidate != ip || std::env::var_os("OJP_LINK_SCAN_SELF").is_some() {
+                for &p in ports {
+                    let t = SocketAddr::new(IpAddr::V4(Ipv4Addr::from(candidate)), p);
+                    if !targets.contains(&t) {
+                        targets.push(t);
+                    }
+                }
+            }
+        }
+    }
+    let queue = Arc::new(Mutex::new(targets));
+    let found = Arc::new(Mutex::new(Vec::new()));
+    let workers: Vec<_> = (0..128)
+        .map(|_| {
+            let (queue, found) = (queue.clone(), found.clone());
+            std::thread::spawn(move || {
+                loop {
+                    let Some(t) = queue.lock().unwrap_or_else(|e| e.into_inner()).pop() else { break };
+                    if TcpStream::connect_timeout(&t, Duration::from_millis(250)).is_ok() {
+                        found.lock().unwrap_or_else(|e| e.into_inner()).push(t);
+                    }
+                }
+            })
+        })
+        .collect();
+    for w in workers {
+        let _ = w.join();
+    }
+    let mut out = found.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    out.sort();
+    out
+}
 
 /// Announce a service on the local network until the returned daemon is dropped.
 pub(crate) fn advertise(service: &str, instance: &str, port: u16, props: &[(&str, &str)]) -> Option<ServiceDaemon> {
@@ -62,6 +139,11 @@ pub(crate) fn browse(service: &str, timeout: Duration) -> Vec<Found> {
     }
     let _ = daemon.shutdown();
     found
+}
+
+/// Paired-device services visible on the network, as (name, address) pairs (for diagnosis).
+pub fn discover(timeout: Duration) -> Vec<(String, SocketAddr)> {
+    browse(SERVICE, timeout).into_iter().map(|f| (f.name, f.addr)).collect()
 }
 
 /// What this device can do right now, shared with the connections.
@@ -227,37 +309,57 @@ impl Client {
         Client { me }
     }
 
-    /// Open a channel to a paired device: its last known addresses first, then a look around the network.
-    pub fn connect(&self, peer: &Peer) -> Result<Channel> {
+    /// Try each address at once; the first that answers as the right device wins.
+    fn race(&self, peer: &Peer, addrs: &[SocketAddr]) -> Option<(Channel, SocketAddr)> {
+        if addrs.is_empty() {
+            return None;
+        }
         let want = super::unhex(&peer.public).unwrap_or_default();
-        let try_addr = |addr: SocketAddr| -> Result<Channel> {
-            let stream = TcpStream::connect_timeout(&addr, Duration::from_millis(800))?;
-            let ch = Channel::initiate(stream, &self.me.private_key())?;
-            if ch.remote != want {
-                bail!("{addr} answered with a different key than {}'s", peer.name);
-            }
-            Ok(ch)
-        };
-        for a in &peer.addrs {
-            if let Some(addr) = a.to_socket_addrs().ok().and_then(|mut i| i.next())
-                && let Ok(ch) = try_addr(addr)
-            {
-                return Ok(ch);
-            }
+        let (tx, rx) = mpsc::channel();
+        for &addr in addrs {
+            let (tx, private, want) = (tx.clone(), self.me.private_key(), want.clone());
+            std::thread::spawn(move || {
+                let result = TcpStream::connect_timeout(&addr, Duration::from_millis(1200))
+                    .map_err(anyhow::Error::from)
+                    .and_then(|s| Channel::initiate(s, &private))
+                    .and_then(|ch| if ch.remote == want { Ok(ch) } else { bail!("a different device answered") });
+                if let Ok(ch) = result {
+                    let _ = tx.send((ch, addr));
+                }
+            });
+        }
+        drop(tx);
+        rx.recv_timeout(Duration::from_millis(2500)).ok()
+    }
+
+    fn remember(peer: &Peer, addr: SocketAddr) {
+        let mut peers = Peers::load();
+        if let Some(p) = peers.peers.iter_mut().find(|p| p.public == peer.public) {
+            let a = addr.to_string();
+            p.addrs.retain(|x| *x != a);
+            p.addrs.insert(0, a);
+            p.addrs.truncate(8);
+            let _ = peers.save();
+        }
+    }
+
+    /// Open a channel to a paired device: its known addresses (LAN and VPN) all at once, then a look
+    /// around this network for it, then multicast discovery.
+    pub fn connect(&self, peer: &Peer) -> Result<Channel> {
+        let known: Vec<SocketAddr> = peer.addrs.iter().filter_map(|a| a.to_socket_addrs().ok()?.next()).collect();
+        if let Some((ch, _)) = self.race(peer, &known) {
+            return Ok(ch);
+        }
+        let nearby: Vec<SocketAddr> = scan(&[DEFAULT_PORT]).into_iter().filter(|a| !known.contains(a)).collect();
+        if let Some((ch, addr)) = self.race(peer, &nearby) {
+            Self::remember(peer, addr);
+            return Ok(ch);
         }
         let fp = peer.fingerprint();
-        for found in browse(SERVICE, Duration::from_millis(1500)) {
-            if found.instance == fp
-                && let Ok(ch) = try_addr(found.addr)
-            {
-                // Remember where it is now.
-                let mut peers = Peers::load();
-                if let Some(p) = peers.peers.iter_mut().find(|p| p.public == peer.public) {
-                    p.addrs = vec![found.addr.to_string()];
-                    let _ = peers.save();
-                }
-                return Ok(ch);
-            }
+        let announced: Vec<SocketAddr> = browse(SERVICE, Duration::from_millis(1500)).into_iter().filter(|f| f.instance == fp).map(|f| f.addr).collect();
+        if let Some((ch, addr)) = self.race(peer, &announced) {
+            Self::remember(peer, addr);
+            return Ok(ch);
         }
         bail!("{} isn't reachable right now", peer.name)
     }

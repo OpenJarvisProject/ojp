@@ -878,6 +878,11 @@ fn link_command(cmd: &str, args: &[String]) -> anyhow::Result<()> {
         Peers::load().by_name(name).cloned().ok_or_else(|| anyhow::anyhow!("no paired device called {name}"))
     };
     match cmd {
+        "link-discover" => {
+            for (name, addr) in link::net::discover(std::time::Duration::from_secs(5)) {
+                println!("{name} at {addr}");
+            }
+        }
         "link-id" => {
             println!("{} ({}), fingerprint {}", me.name, me.kind, me.fingerprint());
             println!("files: {}", link::dir().display());

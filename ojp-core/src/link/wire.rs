@@ -34,7 +34,15 @@ pub enum Msg {
     Notify { title: String, text: String },
     Ok,
     /// Sent by both sides while pairing: who I am and where my service listens.
-    Pair { name: String, kind: String, public: String, port: u16 },
+    Pair {
+        name: String,
+        kind: String,
+        public: String,
+        port: u16,
+        /// Every address this device can be reached at (LAN, VPN), so a later connection can use whichever works.
+        #[serde(default)]
+        ips: Vec<String>,
+    },
     /// Merge these memories and send yours back.
     Sync { state: crate::memory::SyncState },
     SyncReply { state: crate::memory::SyncState },
