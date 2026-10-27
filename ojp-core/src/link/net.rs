@@ -13,6 +13,8 @@ use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 
 use super::wire::{Channel, Msg};
 use super::{AskLevel, Identity, Peer, Peers};
+#[cfg(test)]
+use super::hex;
 
 const SERVICE: &str = "_ojp._tcp.local.";
 const MAX_CONNECTIONS: usize = 8;
@@ -349,5 +351,69 @@ impl Presence {
 
     pub fn online(&self) -> Vec<String> {
         self.states.lock().unwrap_or_else(|e| e.into_inner()).values().map(|s| s.name.clone()).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::link::Perms;
+
+    #[test]
+    fn paired_devices_talk_unpaired_are_refused_and_permissions_hold() {
+        let _g = crate::TEST_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("ojp-net-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        unsafe { std::env::set_var("OJP_LINK_DIR", &dir) };
+        let (a, b, stranger) = (Identity::generate("a", "desktop").unwrap(), Identity::generate("b", "phone").unwrap(), Identity::generate("c", "phone").unwrap());
+        let (tx, rx) = mpsc::channel::<Incoming>();
+        let caps = Arc::new(Caps::default());
+        caps.chat.store(true, Ordering::Relaxed);
+        caps.ask.store(true, Ordering::Relaxed);
+        let server = Server::start(a.clone(), caps, tx).unwrap();
+        std::thread::spawn(move || {
+            for inc in rx {
+                match inc.request {
+                    Request::Chat(m) => {
+                        inc.reply.tok("he");
+                        inc.reply.tok("llo");
+                        inc.reply.end(&format!("hello {}", m.len()));
+                    }
+                    _ => inc.reply.err("nope"),
+                }
+            }
+        });
+        let addr = format!("127.0.0.1:{}", server.port);
+        let peer_a = Peer { name: "a".into(), kind: "desktop".into(), public: hex(&a.public_key()), addrs: vec![addr.clone()], perms: Perms::default() };
+        let peer_b = Peer { name: "b".into(), kind: "phone".into(), public: hex(&b.public_key()), addrs: vec![], perms: Perms::default() };
+        let mut peers = Peers::default();
+        peers.upsert(peer_a.clone());
+        peers.upsert(peer_b.clone());
+        peers.save().unwrap();
+
+        let chat = || Msg::Chat { messages: vec![("user".into(), "hi".into())] };
+        let mut toks = Vec::new();
+        let text = Client::new(b.clone()).request(&peer_a, chat(), &mut |m| if let Msg::Tok { text } = m { toks.push(text.clone()) }).unwrap();
+        assert_eq!((text.as_str(), toks.join("").as_str()), ("hello 1", "hello"));
+        assert!(matches!(Client::new(b.clone()).ping(&peer_a).unwrap(), Msg::Pong { chat: true, ask: true, .. }));
+
+        // A device that was never paired gets nothing, even though it can reach the port.
+        assert!(Client::new(stranger).request(&peer_a, chat(), &mut |_| {}).is_err());
+
+        // Pointing at the right address with the wrong expected key is caught by the client too.
+        let mut wrong_key = peer_a.clone();
+        wrong_key.public = hex(&stranger_key());
+        assert!(Client::new(b.clone()).request(&wrong_key, chat(), &mut |_| {}).is_err());
+
+        // Switching a permission off takes effect on the next request.
+        peers.peers.iter_mut().find(|p| p.name == "b").unwrap().perms.chat = false;
+        peers.save().unwrap();
+        let err = Client::new(b).request(&peer_a, chat(), &mut |_| {}).unwrap_err();
+        assert!(format!("{err}").contains("doesn't allow"), "{err}");
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    fn stranger_key() -> Vec<u8> {
+        Identity::generate("x", "phone").unwrap().public_key()
     }
 }

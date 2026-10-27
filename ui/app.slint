@@ -25,6 +25,19 @@ export struct Message {
     meta: string,
 }
 
+// A paired device, as shown in Settings.
+export struct Device {
+    name: string,
+    // "Phone · online · has a big model" / "Laptop · not reachable".
+    status: string,
+    // Use this device's AI model when this one has none.
+    chat: bool,
+    // What it may ask this device to do: 0 off, 1 basic, 2 files and web too.
+    ask: int,
+    notify: bool,
+    sync: bool,
+}
+
 export struct ChatSummary {
     id: string,
     title: string,
@@ -69,6 +82,18 @@ export global Settings {
     in-out property <bool> dynamic-colors: true;
     // Only Android has wallpaper-based colours.
     in-out property <bool> dynamic-colors-supported;
+    // Paired devices (see ojp-core::link) and the pairing dialog's state.
+    in-out property <[Device]> devices;
+    // Shown while this device waits for another to enter it.
+    in-out property <string> pair-code;
+    in-out property <string> pair-message;
+    in-out property <bool> pair-busy;
+    in-out property <bool> link-supported: true;
+    callback pair-host();
+    callback pair-join(string);
+    callback unpair(string);
+    // name, chat, ask, notify, sync
+    callback device-changed(string, bool, int, bool, bool);
     // 0 = classic (Qwen2.5 0.5B router + main), 1 = uncensored Qwen3.5-0.8B.
     in-out property <int> profile;
     // Developer: false = router only, the main model is never loaded.
@@ -524,6 +549,94 @@ component SettingsPage inherits Rectangle {
                     wrap: word-wrap;
                     font-size: 0.8rem;
                     opacity: 0.65;
+                }
+
+                Rectangle { height: 1px; background: Palette.border; opacity: 0.4; }
+
+                if Settings.link-supported: VerticalLayout {
+                    spacing: 14px;
+                    Text { text: "Devices"; font-weight: 700; color: Palette.accent-background; }
+                    Text {
+                        text: "Pair your other devices by hand so they work as one assistant: a phone without a big model can use your computer's, and \"remind me on my phone\" really happens on the phone. Only devices you pair can connect.";
+                        wrap: word-wrap;
+                        font-size: 0.85rem;
+                        opacity: 0.65;
+                    }
+                    for device[i] in Settings.devices: VerticalLayout {
+                        spacing: 6px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                Text { text: device.name; font-weight: 700; }
+                                Text { text: device.status; font-size: 0.85rem; opacity: 0.65; wrap: word-wrap; }
+                            }
+                            Button {
+                                text: "Remove";
+                                horizontal-stretch: 0;
+                                clicked => { Settings.unpair(device.name); }
+                            }
+                        }
+                        SettingRow {
+                            title: "Use its AI model";
+                            description: "When this device has no big model of its own.";
+                            checked: device.chat;
+                            toggled => { Settings.device-changed(device.name, !device.chat, device.ask, device.notify, device.sync); }
+                        }
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Text { text: "May ask this device to do things"; horizontal-stretch: 1; vertical-alignment: center; wrap: word-wrap; }
+                            ComboBox {
+                                horizontal-stretch: 0;
+                                model: ["Nothing", "Basic", "Basic + files and web"];
+                                current-index: device.ask;
+                                selected(choice) => {
+                                    Settings.device-changed(device.name, device.chat, choice == "Nothing" ? 0 : choice == "Basic" ? 1 : 2, device.notify, device.sync);
+                                }
+                            }
+                        }
+                        SettingRow {
+                            title: "May show messages here";
+                            checked: device.notify;
+                            toggled => { Settings.device-changed(device.name, device.chat, device.ask, !device.notify, device.sync); }
+                        }
+                        SettingRow {
+                            title: "Share memories";
+                            description: "What you tell one device is remembered by both; forgetting applies to both.";
+                            checked: device.sync;
+                            toggled => { Settings.device-changed(device.name, device.chat, device.ask, device.notify, !device.sync); }
+                        }
+                        Rectangle { height: 1px; background: Palette.border; opacity: 0.25; }
+                    }
+                    if Settings.pair-code != "": Text {
+                        text: "On the other device, go to Settings > Devices, type this code and tap Pair:  " + Settings.pair-code;
+                        wrap: word-wrap;
+                        font-weight: 700;
+                    }
+                    Button {
+                        text: "Show a pairing code";
+                        enabled: !Settings.pair-busy;
+                        clicked => { Settings.pair-host(); }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        code-input := LineEdit {
+                            placeholder-text: "Code from the other device";
+                            horizontal-stretch: 1;
+                        }
+                        Button {
+                            text: "Pair";
+                            horizontal-stretch: 0;
+                            enabled: !Settings.pair-busy && code-input.text != "";
+                            clicked => { Settings.pair-join(code-input.text); }
+                        }
+                    }
+                    if Settings.pair-message != "": Text {
+                        text: Settings.pair-message;
+                        wrap: word-wrap;
+                        font-size: 0.85rem;
+                    }
+
                 }
 
                 Rectangle { height: 1px; background: Palette.border; opacity: 0.4; }

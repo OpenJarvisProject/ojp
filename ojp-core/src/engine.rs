@@ -82,6 +82,11 @@ impl LinkHandle {
         Server::start(self.me.clone(), self.caps.clone(), incoming)
     }
 
+    /// Like [`start_server`](Self::start_server), with state the caller keeps across engine reloads.
+    pub fn start_server_with(&self, caps: std::sync::Arc<Caps>, incoming: std::sync::mpsc::Sender<Incoming>) -> Result<Server> {
+        Server::start(self.me.clone(), caps, incoming)
+    }
+
     /// Share memories with every paired device that is reachable and allows it.
     /// Returns how many memories changed here.
     pub fn sync_all(&self) -> usize {
@@ -654,6 +659,16 @@ impl Engine {
         {
             link.sync_soon();
         }
+    }
+
+    /// Report what this engine can do into `caps` (kept by the app across reloads) and use it from now on.
+    pub fn share_caps(&mut self, caps: &std::sync::Arc<Caps>) {
+        use std::sync::atomic::Ordering::Relaxed;
+        let Some(link) = self.link.as_mut() else { return };
+        caps.chat.store(self.router_llm.is_some() || self.main.is_some(), Relaxed);
+        caps.main.store(matches!(self.main, Some(Main::Local(_) | Main::Remote { .. })), Relaxed);
+        caps.ask.store(true, Relaxed);
+        link.caps = caps.clone();
     }
 
     pub fn link(&self) -> Option<&LinkHandle> {

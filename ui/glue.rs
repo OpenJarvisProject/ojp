@@ -14,7 +14,7 @@ use ojp_core::storage::{self, Location};
 use ojp_core::{Config, Engine, Event};
 use slint::{ComponentHandle, Model, ModelRc, StyledText, VecModel};
 
-use crate::{AppWindow, Block, Chat, ChatSummary, Message, Settings};
+use crate::{AppWindow, Block, Chat, ChatSummary, Device, Message, Settings};
 
 enum Request {
     Ask(String),
@@ -26,6 +26,12 @@ enum Request {
     /// current location for a negative index; the bool is "include the
     /// main model".
     Download(i32, bool),
+    /// A request from a paired device, to be carried out by the engine.
+    Incoming(ojp_core::link::Incoming),
+    /// Refresh the list of paired devices (and share memories now and then).
+    Devices,
+    SetDevice { name: String, chat: bool, ask: i32, notify: bool, sync: bool },
+    Unpair(String),
     Settings { profile: i32, theme: i32, dynamic_colors: bool, main_enabled: bool, tts_enabled: bool, tts_mix: ojp_core::tts::MixSlots, tts_speed: i32, tts_engine: i32, tts_moss_voice: i32, tts_clarity: i32 },
     /// Play a sample in the current settings.
     Preview,
@@ -59,6 +65,11 @@ fn theme_index(theme: &str) -> i32 {
 
 /// Show the window and run until it closes.
 pub fn run(mut setup: Setup) -> anyhow::Result<()> {
+    // The link keys, memories and reminders live under the app's own folder on Android.
+    if cfg!(target_os = "android") && std::env::var_os("XDG_DATA_HOME").is_none() {
+        // SAFETY: nothing else is running yet.
+        unsafe { std::env::set_var("XDG_DATA_HOME", &setup.data_dir) };
+    }
     let ui = AppWindow::new()?;
     let chat = ui.global::<Chat>();
     chat.set_assistant_name(setup.config.persona.name.clone().into());
@@ -121,7 +132,21 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
 
     let (tx, rx) = mpsc::channel();
     let weak = ui.as_weak();
-    std::thread::spawn(move || worker(setup, rx, weak));
+    // Check the paired devices every few seconds, and share memories every few minutes.
+    {
+        let tick = tx.clone();
+        std::thread::spawn(move || {
+            for n in 0u64.. {
+                if tick.send(Request::Devices).is_err() {
+                    break;
+                }
+                let _ = n;
+                std::thread::sleep(Duration::from_secs(20));
+            }
+        });
+    }
+    let worker_tx = tx.clone();
+    std::thread::spawn(move || worker(setup, rx, weak, worker_tx));
 
     let send = move |request| {
         let _ = tx.send(request);
@@ -155,6 +180,22 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     chat.on_delete_chat({
         let send = send.clone();
         move |id| send(Request::DeleteChat(id.into()))
+    });
+    settings.on_pair_host({
+        let (weak, send) = (ui.as_weak(), send.clone());
+        move || pair_in_background(weak.clone(), send.clone(), None)
+    });
+    settings.on_pair_join({
+        let (weak, send) = (ui.as_weak(), send.clone());
+        move |code| pair_in_background(weak.clone(), send.clone(), Some(code.to_string()))
+    });
+    settings.on_unpair({
+        let send = send.clone();
+        move |name| send(Request::Unpair(name.to_string()))
+    });
+    settings.on_device_changed({
+        let send = send.clone();
+        move |name, chat, ask, notify, sync| send(Request::SetDevice { name: name.to_string(), chat, ask, notify, sync })
     });
     settings.on_preview({
         let send = send.clone();
@@ -454,15 +495,97 @@ fn choose_location(setup: &mut Setup, location: &Location) -> anyhow::Result<()>
     reload_config(setup)
 }
 
-fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWindow>) {
+/// Pair with another device without blocking the window: show a code and wait for the other
+/// device (`None`), or enter the code shown there.
+fn pair_in_background(ui: slint::Weak<AppWindow>, send: impl Fn(Request) + Send + 'static, code: Option<String>) {
+    let _ = ui.upgrade_in_event_loop(|ui| {
+        let s = ui.global::<Settings>();
+        s.set_pair_busy(true);
+        s.set_pair_code("".into());
+        s.set_pair_message("".into());
+    });
+    std::thread::spawn(move || {
+        use ojp_core::link::{self, net::DEFAULT_PORT};
+        let result = link::Identity::load_or_create().and_then(|me| match &code {
+            None => link::pair::host(&me, DEFAULT_PORT, Duration::from_secs(120), &mut |offer| {
+                let shown = offer.code.clone();
+                let _ = ui.upgrade_in_event_loop(move |ui| ui.global::<Settings>().set_pair_code(shown.into()));
+            }),
+            Some(code) => link::pair::join(&me, code, DEFAULT_PORT, None),
+        });
+        let message = match result {
+            Ok(peer) => format!("Paired with {} ({}).", peer.name, peer.kind),
+            Err(e) => format!("Couldn't pair: {e:#}"),
+        };
+        let _ = ui.upgrade_in_event_loop(move |ui| {
+            let s = ui.global::<Settings>();
+            s.set_pair_busy(false);
+            s.set_pair_code("".into());
+            s.set_pair_message(message.into());
+        });
+        send(Request::Devices);
+    });
+}
+
+fn device_rows(handle: &ojp_core::engine::LinkHandle) -> Vec<Device> {
+    use ojp_core::link::AskLevel;
+    handle
+        .status()
+        .into_iter()
+        .map(|(peer, state)| {
+            let status = match state {
+                Some(s) => format!("{} · online{}", peer.kind, if s.main { " · has a big model" } else { "" }),
+                None => format!("{} · not reachable right now", peer.kind),
+            };
+            Device {
+                name: peer.name.into(),
+                status: status.into(),
+                chat: peer.perms.chat,
+                ask: match peer.perms.ask {
+                    AskLevel::Off => 0,
+                    AskLevel::Basic => 1,
+                    AskLevel::Full => 2,
+                },
+                notify: peer.perms.notify,
+                sync: peer.perms.sync,
+            }
+        })
+        .collect()
+}
+
+fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWindow>, tx: mpsc::Sender<Request>) {
     let store = ChatStore::new(&setup.data_dir);
     let mut chat = StoredChat::new();
     show_chat(&ui, &store, &chat);
     let mut engine = load_engine(&setup, &ui);
+    // The device link: one server for the life of the app (engines come and go as models change).
+    let caps: std::sync::Arc<ojp_core::link::net::Caps> = Default::default();
+    let mut server = None;
+    let mut ticks = 0u64;
     // Loaded the first time a reply is spoken, dropped when speech is turned off.
     let mut tts: Option<ojp_core::tts::Tts> = None;
 
     for request in rx {
+        // Keep the shared link state in step with the engine (it may have been reloaded).
+        if let Some(engine) = engine.as_mut()
+            && let Some(link) = engine.link()
+        {
+            if server.is_none() {
+                let (itx, irx) = mpsc::channel();
+                let forward = tx.clone();
+                std::thread::spawn(move || {
+                    for incoming in irx {
+                        if forward.send(Request::Incoming(incoming)).is_err() {
+                            break;
+                        }
+                    }
+                });
+                server = link.start_server_with(caps.clone(), itx).ok();
+            }
+            engine.share_caps(&caps);
+        } else {
+            caps.chat.store(false, std::sync::atomic::Ordering::Relaxed);
+        }
         // Whatever is being said stops when the user does anything.
         if let Some(tts) = &tts {
             tts.stop();
@@ -492,6 +615,50 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 } else {
                     set_state(&ui, false, Some("Download failed".into()));
                 }
+            }
+            Request::Incoming(incoming) => {
+                match engine.as_mut() {
+                    Some(engine) => {
+                        engine.handle_incoming(incoming);
+                        for (title, text) in engine.take_inbox() {
+                            push_message(&ui, format!("{title}: {text}"), "device");
+                        }
+                    }
+                    None => incoming.reply.err("no model is loaded on this device yet"),
+                }
+            }
+            Request::Devices => {
+                if let Some(link) = engine.as_ref().and_then(|e| e.link()) {
+                    let rows = device_rows(link);
+                    let _ = ui.upgrade_in_event_loop(move |ui| ui.global::<Settings>().set_devices(Rc::new(VecModel::from(rows)).into()));
+                    ticks += 1;
+                    if ticks % 12 == 1 {
+                        link.sync_soon();
+                    }
+                }
+            }
+            Request::SetDevice { name, chat, ask, notify, sync } => {
+                let mut peers = ojp_core::link::Peers::load();
+                if let Some(p) = peers.peers.iter_mut().find(|p| p.name == name) {
+                    p.perms = ojp_core::link::Perms {
+                        chat,
+                        ask: match ask {
+                            0 => ojp_core::link::AskLevel::Off,
+                            1 => ojp_core::link::AskLevel::Basic,
+                            _ => ojp_core::link::AskLevel::Full,
+                        },
+                        notify,
+                        sync,
+                    };
+                    let _ = peers.save();
+                }
+            }
+            Request::Unpair(name) => {
+                let mut peers = ojp_core::link::Peers::load();
+                if peers.remove(&name) {
+                    let _ = peers.save();
+                }
+                let _ = tx.send(Request::Devices);
             }
             Request::NewChat => {
                 chat = StoredChat::new();
