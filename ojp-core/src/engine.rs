@@ -21,6 +21,8 @@ use serde_json::{Value, json};
 use crate::config::Config;
 use crate::model::{Model, Seq};
 use crate::router::{Route, Router};
+use crate::link::{self, AskLevel, Client, Identity, Incoming, Msg, Peer, Peers, Presence, Request, Server};
+use crate::link::net::Caps;
 use crate::tools;
 
 const MAX_TOKENS: usize = 512;
@@ -65,7 +67,68 @@ enum Main {
     Remote { base_url: String, model: String },
 }
 
+/// Everything the device link needs, cheap to clone into a background thread.
+#[derive(Clone)]
+pub struct LinkHandle {
+    pub me: Identity,
+    pub client: Client,
+    pub presence: std::sync::Arc<Presence>,
+    pub caps: std::sync::Arc<Caps>,
+}
+
+impl LinkHandle {
+    /// Listen for paired devices; their requests arrive on `incoming` (see [`Engine::handle_incoming`]).
+    pub fn start_server(&self, incoming: std::sync::mpsc::Sender<Incoming>) -> Result<Server> {
+        Server::start(self.me.clone(), self.caps.clone(), incoming)
+    }
+
+    /// Share memories with every paired device that is reachable and allows it.
+    /// Returns how many memories changed here.
+    pub fn sync_all(&self) -> usize {
+        let mut changed = 0;
+        for peer in Peers::load().peers.iter().filter(|p| p.perms.sync) {
+            let mut theirs = None;
+            let sent = Msg::Sync { state: crate::memory::export_sync() };
+            let ok = self.client.request(peer, sent, &mut |m| {
+                if let Msg::SyncReply { state } = m {
+                    theirs = Some(state.clone());
+                }
+            });
+            if ok.is_ok()
+                && let Some(state) = theirs
+            {
+                changed += crate::memory::merge(state).unwrap_or(0);
+            }
+        }
+        changed
+    }
+
+    /// Sync in the background (after a memory was saved or forgotten here).
+    pub fn sync_soon(&self) {
+        let me = self.clone();
+        std::thread::spawn(move || {
+            me.sync_all();
+        });
+    }
+
+    /// Every paired device with what its last check found (None = not reachable).
+    pub fn status(&self) -> Vec<(Peer, Option<link::net::PeerState>)> {
+        Peers::load().peers.into_iter().map(|p| { let s = self.presence.state(&p); (p, s) }).collect()
+    }
+}
+
+/// A request from another device that this engine is carrying out.
+struct Delegation {
+    level: AskLevel,
+    from: String,
+}
+
 pub struct Engine {
+    link: Option<LinkHandle>,
+    brain: String,
+    delegated: Option<Delegation>,
+    /// Messages other devices asked to show, for the UI to pick up.
+    inbox: Vec<(String, String)>,
     router_llm: Option<Model>,
     /// Picks the tool for a single-tool request from the router's hidden state (see tools::ToolProbe).
     tool_probe: Option<tools::ToolProbe>,
@@ -204,7 +267,19 @@ impl Engine {
             }
         }
         let tool_probe = config.models.router.as_ref().and_then(|r| tools::ToolProbe::find(r));
+        let link = if config.link.enabled { Identity::load_or_create().ok() } else { None }.map(|me| {
+            let caps = std::sync::Arc::new(Caps::default());
+            let has = |b: bool| b;
+            caps.chat.store(has(router_llm.is_some() || main.is_some()), std::sync::atomic::Ordering::Relaxed);
+            caps.main.store(matches!(main, Some(Main::Local(_) | Main::Remote { .. })), std::sync::atomic::Ordering::Relaxed);
+            caps.ask.store(true, std::sync::atomic::Ordering::Relaxed);
+            LinkHandle { client: Client::new(me.clone()), presence: Presence::start(me.clone(), std::time::Duration::from_secs(15)), caps, me }
+        });
         Ok(Engine {
+            link,
+            brain: config.link.brain.clone(),
+            delegated: None,
+            inbox: Vec::new(),
             router_llm,
             tool_probe,
             route_hidden: None,
@@ -234,13 +309,16 @@ impl Engine {
     /// Handle one request; returns the full reply text.
     pub fn ask(&mut self, request: &str, on_event: &mut dyn FnMut(Event)) -> Result<String> {
         // The user is answering "shall I go ahead?"
-        if let Some(pending) = self.pending.take() {
+        if let Some(pending) = self.pending.take().filter(|_| self.delegated.is_none()) {
             match interpret(request) {
                 Answer::Yes => {
                     let text = match tools::run_confirmed(&pending.call) {
                         Ok(o) => o.text,
                         Err(e) => format!("Couldn't do that: {e:#}"),
                     };
+                    if pending.call["tool"] == "forget" {
+                        self.memory_changed();
+                    }
                     on_event(Event::Notice(format!("tool: {}", tools::describe_call(&pending.call))));
                     on_event(Event::Token(text.clone()));
                     self.history.push(ChatMessage::new(Role::User, request));
@@ -260,11 +338,26 @@ impl Engine {
         }
         // Typed commands ("/volume 40", "/calc 17*23", "/help") skip the models
         // entirely, so they are instant and always do exactly what they say.
-        if let Some(parsed) = tools::command(request) {
+        // (Not for requests that came from another device: they get no typed-command powers.)
+        if self.delegated.is_none()
+            && let Some(parsed) = tools::command(request)
+        {
             let reply = self.run_command(parsed, on_event);
             self.history.push(ChatMessage::new(Role::User, request));
             self.history.push(ChatMessage::new(Role::Assistant, reply.clone()));
             return Ok(reply);
+        }
+        // "remind me on my phone ...": that device's own assistant does it.
+        if self.delegated.is_none()
+            && let Some(link) = self.link.clone()
+        {
+            let peers = Peers::load().peers;
+            if let Some((peer, rest)) = link::addressed(request, &peers, &link.me) {
+                let reply = delegate(&link.client, peer, &rest, on_event);
+                self.history.push(ChatMessage::new(Role::User, request));
+                self.history.push(ChatMessage::new(Role::Assistant, reply.clone()));
+                return Ok(reply);
+            }
         }
         let route = self.route(request, on_event);
         self.history.push(ChatMessage::new(Role::User, request));
@@ -312,6 +405,9 @@ impl Engine {
                 let run = tools::run_typed(&calls);
                 if run.outcomes.iter().any(|o| tools::writes_memory(&o.call)) {
                     self.refine_memory();
+                }
+                if run.outcomes.iter().any(|o| matches!(o.call["tool"].as_str(), Some("remember" | "forget"))) {
+                    self.memory_changed();
                 }
                 for o in &run.outcomes {
                     on_event(Event::Notice(format!("command: {}", tools::describe_call(&o.call))));
@@ -362,6 +458,15 @@ impl Engine {
             let mut results = Vec::new();
             let mut explored = false;
             for call in fresh {
+                // For another device: only what that device was allowed to ask for, and never
+                // anything that needs the user's yes (that has to be answered here, by the user).
+                if let Some(d) = &self.delegated
+                    && (!link::remote_allowed(call["tool"].as_str().unwrap_or(""), d.level) || tools::needs_confirmation(call).is_some())
+                {
+                    let here = self.link.as_ref().map_or("this device", |l| l.me.name.as_str());
+                    failure = Some(format!("{here} doesn't let {} do that remotely; do it on {here} itself.", d.from));
+                    break 'steps;
+                }
                 // Text from a web page or file must not be able to plant "memories".
                 if tainted && tools::writes_memory(call) {
                     let what = call["args"]["text"].as_str().unwrap_or("");
@@ -384,6 +489,7 @@ impl Engine {
                         on_event(Event::Notice(format!("tool: {}", tools::describe_call(&o.call))));
                         if tools::writes_memory(&o.call) && std::env::var("OJP_TOOLS_DRY_RUN").is_err() {
                             self.refine_memory();
+                            self.memory_changed();
                         }
                         explored |= tools::is_explore(&o.call);
                         tainted |= tools::reads_untrusted(&o.call);
@@ -516,8 +622,121 @@ impl Engine {
         messages
     }
 
+    /// A paired device whose model should answer instead of this one's: when this device has
+    /// no main model (a phone with only the small router), or the user chose "remote".
+    fn chat_peer(&self) -> Option<Peer> {
+        let link = self.link.as_ref()?;
+        if self.delegated.is_some() || self.brain == "local" {
+            return None;
+        }
+        let have_main = matches!(self.main, Some(Main::Local(_) | Main::Remote { .. }));
+        if self.brain != "remote" && have_main {
+            return None;
+        }
+        let mut best: Option<(bool, Peer)> = None;
+        for (peer, state) in link.status() {
+            let Some(state) = state.filter(|s| s.chat) else { continue };
+            // Automatic mode only borrows a bigger model, not another small router.
+            if self.brain != "remote" && !state.main {
+                continue;
+            }
+            if best.as_ref().is_none_or(|(main, _)| state.main && !main) {
+                best = Some((state.main, peer));
+            }
+        }
+        best.map(|(_, p)| p)
+    }
+
+    /// Something that other devices should know changed (a memory was saved or forgotten).
+    fn memory_changed(&self) {
+        if self.delegated.is_none()
+            && let Some(link) = &self.link
+        {
+            link.sync_soon();
+        }
+    }
+
+    pub fn link(&self) -> Option<&LinkHandle> {
+        self.link.as_ref()
+    }
+
+    /// Messages other devices sent to show the user, oldest first (title, text).
+    pub fn take_inbox(&mut self) -> Vec<(String, String)> {
+        std::mem::take(&mut self.inbox)
+    }
+
+    /// Carry out a request from a paired device. Run this on the thread that owns the engine.
+    pub fn handle_incoming(&mut self, incoming: Incoming) {
+        let Incoming { peer, request, reply } = incoming;
+        match request {
+            Request::Chat(messages) => {
+                let messages: Vec<ChatMessage> =
+                    messages.into_iter().filter_map(|(role, text)| role.parse::<Role>().ok().map(|r| ChatMessage::new(r, text))).collect();
+                let template = self.template;
+                let mut on = |event: Event| {
+                    if let Event::Token(t) = event {
+                        reply.tok(&t);
+                    }
+                };
+                let result = match &mut self.main {
+                    Some(Main::Local(model)) => generate_local(model, template, &messages, &mut on),
+                    Some(Main::Remote { base_url, model }) => generate_remote(base_url, model, &messages, &mut on),
+                    None => match &mut self.router_llm {
+                        Some(model) => generate_local(model, template, &messages, &mut on),
+                        None => Err(anyhow::anyhow!("no model is loaded")),
+                    },
+                };
+                match result {
+                    Ok(text) => reply.end(&text),
+                    Err(e) => reply.err(&format!("{e:#}")),
+                }
+            }
+            Request::Ask(text) => {
+                let mut on = |event: Event| match event {
+                    Event::Token(t) => reply.tok(&t),
+                    Event::Notice(n) => reply.note(&n),
+                    Event::Routed { .. } => {}
+                };
+                match self.ask_for(&peer, &text, &mut on) {
+                    Ok(text) => reply.end(&text),
+                    Err(e) => reply.err(&format!("{e:#}")),
+                }
+            }
+            Request::Notify { title, text } => {
+                show_notification(&format!("{} ({})", title, peer.name), &text);
+                self.inbox.push((format!("{} ({})", title, peer.name), text));
+                reply.ok();
+            }
+            Request::Sync(state) => {
+                let _ = crate::memory::merge(state);
+                reply.sync(crate::memory::export_sync());
+            }
+        }
+    }
+
+    /// Do what another device asked, within what it is allowed to ask. The conversation here
+    /// is left as it was.
+    fn ask_for(&mut self, peer: &Peer, request: &str, on_event: &mut dyn FnMut(Event)) -> Result<String> {
+        let history = std::mem::take(&mut self.history);
+        let pending = self.pending.take();
+        self.delegated = Some(Delegation { level: peer.perms.ask, from: peer.name.clone() });
+        let result = self.ask(request, on_event);
+        self.delegated = None;
+        self.history = history;
+        self.pending = pending;
+        result
+    }
+
     fn answer(&mut self, on_event: &mut dyn FnMut(Event)) -> Result<String> {
         let messages = self.messages();
+        if let Some(peer) = self.chat_peer() {
+            let client = self.link.as_ref().map(|l| l.client.clone()).expect("chat_peer needs the link");
+            match generate_peer(&client, &peer, &messages, on_event) {
+                Ok(text) if !text.is_empty() => return Ok(text),
+                Ok(_) => {}
+                Err(e) => on_event(Event::Notice(format!("{} couldn't answer ({e:#}), using this device's model", peer.name))),
+            }
+        }
         let main_result = match &mut self.main {
             Some(Main::Local(model)) => Some(generate_local(model, self.template, &messages, on_event)),
             Some(Main::Remote { base_url, model }) => Some(generate_remote(base_url, model, &messages, on_event)),
@@ -533,6 +752,58 @@ impl Engine {
             (None, Some(model)) => generate_local(model, self.template, &messages, on_event),
             (None, None) => unreachable!("Engine::new requires at least one model"),
         }
+    }
+}
+
+/// Have a paired device's model write the answer, passing its words on as they arrive.
+fn generate_peer(client: &Client, peer: &Peer, messages: &[ChatMessage], on_event: &mut dyn FnMut(Event)) -> Result<String> {
+    let wire: Vec<(String, String)> = messages.iter().map(|m| (m.role.as_str().to_string(), m.content.clone())).collect();
+    on_event(Event::Notice(format!("answering with {}'s model", peer.name)));
+    let mut streamed = false;
+    let text = client.request(peer, Msg::Chat { messages: wire }, &mut |m| {
+        if let Msg::Tok { text } = m {
+            streamed = true;
+            on_event(Event::Token(text.clone()));
+        }
+    })?;
+    if !streamed && !text.is_empty() {
+        on_event(Event::Token(text.clone()));
+    }
+    Ok(text.trim().to_string())
+}
+
+/// Send a request to another device's assistant and show what it says. If it can't be
+/// reached the user is told so; the request is not run here instead, since it was meant for there.
+fn delegate(client: &Client, peer: &Peer, request: &str, on_event: &mut dyn FnMut(Event)) -> String {
+    on_event(Event::Notice(format!("asking {}", peer.name)));
+    let mut streamed = false;
+    let result = client.request(peer, Msg::Ask { text: request.to_string() }, &mut |m| match m {
+        Msg::Tok { text } => {
+            streamed = true;
+            on_event(Event::Token(text.clone()));
+        }
+        Msg::Note { text } => on_event(Event::Notice(format!("{}: {text}", peer.name))),
+        _ => {}
+    });
+    match result {
+        Ok(text) => {
+            if !streamed && !text.is_empty() {
+                on_event(Event::Token(text.clone()));
+            }
+            text
+        }
+        Err(e) => {
+            let text = format!("I couldn't do that on {}: {e:#}", peer.name);
+            on_event(Event::Token(text.clone()));
+            text
+        }
+    }
+}
+
+/// Show a message from another device as a desktop notification (best effort).
+fn show_notification(title: &str, text: &str) {
+    if cfg!(target_os = "linux") && !cfg!(target_os = "android") {
+        let _ = std::process::Command::new("notify-send").args(["--app-name=OpenJarvis", title, text]).spawn();
     }
 }
 

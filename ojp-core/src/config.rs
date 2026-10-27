@@ -55,6 +55,14 @@ low_memory = false
 # mistral, gemma, phi3.
 chat_template = "chatml"
 
+[link]
+# Paired devices work together (pair them in Settings, or with `ojp-cli link-pair-host` and
+# `ojp-cli link-pair-join`). Only devices you paired by hand can connect.
+enabled = true
+# Who answers chat. "auto": this device's own main model if it has one, otherwise a
+# paired device's. "local": never a paired device. "remote": a paired device's whenever one is reachable.
+brain = "auto"
+
 [tts]
 # Speak replies aloud. Also a switch in the app's settings; the voice files
 # (about 340 MB) are downloaded the first time you turn it on.
@@ -126,6 +134,21 @@ pub struct Config {
     pub ui: Ui,
     pub tts: Tts,
     pub tools: ToolsConfig,
+    pub link: Link,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct Link {
+    pub enabled: bool,
+    /// "auto", "local" or "remote" (see DEFAULT_CONFIG).
+    pub brain: String,
+}
+
+impl Default for Link {
+    fn default() -> Self {
+        Link { enabled: true, brain: "auto".into() }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -279,7 +302,7 @@ pub struct Download {
 
 impl Default for Config {
     fn default() -> Self {
-        Config { persona: Persona::default(), models: Models::default(), download: Download::default(), ui: Ui::default(), tts: Tts::default(), tools: ToolsConfig::default() }
+        Config { persona: Persona::default(), models: Models::default(), download: Download::default(), ui: Ui::default(), tts: Tts::default(), tools: ToolsConfig::default(), link: Link::default() }
     }
 }
 

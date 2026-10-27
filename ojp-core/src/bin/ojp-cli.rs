@@ -7,6 +7,12 @@
 //!   ojp-cli chat [config.toml]               assistant REPL (default: the
 //!                                            desktop app's config)
 //!   ojp-cli download [config.toml]           fetch missing models
+//!   ojp-cli link-id | link-peers             this device / paired devices
+//!   ojp-cli link-pair-host                   show a code, wait for another device to enter it
+//!   ojp-cli link-pair-join <code> [ip:port]  enter the code shown on the other device
+//!   ojp-cli link-unpair <name> | link-allow <name> chat|notify|sync|ask on|off|basic|full
+//!   ojp-cli link-ping | link-notify <name> <text> | link-sync
+//!   ojp-cli link-serve [config.toml]         answer paired devices (chat, requests, sync)
 use std::io::Write;
 
 use ojp_core::template::Template;
@@ -358,6 +364,7 @@ fn main() -> anyhow::Result<()> {
             let config = Config::load_or_init(&config_path, &data_dir)?;
             chat(&config)?;
         }
+        Some(cmd) if cmd.starts_with("link-") => link_command(cmd, &args[1..])?,
         Some("download") => {
             let (default_config, data_dir) = ojp_core::config::desktop_paths();
             let config_path = args.get(1).map_or(default_config, Into::into);
@@ -861,4 +868,114 @@ fn chat(config: &Config) -> anyhow::Result<()> {
         })?;
         println!();
     }
+}
+
+fn link_command(cmd: &str, args: &[String]) -> anyhow::Result<()> {
+    use ojp_core::link::{self, AskLevel, Client, Identity, Msg, Peers};
+    let me = Identity::load_or_create()?;
+    let peer_named = |name: Option<&String>| -> anyhow::Result<link::Peer> {
+        let name = name.ok_or_else(|| anyhow::anyhow!("which device? (see link-peers)"))?;
+        Peers::load().by_name(name).cloned().ok_or_else(|| anyhow::anyhow!("no paired device called {name}"))
+    };
+    match cmd {
+        "link-id" => {
+            println!("{} ({}), fingerprint {}", me.name, me.kind, me.fingerprint());
+            println!("files: {}", link::dir().display());
+        }
+        "link-peers" => {
+            let peers = Peers::load().peers;
+            if peers.is_empty() {
+                println!("no paired devices; use link-pair-host on one and link-pair-join on the other");
+            }
+            let client = Client::new(me);
+            for p in peers {
+                let state = match client.ping(&p) {
+                    Ok(Msg::Pong { chat, ask, main, .. }) => format!("online (chat {chat}, requests {ask}, big model {main})"),
+                    _ => "not reachable".into(),
+                };
+                println!("{} ({}) {} [{}]  chat={} ask={:?} notify={} sync={}  {state}", p.name, p.kind, p.fingerprint(), p.addrs.join(","), p.perms.chat, p.perms.ask, p.perms.notify, p.perms.sync);
+            }
+        }
+        "link-pair-host" => {
+            let peer = link::pair::host(&me, link::net::DEFAULT_PORT, std::time::Duration::from_secs(120), &mut |offer| {
+                println!("On the other device run:  ojp-cli link-pair-join {}   (add <this device's ip>:{} if it can't find this one)", offer.code, offer.port);
+                println!("(waiting up to two minutes; the other device must be on the same network)");
+            })?;
+            println!("paired with {} ({})", peer.name, peer.kind);
+        }
+        "link-pair-join" => {
+            let code = args.first().ok_or_else(|| anyhow::anyhow!("usage: link-pair-join <code> [ip:port]"))?;
+            let addr = args.get(1).map(|a| a.parse()).transpose()?;
+            let peer = link::pair::join(&me, code, link::net::DEFAULT_PORT, addr)?;
+            println!("paired with {} ({})", peer.name, peer.kind);
+        }
+        "link-unpair" => {
+            let name = args.first().ok_or_else(|| anyhow::anyhow!("usage: link-unpair <name>"))?;
+            let mut peers = Peers::load();
+            println!("{}", if peers.remove(name) { "removed" } else { "no such device" });
+            peers.save()?;
+        }
+        "link-allow" => {
+            let mut peers = Peers::load();
+            let [name, what, value] = args else { anyhow::bail!("usage: link-allow <name> chat|notify|sync|ask on|off (ask: off|basic|full)") };
+            let p = peers.peers.iter_mut().find(|p| p.name.eq_ignore_ascii_case(name)).ok_or_else(|| anyhow::anyhow!("no paired device called {name}"))?;
+            let on = matches!(value.as_str(), "on" | "true" | "yes");
+            match what.as_str() {
+                "chat" => p.perms.chat = on,
+                "notify" => p.perms.notify = on,
+                "sync" => p.perms.sync = on,
+                "ask" => p.perms.ask = match value.as_str() { "off" => AskLevel::Off, "basic" => AskLevel::Basic, "full" => AskLevel::Full, _ => anyhow::bail!("ask is off, basic or full") },
+                _ => anyhow::bail!("unknown permission {what}"),
+            }
+            peers.save()?;
+            println!("ok");
+        }
+        "link-ping" => {
+            let client = Client::new(me);
+            let p = peer_named(args.first())?;
+            println!("{:?}", client.ping(&p)?);
+        }
+        "link-notify" => {
+            let client = Client::new(me.clone());
+            let p = peer_named(args.first())?;
+            client.request(&p, Msg::Notify { title: format!("From {}", me.name), text: args[1..].join(" ") }, &mut |_| {})?;
+            println!("sent");
+        }
+        "link-sync" => {
+            let (default_config, data_dir) = ojp_core::config::desktop_paths();
+            let _ = (default_config, data_dir);
+            let handle = ojp_core::engine::LinkHandle {
+                client: Client::new(me.clone()),
+                presence: ojp_core::link::Presence::start(me.clone(), std::time::Duration::from_secs(3600)),
+                caps: Default::default(),
+                me,
+            };
+            println!("{} memories changed here", handle.sync_all());
+        }
+        "link-serve" => {
+            let (default_config, data_dir) = ojp_core::config::desktop_paths();
+            let config_path = args.first().map_or(default_config, Into::into);
+            let config = Config::load_or_init(&config_path, &data_dir)?;
+            let mut engine = Engine::new(&config)?;
+            for line in &engine.status {
+                eprintln!("{line}");
+            }
+            let link = engine.link().cloned().ok_or_else(|| anyhow::anyhow!("[link] is turned off in the config"))?;
+            let (tx, rx) = std::sync::mpsc::channel();
+            let server = link.start_server(tx)?;
+            eprintln!("{} ({}) is listening on port {} for paired devices", link.me.name, link.me.kind, server.port);
+            link.sync_soon();
+            for incoming in rx {
+                eprintln!("[from {}: {}]", incoming.peer.name, match &incoming.request {
+                    ojp_core::link::Request::Chat(m) => format!("chat, {} messages", m.len()),
+                    ojp_core::link::Request::Ask(t) => format!("ask: {t}"),
+                    ojp_core::link::Request::Notify { title, .. } => format!("notify: {title}"),
+                    ojp_core::link::Request::Sync(_) => "memory sync".into(),
+                });
+                engine.handle_incoming(incoming);
+            }
+        }
+        _ => anyhow::bail!("unknown link command {cmd}"),
+    }
+    Ok(())
 }

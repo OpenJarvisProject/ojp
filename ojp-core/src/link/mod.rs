@@ -231,11 +231,24 @@ impl Peers {
 }
 
 /// If the request names one of the paired devices ("remind me on my phone ...",
-/// "ask the laptop what time it is"), which one. `None` when it names no device,
+/// "ask the laptop what time it is"), which one, and the request with that wording
+/// taken out ("remind me ...", "what time it is"). `None` when it names no device,
 /// names this one, or the name fits more than one device.
-pub fn addressed<'a>(request: &str, peers: &'a [Peer], me: &Identity) -> Option<&'a Peer> {
-    let lower = request.to_lowercase();
-    let words: Vec<&str> = lower.split(|c: char| !c.is_alphanumeric() && c != '-').filter(|w| !w.is_empty()).collect();
+pub fn addressed<'a>(request: &str, peers: &'a [Peer], me: &Identity) -> Option<(&'a Peer, String)> {
+    // Words with their positions, so the naming phrase can be cut out of the original text.
+    let mut words: Vec<(String, usize, usize)> = Vec::new();
+    let mut start = None;
+    for (i, c) in request.char_indices().chain(std::iter::once((request.len(), ' '))) {
+        let part = c.is_alphanumeric() || c == '-';
+        match (part, start) {
+            (true, None) => start = Some(i),
+            (false, Some(st)) => {
+                words.push((request[st..i].to_lowercase(), st, i));
+                start = None;
+            }
+            _ => {}
+        }
+    }
     const LEAD: &[&str] = &["on", "to", "ask", "tell", "using", "from", "at", "in"];
     const ARTICLE: &[&str] = &["my", "the"];
     let kind_words = |kind: &str| -> &'static [&'static str] {
@@ -248,43 +261,49 @@ pub fn addressed<'a>(request: &str, peers: &'a [Peer], me: &Identity) -> Option<
             _ => &[],
         }
     };
-    let mut hits: Vec<&Peer> = Vec::new();
-    for (i, w) in words.iter().enumerate() {
-        if !LEAD.contains(w) {
+    // (peer, index of the lead word, index of the device word, device named by its own name)
+    let mut hits: Vec<(&Peer, usize, usize, bool)> = Vec::new();
+    for (i, (w, _, _)) in words.iter().enumerate() {
+        if !LEAD.contains(&w.as_str()) {
             continue;
         }
         let mut j = i + 1;
-        let article = words.get(j).is_some_and(|a| ARTICLE.contains(a));
+        let article = words.get(j).is_some_and(|(a, _, _)| ARTICLE.contains(&a.as_str()));
         if article {
             j += 1;
         }
-        let Some(target) = words.get(j) else { continue };
+        let Some((target, _, _)) = words.get(j) else { continue };
         // "on my laptop" / "tell my laptop"; a bare name needs no article, a bare kind word does.
         for peer in peers {
             let by_name = peer.name.to_lowercase() == *target;
-            let by_kind = article && kind_words(&peer.kind).contains(target);
-            if (by_name || by_kind) && !hits.iter().any(|h| h.public == peer.public) {
-                hits.push(peer);
+            let by_kind = article && kind_words(&peer.kind).contains(&target.as_str());
+            if (by_name || by_kind) && !hits.iter().any(|h| h.0.public == peer.public) {
+                hits.push((peer, i, j, by_name));
             }
         }
     }
     // "tell my phone to ..." with "my phone" matching several phones is ambiguous.
-    if hits.len() != 1 {
-        return None;
-    }
-    let peer = hits[0];
+    let [(peer, lead, target, by_name)] = hits.as_slice() else { return None };
     // Naming this very device just means "here".
-    let me_name = me.name.to_lowercase();
-    if peer.name.to_lowercase() == me_name {
+    if peer.name.to_lowercase() == me.name.to_lowercase() {
         return None;
     }
     // A kind word shared with this device ("my laptop" said on the laptop) means this one,
     // unless it was the peer's own name that was used.
-    let by_name = words.contains(&peer.name.to_lowercase().as_str());
     if !by_name && me.kind == peer.kind {
         return None;
     }
-    Some(peer)
+    // Cut the naming phrase out; after "ask X" / "tell X" a following "to" goes too.
+    let mut end_word = *target;
+    if matches!(words[*lead].0.as_str(), "ask" | "tell") && words.get(end_word + 1).is_some_and(|(w, _, _)| w == "to") {
+        end_word += 1;
+    }
+    let (from, to) = (words[*lead].1, words[end_word].2);
+    let rest = format!("{} {}", &request[..from], &request[to..]);
+    let rest = rest.split_whitespace().collect::<Vec<_>>().join(" ");
+    let rest = rest.trim_matches(|c: char| c == ',' || c.is_whitespace()).to_string();
+    let rest = if rest.is_empty() { request.to_string() } else { rest };
+    Some((peer, rest))
 }
 
 /// Tools another device may use on this one at each level.
@@ -329,9 +348,11 @@ mod tests {
     fn names_a_device_by_kind_or_name() {
         let peers = [peer("pixel", "phone"), peer("zex-server", "server")];
         let desk = me("zex-pc", "desktop");
-        assert_eq!(addressed("remind me on my phone in 10 minutes to call mom", &peers, &desk).unwrap().name, "pixel");
-        assert_eq!(addressed("ask my server what the disk space is", &peers, &desk).unwrap().name, "zex-server");
-        assert_eq!(addressed("tell pixel to turn the volume down", &peers, &desk).unwrap().name, "pixel");
+        let name = |r: &str| addressed(r, &peers, &desk).map(|(p, rest)| (p.name.clone(), rest));
+        assert_eq!(name("remind me on my phone in 10 minutes to call mom"), Some(("pixel".into(), "remind me in 10 minutes to call mom".into())));
+        assert_eq!(name("ask my server what the disk space is"), Some(("zex-server".into(), "what the disk space is".into())));
+        assert_eq!(name("Tell pixel to turn the volume down."), Some(("pixel".into(), "turn the volume down.".into())));
+        assert_eq!(name("what is the battery on my phone"), Some(("pixel".into(), "what is the battery".into())));
         assert!(addressed("what time is it", &peers, &desk).is_none());
         // "phone" as a topic, not a place.
         assert!(addressed("how do I reset a phone", &peers, &desk).is_none());
@@ -342,7 +363,7 @@ mod tests {
         let two = [peer("pixel", "phone"), peer("galaxy", "phone")];
         let desk = me("zex-pc", "desktop");
         assert!(addressed("remind me on my phone to sleep", &two, &desk).is_none());
-        assert_eq!(addressed("remind me on galaxy to sleep", &two, &desk).unwrap().name, "galaxy");
+        assert_eq!(addressed("remind me on galaxy to sleep", &two, &desk).unwrap().0.name, "galaxy");
         let one = [peer("pixel", "phone")];
         // Said on the phone itself.
         assert!(addressed("remind me on my phone to sleep", &one, &me("pixel2", "phone")).is_none());

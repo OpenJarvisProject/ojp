@@ -16,6 +16,8 @@ use super::{AskLevel, Identity, Peer, Peers};
 
 const SERVICE: &str = "_ojp._tcp.local.";
 const MAX_CONNECTIONS: usize = 8;
+/// Devices listen here when they can, so a peer's stored address stays valid across restarts.
+pub const DEFAULT_PORT: u16 = 47600;
 /// A reply may take this long to start or continue (a big model on a slow CPU).
 const REPLY_TIMEOUT: Duration = Duration::from_secs(300);
 
@@ -119,7 +121,9 @@ impl Server {
     /// Listen for paired devices. Their requests arrive on `incoming`; whoever owns the
     /// models answers through each request's `reply`.
     pub fn start(me: Identity, caps: Arc<Caps>, incoming: Sender<Incoming>) -> Result<Server> {
-        let listener = TcpListener::bind("0.0.0.0:0").context("opening the device link port")?;
+        let listener = (DEFAULT_PORT..DEFAULT_PORT + 10)
+            .find_map(|p| TcpListener::bind(("0.0.0.0", p)).ok())
+            .map_or_else(|| TcpListener::bind("0.0.0.0:0").context("opening the device link port"), Ok)?;
         let port = listener.local_addr()?.port();
         let mdns = advertise(SERVICE, &me.fingerprint(), port, &[("name", me.name.as_str())]);
         let live = Arc::new(AtomicUsize::new(0));
