@@ -44,6 +44,49 @@ fn external_files_dirs(app: &slint::android::AndroidApp) -> jni::errors::Result<
     Ok(paths)
 }
 
+/// The Java class `PhoneActions` and the VM, kept for calls from any thread.
+static BRIDGE: std::sync::OnceLock<(jni::JavaVM, jni::objects::GlobalRef)> = std::sync::OnceLock::new();
+
+/// `ojp_core::platform`'s one call into Java: `PhoneActions.invoke(method, arg)` answers "ok:<text>" or "err:<message>".
+fn native_call(method: &str, arg: &str) -> anyhow::Result<String> {
+    use jni::objects::{JClass, JString, JValue};
+    let (vm, class) = BRIDGE.get().ok_or_else(|| anyhow::anyhow!("the phone layer isn't ready"))?;
+    let mut env = vm.attach_current_thread()?;
+    let (m, a) = (env.new_string(method)?, env.new_string(arg)?);
+    // SAFETY: the global reference is a java.lang.Class for the lifetime of the process.
+    let class = unsafe { JClass::from_raw(class.as_obj().as_raw()) };
+    let out = env
+        .call_static_method(&class, "invoke", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", &[JValue::Object(&m), JValue::Object(&a)])?
+        .l()?;
+    let out: String = env.get_string(&JString::from(out))?.into();
+    match out.split_once(':') {
+        Some(("ok", text)) => Ok(text.to_string()),
+        Some(("err", message)) => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("unexpected answer from the phone layer"),
+    }
+}
+
+/// Load `PhoneActions` through the activity's class loader (a native thread can't find app classes by name),
+/// hand it the activity, and install [`native_call`] for ojp-core.
+fn install_phone_layer(app: &slint::android::AndroidApp) -> jni::errors::Result<()> {
+    use jni::objects::{JClass, JObject, JValue};
+    // SAFETY: as in `external_files_dirs`.
+    let vm = unsafe { jni::JavaVM::from_raw(app.vm_as_ptr().cast()) }?;
+    let mut env = vm.attach_current_thread()?;
+    let activity = unsafe { JObject::from_raw(app.activity_as_ptr().cast()) };
+    let loader = env.call_method(&activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?.l()?;
+    let name = env.new_string("org.openjarvisproject.ojp.PhoneActions")?;
+    let class = env.call_method(&loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", &[JValue::Object(&name)])?.l()?;
+    let global = env.new_global_ref(&class)?;
+    // SAFETY: `class` is a java.lang.Class.
+    let jc = unsafe { JClass::from_raw(class.as_raw()) };
+    env.call_static_method(&jc, "init", "(Landroid/app/Activity;)V", &[JValue::Object(&activity)])?;
+    drop(env);
+    let _ = BRIDGE.set((vm, global));
+    ojp_core::platform::install(native_call);
+    Ok(())
+}
+
 #[unsafe(no_mangle)]
 fn android_main(app: slint::android::AndroidApp) {
     let data_dir = app
@@ -63,6 +106,9 @@ fn android_main(app: slint::android::AndroidApp) {
             path,
         })
         .collect();
+    if let Err(e) = install_phone_layer(&app) {
+        eprintln!("phone layer unavailable: {e}");
+    }
     slint::android::init(app).expect("slint android backend");
 
     let config_path = data_dir.join("config.toml");

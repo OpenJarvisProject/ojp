@@ -82,6 +82,10 @@ export global Settings {
     in-out property <bool> dynamic-colors: true;
     // Only Android has wallpaper-based colours.
     in-out property <bool> dynamic-colors-supported;
+    // Android only: optional Shizuku support (see ojp-core::platform).
+    in-out property <bool> shizuku-supported: false;
+    in-out property <string> shizuku-text;
+    callback shizuku-action();
     // Paired devices (see ojp-core::link) and the pairing dialog's state.
     in-out property <[Device]> devices;
     // Shown while this device waits for another to enter it.
@@ -552,6 +556,23 @@ component SettingsPage inherits Rectangle {
                 }
 
                 Rectangle { height: 1px; background: Palette.border; opacity: 0.4; }
+
+                if Settings.shizuku-supported: VerticalLayout {
+                    spacing: 8px;
+                    Text { text: "Phone control (optional)"; font-weight: 700; color: Palette.accent-background; }
+                    Text {
+                        text: "Volume, apps, links, reminders and battery work as they are. With Shizuku (a free helper app that gives other apps adb's rights once you start it), the assistant can also switch Wi-Fi, Bluetooth and airplane mode, set brightness, take screenshots and run commands (it always asks before a command).";
+                        wrap: word-wrap;
+                        font-size: 0.85rem;
+                        opacity: 0.65;
+                    }
+                    Text { text: Settings.shizuku-text; wrap: word-wrap; }
+                    Button {
+                        text: "Allow with Shizuku";
+                        clicked => { Settings.shizuku-action(); }
+                    }
+                    Rectangle { height: 1px; background: Palette.border; opacity: 0.4; }
+                }
 
                 if Settings.link-supported: VerticalLayout {
                     spacing: 14px;

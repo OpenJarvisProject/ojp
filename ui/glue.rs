@@ -30,6 +30,8 @@ enum Request {
     Incoming(ojp_core::link::Incoming),
     /// Refresh the list of paired devices (and share memories now and then).
     Devices,
+    /// The Shizuku button in Settings.
+    ShizukuAction,
     SetDevice { name: String, chat: bool, ask: i32, notify: bool, sync: bool },
     Unpair(String),
     Settings { profile: i32, theme: i32, dynamic_colors: bool, main_enabled: bool, tts_enabled: bool, tts_mix: ojp_core::tts::MixSlots, tts_speed: i32, tts_engine: i32, tts_moss_voice: i32, tts_clarity: i32 },
@@ -85,6 +87,7 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     settings.set_theme(theme_index(&setup.config.ui.theme));
     settings.set_dynamic_colors(setup.config.ui.dynamic_colors);
     settings.set_dynamic_colors_supported(setup.set_dynamic_colors.is_some());
+    settings.set_shizuku_supported(ojp_core::platform::available());
     settings.set_profile(i32::from(setup.config.models.profile == "uncensored"));
     settings.set_main_enabled(setup.config.models.main_enabled);
     settings.set_tts_supported(ojp_core::tts::AVAILABLE);
@@ -188,6 +191,10 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     settings.on_pair_join({
         let (weak, send) = (ui.as_weak(), send.clone());
         move |code| pair_in_background(weak.clone(), send.clone(), Some(code.to_string()))
+    });
+    settings.on_shizuku_action({
+        let send = send.clone();
+        move || send(Request::ShizukuAction)
     });
     settings.on_unpair({
         let send = send.clone();
@@ -628,7 +635,24 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                     None => incoming.reply.err("no model is loaded on this device yet"),
                 }
             }
+            Request::ShizukuAction => {
+                use ojp_core::platform::{self, Shizuku};
+                // Ask for access when Shizuku is running; otherwise open its app (or say it isn't there).
+                let result = match platform::shizuku() {
+                    Shizuku::NeedsPermission => platform::call("shizuku_request", ""),
+                    Shizuku::Ready => Ok(String::new()),
+                    _ => platform::call("open_shizuku", ""),
+                };
+                if let Err(e) = result {
+                    push_message(&ui, format!("{e:#}. Get Shizuku from its project page (github.com/RikkaApps/Shizuku) or F-Droid, then start it."), "settings");
+                }
+                let _ = tx.send(Request::Devices);
+            }
             Request::Devices => {
+                if ojp_core::platform::available() {
+                    let text = ojp_core::tools_android::shizuku_text().to_string();
+                    let _ = ui.upgrade_in_event_loop(move |ui| ui.global::<Settings>().set_shizuku_text(text.into()));
+                }
                 if let Some(link) = engine.as_ref().and_then(|e| e.link()) {
                     let rows = device_rows(link);
                     let _ = ui.upgrade_in_event_loop(move |ui| ui.global::<Settings>().set_devices(Rc::new(VecModel::from(rows)).into()));

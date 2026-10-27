@@ -9,3 +9,4 @@
 *.idsig
 *.deb
 /vendor/*/.cargo-ok
+ojp-android/android/libs/*.jar

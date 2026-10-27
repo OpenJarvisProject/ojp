@@ -38,9 +38,12 @@ if [[ -n "${OJP_APP_LABEL:-}" ]]; then
     sed -i "s|<string name=\"app_name\">[^<]*</string>|<string name=\"app_name\">$OJP_APP_LABEL</string>|" "$OUT/res/values/strings.xml"
 fi
 
-javac --release 11 -classpath "$ANDROID_JAR" -d "$OUT/classes" $(find "$SRC/java" -name '*.java')
+# Optional Shizuku support links against the Shizuku API (Apache-2.0), fetched once with pinned checksums.
+scripts/fetch-shizuku-api.sh
+LIBS=$(ls "$SRC"/libs/*.jar | tr '\n' ':')
+javac --release 11 -Xlint:-options -classpath "$ANDROID_JAR:$LIBS" -d "$OUT/classes" $(find "$SRC/java" -name '*.java')
 java -cp "$ANDROID_D8_JAR" com.android.tools.r8.D8 --release --min-api 26 --lib "$ANDROID_JAR" \
-    --output "$OUT/dex" $(find "$OUT/classes" -name '*.class')
+    --output "$OUT/dex" $(find "$OUT/classes" -name '*.class') "$SRC"/libs/*.jar
 
 "$BT/aapt2" compile --dir "$OUT/res" -o "$OUT/res.zip"
 "$BT/aapt2" link -o "$OUT/unsigned.apk" -I "$ANDROID_JAR" --manifest "$SRC/AndroidManifest.xml" \
