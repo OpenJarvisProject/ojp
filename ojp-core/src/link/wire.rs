@@ -26,6 +26,11 @@ pub enum Msg {
     Ask { text: String },
     /// Part of a reply.
     Tok { text: String },
+    /// The other device wants this device's user to approve something before it is done:
+    /// answer with `Answer`. Ends the reply like `End`.
+    Question { text: String },
+    /// The user's yes or no to the last `Question`.
+    Answer { yes: bool },
     /// A progress note ("tool: remind(...)").
     Note { text: String },
     /// The reply is complete.

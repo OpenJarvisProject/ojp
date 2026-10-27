@@ -139,6 +139,9 @@ pub enum AskLevel {
     Basic,
     /// Also files, the clipboard and the web. Never anything that asks the user first.
     Full,
+    /// Everything, including writing files and running commands, but each of those is first
+    /// put to the user on the device that asked, and only done after a yes.
+    Everything,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -256,7 +259,9 @@ pub fn addressed<'a>(request: &str, peers: &'a [Peer], me: &Identity) -> Option<
             "phone" => &["phone", "mobile", "cellphone"],
             "laptop" => &["laptop", "notebook"],
             "desktop" => &["desktop", "pc"],
-            "server" => &["server"],
+            "server" => &["server", "homelab"],
+            "router" => &["router", "gateway"],
+            "pi" => &["pi", "raspberry"],
             "tablet" => &["tablet"],
             _ => &[],
         }
@@ -315,7 +320,8 @@ pub fn remote_allowed(tool: &str, level: AskLevel) -> bool {
     match level {
         AskLevel::Off => false,
         AskLevel::Basic => BASIC.contains(&tool),
-        AskLevel::Full => !matches!(tool, "write_file" | "run_command" | "forget" | "tag_add"),
+        AskLevel::Full => !matches!(tool, "write_file" | "run_command" | "forget" | "tag_add" | "adb_shell"),
+        AskLevel::Everything => true,
     }
 }
 
@@ -376,6 +382,8 @@ mod tests {
         assert!(!remote_allowed("read_file", AskLevel::Basic));
         assert!(remote_allowed("read_file", AskLevel::Full));
         assert!(!remote_allowed("run_command", AskLevel::Full));
+        assert!(!remote_allowed("adb_shell", AskLevel::Full));
+        assert!(remote_allowed("run_command", AskLevel::Everything), "allowed, but each use is put to the user first");
         assert!(!remote_allowed("remind", AskLevel::Off));
     }
 

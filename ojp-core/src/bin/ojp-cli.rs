@@ -922,14 +922,14 @@ fn link_command(cmd: &str, args: &[String]) -> anyhow::Result<()> {
         }
         "link-allow" => {
             let mut peers = Peers::load();
-            let [name, what, value] = args else { anyhow::bail!("usage: link-allow <name> chat|notify|sync|ask on|off (ask: off|basic|full)") };
+            let [name, what, value] = args else { anyhow::bail!("usage: link-allow <name> chat|notify|sync|ask on|off (ask: off|basic|full|everything)") };
             let p = peers.peers.iter_mut().find(|p| p.name.eq_ignore_ascii_case(name)).ok_or_else(|| anyhow::anyhow!("no paired device called {name}"))?;
             let on = matches!(value.as_str(), "on" | "true" | "yes");
             match what.as_str() {
                 "chat" => p.perms.chat = on,
                 "notify" => p.perms.notify = on,
                 "sync" => p.perms.sync = on,
-                "ask" => p.perms.ask = match value.as_str() { "off" => AskLevel::Off, "basic" => AskLevel::Basic, "full" => AskLevel::Full, _ => anyhow::bail!("ask is off, basic or full") },
+                "ask" => p.perms.ask = match value.as_str() { "off" => AskLevel::Off, "basic" => AskLevel::Basic, "full" => AskLevel::Full, "everything" => AskLevel::Everything, _ => anyhow::bail!("ask is off, basic, full or everything") },
                 _ => anyhow::bail!("unknown permission {what}"),
             }
             peers.save()?;
@@ -976,6 +976,7 @@ fn link_command(cmd: &str, args: &[String]) -> anyhow::Result<()> {
                     ojp_core::link::Request::Ask(t) => format!("ask: {t}"),
                     ojp_core::link::Request::Notify { title, .. } => format!("notify: {title}"),
                     ojp_core::link::Request::Sync(_) => "memory sync".into(),
+                    ojp_core::link::Request::Answer(yes) => format!("answer: {}", if *yes { "yes" } else { "no" }),
                 });
                 engine.handle_incoming(incoming);
             }

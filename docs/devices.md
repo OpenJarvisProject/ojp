@@ -32,9 +32,11 @@ Pair your devices once, by hand, and they behave like one assistant.
 - Each paired device has permissions you can change in Settings (or `ojp-cli link-allow`):
   - *Use its AI model* (chat);
   - *May ask this device to do things*: **Nothing**, **Basic** (timers, reminders, notes, memory, volume,
-    media, time, status, calculator) or **Basic + files and web**. Anything that asks the user first
-    (writing files, running commands, forgetting) is never done on another device's say-so;
-    it has to be done on the device itself. Typed `/commands` are not accepted from other devices;
+    media, time, status, calculator), **Basic + files and web**, or **Everything (asks you first)**.
+    Anything that asks the user first (writing files, running commands, forgetting) is only possible at
+    the last level, and then the question ("On alpha, I'd like to write ... Shall I go ahead?") appears on
+    the device the request came from; nothing is done until its user says yes, the question expires
+    after 10 minutes, and only that device can answer it. Typed `/commands` are not accepted from other devices;
   - *May show messages here*;
   - *Share memories*.
 - Requests from another device don't touch the conversation on this one.
@@ -51,7 +53,5 @@ multicast doesn't (on the development PC another program holds the mDNS port).
   phone" can't run there until timers/notifications exist on Android), and the app only serves while it
   is open (no background service yet).
 - Streaming a file or the clipboard to another device; showing messages in the Android notification shade.
-- A request from a device that needs your yes ("delete these files on my desktop") could be shown on the
-  device that asked, then confirmed there; today it is refused with a pointer to do it on the device.
 - Several phones of the same kind need to be told apart by name ("on pixel"), not by "my phone".
 - Routing by load: when two paired devices both have big models, the first reachable one is used.

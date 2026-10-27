@@ -588,10 +588,10 @@ component SettingsPage inherits Rectangle {
                             Text { text: "May ask this device to do things"; horizontal-stretch: 1; vertical-alignment: center; wrap: word-wrap; }
                             ComboBox {
                                 horizontal-stretch: 0;
-                                model: ["Nothing", "Basic", "Basic + files and web"];
+                                model: ["Nothing", "Basic", "Basic + files and web", "Everything (asks you first)"];
                                 current-index: device.ask;
                                 selected(choice) => {
-                                    Settings.device-changed(device.name, device.chat, choice == "Nothing" ? 0 : choice == "Basic" ? 1 : 2, device.notify, device.sync);
+                                    Settings.device-changed(device.name, device.chat, choice == "Nothing" ? 0 : choice == "Basic" ? 1 : choice == "Everything (asks you first)" ? 3 : 2, device.notify, device.sync);
                                 }
                             }
                         }

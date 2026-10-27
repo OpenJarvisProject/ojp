@@ -128,10 +128,26 @@ struct Delegation {
     from: String,
 }
 
+/// Something another device asked for that waits for its user's yes (kept here, on the device that
+/// would do it, until the answer arrives).
+struct RemotePending {
+    /// Public key (hex) of the device that asked; only it can answer.
+    peer: String,
+    call: serde_json::Value,
+    at: Instant,
+}
+
+/// How long an approval question stays open.
+const APPROVAL_WINDOW: std::time::Duration = std::time::Duration::from_secs(600);
+
 pub struct Engine {
     link: Option<LinkHandle>,
     brain: String,
     delegated: Option<Delegation>,
+    /// Here, as the device being asked: an action waiting for the asking device's user to approve.
+    remote_pending: Option<RemotePending>,
+    /// Here, as the device that asked: the other device is waiting for our user's yes or no.
+    awaiting_remote: Option<Peer>,
     /// Messages other devices asked to show, for the UI to pick up.
     inbox: Vec<(String, String)>,
     router_llm: Option<Model>,
@@ -284,6 +300,8 @@ impl Engine {
             link,
             brain: config.link.brain.clone(),
             delegated: None,
+            remote_pending: None,
+            awaiting_remote: None,
             inbox: Vec::new(),
             router_llm,
             tool_probe,
@@ -313,6 +331,20 @@ impl Engine {
 
     /// Handle one request; returns the full reply text.
     pub fn ask(&mut self, request: &str, on_event: &mut dyn FnMut(Event)) -> Result<String> {
+        // The user is answering a question another device asked on their behalf ("allow it to ...?").
+        if self.delegated.is_none()
+            && let Some(peer) = self.awaiting_remote.take()
+        {
+            match interpret(request) {
+                Answer::Other => on_event(Event::Notice(format!("dropped the question from {}", peer.name))),
+                answer => {
+                    let reply = self.answer_remote(&peer, answer == Answer::Yes, on_event);
+                    self.history.push(ChatMessage::new(Role::User, request));
+                    self.history.push(ChatMessage::new(Role::Assistant, reply.clone()));
+                    return Ok(reply);
+                }
+            }
+        }
         // The user is answering "shall I go ahead?"
         if let Some(pending) = self.pending.take().filter(|_| self.delegated.is_none()) {
             match interpret(request) {
@@ -358,7 +390,10 @@ impl Engine {
         {
             let peers = Peers::load().peers;
             if let Some((peer, rest)) = link::addressed(request, &peers, &link.me) {
-                let reply = delegate(&link.client, peer, &rest, on_event);
+                let (reply, question) = delegate(&link.client, peer, &rest, on_event);
+                if question {
+                    self.awaiting_remote = Some(peer.clone());
+                }
                 self.history.push(ChatMessage::new(Role::User, request));
                 self.history.push(ChatMessage::new(Role::Assistant, reply.clone()));
                 return Ok(reply);
@@ -463,10 +498,10 @@ impl Engine {
             let mut results = Vec::new();
             let mut explored = false;
             for call in fresh {
-                // For another device: only what that device was allowed to ask for, and never
-                // anything that needs the user's yes (that has to be answered here, by the user).
+                // For another device: only what that device was allowed to ask for. Anything that needs a
+                // yes is put to the user of the device that asked (see `ask_for`), never done unasked.
                 if let Some(d) = &self.delegated
-                    && (!link::remote_allowed(call["tool"].as_str().unwrap_or(""), d.level) || tools::needs_confirmation(call).is_some())
+                    && !link::remote_allowed(call["tool"].as_str().unwrap_or(""), d.level)
                 {
                     let here = self.link.as_ref().map_or("this device", |l| l.me.name.as_str());
                     failure = Some(format!("{here} doesn't let {} do that remotely; do it on {here} itself.", d.from));
@@ -483,7 +518,11 @@ impl Engine {
                     match plan {
                         Ok(what) => {
                             self.pending = Some(Pending { call: call.clone() });
-                            ask_first = Some(format!("I'd like to {what}. Shall I go ahead? (yes / no)"));
+                            let place = match (&self.delegated, &self.link) {
+                                (Some(_), Some(l)) => format!("On {}, ", l.me.name),
+                                _ => String::new(),
+                            };
+                            ask_first = Some(format!("{place}I'd like to {what}. Shall I go ahead? (yes / no)"));
                         }
                         Err(e) => failure = Some(format!("I can't do that: {e:#}")),
                     }
@@ -713,8 +752,27 @@ impl Engine {
                     Event::Routed { .. } => {}
                 };
                 match self.ask_for(&peer, &text, &mut on) {
-                    Ok(text) => reply.end(&text),
+                    Ok((text, true)) => reply.question(&text),
+                    Ok((text, false)) => reply.end(&text),
                     Err(e) => reply.err(&format!("{e:#}")),
+                }
+            }
+            Request::Answer(yes) => {
+                let waiting = self.remote_pending.take().filter(|p| p.peer == peer.public && p.at.elapsed() < APPROVAL_WINDOW);
+                match waiting {
+                    None => reply.err("nothing is waiting for approval here (it may have timed out)"),
+                    Some(_) if !yes => reply.end("Okay, I won't do that."),
+                    // Re-checked: the permission may have been lowered since the question was asked.
+                    Some(_) if peer.perms.ask != AskLevel::Everything => reply.err("that device isn't allowed to do that any more"),
+                    Some(p) => match tools::run_confirmed(&p.call) {
+                        Ok(o) => {
+                            if tools::writes_memory(&o.call) || o.call["tool"] == "forget" {
+                                self.memory_changed();
+                            }
+                            reply.end(&o.text);
+                        }
+                        Err(e) => reply.end(&format!("Couldn't do that: {e:#}")),
+                    },
                 }
             }
             Request::Notify { title, text } => {
@@ -731,15 +789,33 @@ impl Engine {
 
     /// Do what another device asked, within what it is allowed to ask. The conversation here
     /// is left as it was.
-    fn ask_for(&mut self, peer: &Peer, request: &str, on_event: &mut dyn FnMut(Event)) -> Result<String> {
+    fn ask_for(&mut self, peer: &Peer, request: &str, on_event: &mut dyn FnMut(Event)) -> Result<(String, bool)> {
         let history = std::mem::take(&mut self.history);
         let pending = self.pending.take();
+        self.remote_pending = None;
         self.delegated = Some(Delegation { level: peer.perms.ask, from: peer.name.clone() });
         let result = self.ask(request, on_event);
         self.delegated = None;
+        // An action that needs a yes is kept for the asking device's user to approve, not this one's.
+        let waiting = self.pending.take();
         self.history = history;
         self.pending = pending;
-        result
+        let question = waiting.is_some();
+        if let Some(p) = waiting {
+            self.remote_pending = Some(RemotePending { peer: peer.public.clone(), call: p.call, at: Instant::now() });
+        }
+        result.map(|text| (text, question))
+    }
+
+    /// Relay our user's yes or no for a question another device asked, and show what it says.
+    fn answer_remote(&mut self, peer: &Peer, yes: bool, on_event: &mut dyn FnMut(Event)) -> String {
+        let Some(client) = self.link.as_ref().map(|l| l.client.clone()) else { return "The device link is off.".into() };
+        let text = match client.request(peer, Msg::Answer { yes }, &mut |_| {}) {
+            Ok(text) => text,
+            Err(e) => format!("Couldn't tell {}: {e:#}", peer.name),
+        };
+        on_event(Event::Token(text.clone()));
+        text
     }
 
     fn answer(&mut self, on_event: &mut dyn FnMut(Event)) -> Result<String> {
@@ -789,10 +865,10 @@ fn generate_peer(client: &Client, peer: &Peer, messages: &[ChatMessage], on_even
 
 /// Send a request to another device's assistant and show what it says. If it can't be
 /// reached the user is told so; the request is not run here instead, since it was meant for there.
-fn delegate(client: &Client, peer: &Peer, request: &str, on_event: &mut dyn FnMut(Event)) -> String {
+fn delegate(client: &Client, peer: &Peer, request: &str, on_event: &mut dyn FnMut(Event)) -> (String, bool) {
     on_event(Event::Notice(format!("asking {}", peer.name)));
     let mut streamed = false;
-    let result = client.request(peer, Msg::Ask { text: request.to_string() }, &mut |m| match m {
+    let result = client.request_ex(peer, Msg::Ask { text: request.to_string() }, &mut |m| match m {
         Msg::Tok { text } => {
             streamed = true;
             on_event(Event::Token(text.clone()));
@@ -801,16 +877,16 @@ fn delegate(client: &Client, peer: &Peer, request: &str, on_event: &mut dyn FnMu
         _ => {}
     });
     match result {
-        Ok(text) => {
+        Ok((text, question)) => {
             if !streamed && !text.is_empty() {
                 on_event(Event::Token(text.clone()));
             }
-            text
+            (text, question)
         }
         Err(e) => {
             let text = format!("I couldn't do that on {}: {e:#}", peer.name);
             on_event(Event::Token(text.clone()));
-            text
+            (text, false)
         }
     }
 }

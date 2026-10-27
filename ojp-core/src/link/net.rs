@@ -162,6 +162,8 @@ pub enum Request {
     Ask(String),
     Notify { title: String, text: String },
     Sync(crate::memory::SyncState),
+    /// The asking device's user said yes or no to the question the last `Ask` ended with.
+    Answer(bool),
 }
 
 /// Where the handler puts its answer: tokens and notes while it works, then one ending.
@@ -178,6 +180,10 @@ impl Reply {
     }
     pub fn end(self, text: &str) {
         let _ = self.tx.send(Msg::End { text: text.into() });
+    }
+    /// End the reply with something the asking user has to approve.
+    pub fn question(self, text: &str) {
+        let _ = self.tx.send(Msg::Question { text: text.into() });
     }
     pub fn err(self, msg: &str) {
         let _ = self.tx.send(Msg::Err { msg: msg.into() });
@@ -255,6 +261,11 @@ fn serve(stream: TcpStream, me: &Identity, caps: &Caps, incoming: &Sender<Incomi
                 ch.send(&denied("requests"))?;
                 continue;
             }
+            Msg::Answer { yes } if peer.perms.ask == AskLevel::Everything => Request::Answer(yes),
+            Msg::Answer { .. } => {
+                ch.send(&denied("approvals"))?;
+                continue;
+            }
             Msg::Notify { title, text } if peer.perms.notify => Request::Notify { title, text },
             Msg::Notify { .. } => {
                 ch.send(&denied("messages"))?;
@@ -278,7 +289,7 @@ fn serve(stream: TcpStream, me: &Identity, caps: &Caps, incoming: &Sender<Incomi
         loop {
             match rx.recv_timeout(REPLY_TIMEOUT) {
                 Ok(m) => {
-                    let last = matches!(m, Msg::End { .. } | Msg::Err { .. } | Msg::Ok | Msg::SyncReply { .. });
+                    let last = matches!(m, Msg::End { .. } | Msg::Question { .. } | Msg::Err { .. } | Msg::Ok | Msg::SyncReply { .. });
                     ch.send(&m)?;
                     if last {
                         break;
@@ -366,18 +377,25 @@ impl Client {
 
     /// Send a request and follow the answer: tokens and notes go to `on`, the final text is returned.
     pub fn request(&self, peer: &Peer, msg: Msg, on: &mut dyn FnMut(&Msg)) -> Result<String> {
+        self.request_ex(peer, msg, on).map(|(text, _)| text)
+    }
+
+    /// Like [`request`](Self::request); the flag says the reply is a question the user must answer
+    /// (with `Msg::Answer`) before the other device goes ahead.
+    pub fn request_ex(&self, peer: &Peer, msg: Msg, on: &mut dyn FnMut(&Msg)) -> Result<(String, bool)> {
         let mut ch = self.connect(peer)?;
         ch.set_timeout(Some(REPLY_TIMEOUT))?;
         ch.send(&msg)?;
         loop {
             match ch.recv()? {
-                Some(Msg::End { text }) => return Ok(text),
-                Some(Msg::Ok) => return Ok(String::new()),
+                Some(Msg::End { text }) => return Ok((text, false)),
+                Some(Msg::Question { text }) => return Ok((text, true)),
+                Some(Msg::Ok) => return Ok((String::new(), false)),
                 Some(Msg::Err { msg }) => bail!("{msg}"),
                 Some(other @ (Msg::Tok { .. } | Msg::Note { .. })) => on(&other),
                 Some(other @ Msg::SyncReply { .. }) => {
                     on(&other);
-                    return Ok(String::new());
+                    return Ok((String::new(), false));
                 }
                 Some(_) => {}
                 None => bail!("{} hung up", peer.name),

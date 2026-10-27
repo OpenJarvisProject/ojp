@@ -545,6 +545,7 @@ fn device_rows(handle: &ojp_core::engine::LinkHandle) -> Vec<Device> {
                     AskLevel::Off => 0,
                     AskLevel::Basic => 1,
                     AskLevel::Full => 2,
+                    AskLevel::Everything => 3,
                 },
                 notify: peer.perms.notify,
                 sync: peer.perms.sync,
@@ -645,7 +646,8 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                         ask: match ask {
                             0 => ojp_core::link::AskLevel::Off,
                             1 => ojp_core::link::AskLevel::Basic,
-                            _ => ojp_core::link::AskLevel::Full,
+                            2 => ojp_core::link::AskLevel::Full,
+                            _ => ojp_core::link::AskLevel::Everything,
                         },
                         notify,
                         sync,
