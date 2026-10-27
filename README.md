@@ -49,6 +49,7 @@ After that, everything runs offline.
 - **Linux:** `scripts/install-linux.sh` installs the `openjarvis` command
   and an "OpenJarvis" app-menu entry, both user-local.
 - **Android:** `scripts/build-android.sh` builds `ojp.apk`.
+- **Several devices:** pair them by hand and they share a model, memories and requests ("remind me on my phone ..."): see [docs/devices.md](docs/devices.md).
 
 Config is created on first run with comments explaining every option,
 including which models to download:
