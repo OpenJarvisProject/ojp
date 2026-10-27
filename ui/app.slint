@@ -69,6 +69,8 @@ export global Settings {
     in-out property <bool> dynamic-colors: true;
     // Only Android has wallpaper-based colours.
     in-out property <bool> dynamic-colors-supported;
+    // 0 = classic (Qwen2.5 0.5B router + main), 1 = uncensored Qwen3.5-0.8B.
+    in-out property <int> profile;
     // Developer: false = router only, the main model is never loaded.
     in-out property <bool> main-enabled: true;
     // Speak replies aloud. Only where the build has a voice.
@@ -501,6 +503,30 @@ component SettingsPage inherits Rectangle {
                 padding: 16px;
                 spacing: 14px;
                 alignment: start;
+
+                Text { text: "Model"; font-weight: 700; color: Palette.accent-background; }
+                HorizontalLayout {
+                    spacing: 12px;
+                    Text {
+                        text: "AI model";
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    ComboBox {
+                        horizontal-stretch: 0;
+                        model: ["Classic (Qwen2.5 0.5B)", "Uncensored (Qwen3.5 0.8B)"];
+                        current-index <=> Settings.profile;
+                        selected => { Settings.changed(); }
+                    }
+                }
+                Text {
+                    text: Settings.profile == 1 ? "One model that does everything, with no content filter (about 400 MB). If it isn't on this device yet, you'll get a Download button in the chat." : "The original small router plus the bigger main model.";
+                    wrap: word-wrap;
+                    font-size: 0.8rem;
+                    opacity: 0.65;
+                }
+
+                Rectangle { height: 1px; background: Palette.border; opacity: 0.4; }
 
                 Text { text: "Appearance"; font-weight: 700; color: Palette.accent-background; }
                 HorizontalLayout {

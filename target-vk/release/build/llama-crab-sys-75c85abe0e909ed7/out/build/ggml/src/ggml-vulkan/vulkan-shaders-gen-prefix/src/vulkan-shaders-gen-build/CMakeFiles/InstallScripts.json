@@ -1,7 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"/media/ojp/target-vk/release/build/llama-crab-sys-75c85abe0e909ed7/out/build/ggml/src/ggml-vulkan/vulkan-shaders-gen-prefix/src/vulkan-shaders-gen-build/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

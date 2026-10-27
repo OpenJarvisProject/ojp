@@ -215,6 +215,27 @@ pub struct Persona {
     pub voice: String,
 }
 
+/// The one-model profile: huihui-ai's uncensored Qwen3.5-0.8B, trimmed and
+/// quantized by OJP (Q5_K_M, 401 MB) with the router and tool probes fitted
+/// to this exact file. File, URL, SHA-256.
+pub const UNCENSORED_FILES: [(&str, &str, &str); 3] = [
+    (
+        "unc-0.8b-q5km.gguf",
+        "https://huggingface.co/OpenJarvisProject/Qwen3.5-0.8B-Uncensored-OJP-GGUF/resolve/main/unc-0.8b-q5km.gguf",
+        "976f632982a1c51eded0422d965841e3484dafd16b864b108b28dae38870b6f7",
+    ),
+    (
+        "unc-0.8b-q5km.gguf.probe.json",
+        "https://huggingface.co/OpenJarvisProject/Qwen3.5-0.8B-Uncensored-OJP-GGUF/resolve/main/unc-0.8b-q5km.gguf.probe.json",
+        "976f942fd1d0f78bf51c5ccbba77af56968389f4a2a95f8abd3bddd9d298c2cd",
+    ),
+    (
+        "unc-0.8b-q5km.gguf.tools.json",
+        "https://huggingface.co/OpenJarvisProject/Qwen3.5-0.8B-Uncensored-OJP-GGUF/resolve/main/unc-0.8b-q5km.gguf.tools.json",
+        "cab507cf7e20c8395539721ad088e7e839009c1560f84244947190b6aa79964b",
+    ),
+];
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct Models {
@@ -232,6 +253,9 @@ pub struct Models {
     pub low_memory: bool,
     pub threads: i32,
     pub chat_template: String,
+    /// "classic" (the Qwen2.5 pair above) or "uncensored" (one Qwen3.5-0.8B
+    /// model for everything; see [`UNCENSORED`]). Picked in Settings.
+    pub profile: String,
 }
 
 // All three defaults are written out by hand, never by parsing
@@ -301,6 +325,7 @@ impl Default for Models {
             low_memory: false,
             threads: 0,
             chat_template: "chatml".into(),
+            profile: "classic".into(),
         }
     }
 }
@@ -349,6 +374,15 @@ impl Config {
             if model.is_relative() {
                 *model = base.join(&*model);
             }
+        }
+        if self.models.profile == "uncensored" {
+            let (file, url, sha) = UNCENSORED_FILES[0];
+            self.models.router = Some(base.join("models").join(file));
+            self.models.router_probe = None; // found next to the model
+            self.models.main_enabled = false;
+            self.models.chat_template = "chatml-nothink".into();
+            self.download.router = Some(url.into());
+            self.download.router_sha256 = Some(sha.into());
         }
         if self.tts.moss_dir.as_os_str().is_empty() {
             self.tts.moss_dir = data_dir.join("moss");
@@ -428,5 +462,24 @@ mod tests {
         assert_eq!(parsed.download.skip_main, d.skip_main);
         assert_eq!((parsed.download.router, parsed.download.router_sha256), (d.router, d.router_sha256));
         assert_eq!((parsed.download.main, parsed.download.main_sha256), (d.main, d.main_sha256));
+    }
+}
+
+#[cfg(test)]
+mod profile_tests {
+    use super::*;
+
+    #[test]
+    fn uncensored_profile_points_at_the_single_model() {
+        let dir = std::env::temp_dir().join("ojp-profile-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "[models]\nprofile = \"uncensored\"\n").unwrap();
+        let c = Config::load_or_init(&path, Path::new("/data/ojp")).unwrap();
+        assert_eq!(c.models.router.as_deref(), Some(Path::new("/data/ojp/models/unc-0.8b-q5km.gguf")));
+        assert!(!c.models.main_enabled);
+        assert_eq!(c.models.chat_template, "chatml-nothink");
+        assert!(c.template().is_ok());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

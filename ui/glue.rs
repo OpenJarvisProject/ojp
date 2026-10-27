@@ -26,7 +26,7 @@ enum Request {
     /// current location for a negative index; the bool is "include the
     /// main model".
     Download(i32, bool),
-    Settings { theme: i32, dynamic_colors: bool, main_enabled: bool, tts_enabled: bool, tts_mix: ojp_core::tts::MixSlots, tts_speed: i32, tts_engine: i32, tts_moss_voice: i32, tts_clarity: i32 },
+    Settings { profile: i32, theme: i32, dynamic_colors: bool, main_enabled: bool, tts_enabled: bool, tts_mix: ojp_core::tts::MixSlots, tts_speed: i32, tts_engine: i32, tts_moss_voice: i32, tts_clarity: i32 },
     /// Play a sample in the current settings.
     Preview,
 }
@@ -74,6 +74,7 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     settings.set_theme(theme_index(&setup.config.ui.theme));
     settings.set_dynamic_colors(setup.config.ui.dynamic_colors);
     settings.set_dynamic_colors_supported(setup.set_dynamic_colors.is_some());
+    settings.set_profile(i32::from(setup.config.models.profile == "uncensored"));
     settings.set_main_enabled(setup.config.models.main_enabled);
     settings.set_tts_supported(ojp_core::tts::AVAILABLE);
     settings.set_tts_enabled(ojp_core::tts::AVAILABLE && setup.config.tts.enabled);
@@ -165,6 +166,7 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
             let Some(ui) = weak.upgrade() else { return };
             let s = ui.global::<Settings>();
             send(Request::Settings {
+                profile: s.get_profile(),
                 theme: s.get_theme(),
                 dynamic_colors: s.get_dynamic_colors(),
                 main_enabled: s.get_main_enabled(),
@@ -518,7 +520,7 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 }
                 show_chat(&ui, &store, &chat);
             }
-            Request::Settings { theme, dynamic_colors, main_enabled, tts_enabled, tts_mix, tts_speed, tts_engine, tts_moss_voice, tts_clarity } => {
+            Request::Settings { profile, theme, dynamic_colors, main_enabled, tts_enabled, tts_mix, tts_speed, tts_engine, tts_moss_voice, tts_clarity } => {
                 let voice_id = ojp_core::tts::mix_string(&tts_mix);
                 let voice_id = voice_id.as_str();
                 let speed = ojp_core::tts::SPEEDS.get(tts_speed as usize).map_or(1.0, |(v, _)| *v);
@@ -528,9 +530,12 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 let moss_voice = moss_voices.get(tts_moss_voice as usize).map_or("Bella", |(id, _)| id.as_str());
                 let theme = ["system", "light", "dark"].get(theme as usize).copied().unwrap_or("system");
                 let path = &setup.config_path;
-                let saved = storage::set_str(path, "ui", "theme", theme)
+                let profile_id = if profile == 1 { "uncensored" } else { "classic" };
+                let saved = storage::set_str(path, "models", "profile", profile_id)
+                    .and_then(|_| storage::set_str(path, "ui", "theme", theme))
                     .and_then(|_| storage::set_bool(path, "ui", "dynamic_colors", dynamic_colors))
-                    .and_then(|_| storage::set_bool(path, "models", "main_enabled", main_enabled))
+                    // The uncensored profile forces this off in memory; don't persist that.
+                    .and_then(|_| if profile == 1 { Ok(()) } else { storage::set_bool(path, "models", "main_enabled", main_enabled) })
                     .and_then(|_| storage::set_bool(path, "tts", "enabled", tts_enabled))
                     .and_then(|_| storage::set_str(path, "tts", "voice", voice_id))
                     .and_then(|_| storage::set_f64(path, "tts", "speed", speed as f64))
@@ -543,7 +548,7 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 if let Some(apply) = setup.set_dynamic_colors {
                     apply(dynamic_colors);
                 }
-                let main_changed = main_enabled != setup.config.models.main_enabled;
+                let main_changed = main_enabled != setup.config.models.main_enabled || profile_id != setup.config.models.profile;
                 let tts_changed = tts_enabled != setup.config.tts.enabled || engine_id != setup.config.tts.engine;
                 let _ = reload_config(&mut setup);
                 if let Some(tts) = &tts
