@@ -93,14 +93,40 @@ const REGISTRY: &[Tool] = &[
     Tool { name: "notes_list", doc: "show the saved notes", args: &[], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |_| notes_list() },
 ];
 
+/// Tools only a phone has (see `tools_android`). Wi-Fi, Bluetooth, brightness, airplane mode, screenshots
+/// and raw shell commands need Shizuku; they say so when it isn't there.
+const ANDROID_ONLY: &[Tool] = &[
+    Tool { name: "wifi", doc: "turn the phone's Wi-Fi on or off", args: &[Arg { name: "state", kind: ArgKind::Choice(&["on", "off"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::wifi(text(a, "state")? == "on") },
+    Tool { name: "bluetooth", doc: "turn the phone's Bluetooth on or off", args: &[Arg { name: "state", kind: ArgKind::Choice(&["on", "off"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::bluetooth(text(a, "state")? == "on") },
+    Tool { name: "airplane", doc: "turn airplane mode on or off", args: &[Arg { name: "state", kind: ArgKind::Choice(&["on", "off"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::airplane(text(a, "state")? == "on") },
+    Tool { name: "brightness", doc: "set the screen brightness, 0-100", args: &[Arg { name: "level", kind: ArgKind::Int { max: 100 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::brightness(int(a, "level")?) },
+    Tool { name: "screenshot", doc: "take a screenshot of the screen", args: &[], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |_| crate::tools_android::screenshot() },
+    Tool { name: "adb_shell", doc: "run a shell command on the phone with adb permissions (asks the user first)", args: &[Arg { name: "command", kind: ArgKind::Text { max: 250 } }], kind: Kind::Act, risk: Risk::Confirm, explore: false, run: |a| crate::tools_android::adb_shell(text(a, "command")?) },
+];
+
+/// The tools of the desktop registry that also work on a phone.
+const ANDROID_COMMON: &[&str] = &[
+    "set_timer", "remind", "volume", "mute", "media", "open_app", "open_url", "note_add", "calculate", "get_time", "system_status",
+    "reminders_list", "web_search", "web_fetch", "remember", "recall", "memories_list", "tags_list", "tag_add", "forget", "notes_list",
+];
+
+/// The tools this device has: all of the registry on a computer; on a phone, the ones that work there plus its own.
+fn active() -> Vec<&'static Tool> {
+    if cfg!(target_os = "android") {
+        REGISTRY.iter().filter(|t| ANDROID_COMMON.contains(&t.name)).chain(ANDROID_ONLY.iter()).collect()
+    } else {
+        REGISTRY.iter().collect()
+    }
+}
+
 /// The tool-use instructions given to the model, generated from the registry.
 pub fn system_prompt() -> String {
     system_prompt_for(false)
 }
 
 fn system_prompt_for(with_done: bool) -> String {
-    let mut s = String::from("You control this computer through tools. Available tools:\n");
-    for t in REGISTRY {
+    let mut s = String::from(if cfg!(target_os = "android") { "You control this phone through tools. Available tools:\n" } else { "You control this computer through tools. Available tools:\n" });
+    for t in active() {
         let args: Vec<String> = t
             .args
             .iter()
@@ -131,8 +157,8 @@ fn grammar(with_done: bool) -> String {
 
 /// The same, restricted to one tool when `only` is given (a single call, no `done`).
 fn grammar_for(with_done: bool, only: Option<&str>) -> String {
-    let mut alternatives: Vec<String> = REGISTRY
-        .iter()
+    let mut alternatives: Vec<String> = active()
+        .into_iter()
         .filter(|t| only.is_none_or(|n| t.name == n))
         .map(|t| {
             let args: Vec<String> = t
@@ -205,6 +231,16 @@ const EXAMPLES: &[(&str, &str)] = &[
     ("Show me what I wrote down.", r#"[{"tool": "notes_list", "args": {}}]"#),
 ];
 
+/// Worked examples for the phone-only tools.
+const ANDROID_EXAMPLES: &[(&str, &str)] = &[
+    ("Switch off the Wi-Fi.", r#"[{"tool": "wifi", "args": {"state": "off"}}]"#),
+    ("Turn Bluetooth back on.", r#"[{"tool": "bluetooth", "args": {"state": "on"}}]"#),
+    ("Put the phone in airplane mode.", r#"[{"tool": "airplane", "args": {"state": "on"}}]"#),
+    ("Make the screen dimmer, around 20%.", r#"[{"tool": "brightness", "args": {"level": 20}}]"#),
+    ("Grab a screenshot.", r#"[{"tool": "screenshot", "args": {}}]"#),
+    ("Run pm list packages on the phone.", r#"[{"tool": "adb_shell", "args": {"command": "pm list packages"}}]"#),
+];
+
 /// Extra instructions for Qwen3.5-based models only (their planner guessed file names and mixed
 /// up the user's files with remembered facts).
 const QWEN35_RULES: &str = "\nThe user's own files and documents (a resume, budget, recipes, taxes, notes files) are on this computer: use find_files, search_text or read_file for them, never recall. recall is only for facts the user told you in chat. Call read_file only with an exact path the user gave or find_files returned; when you only know a loose file name (resume, recipes, budget), call find_files first; use search_text to look for words inside files.";
@@ -255,20 +291,30 @@ fn planner_messages(template: Template, request: &str, steps: &[Step], with_done
     }
     let mut messages = vec![ChatMessage::new(Role::System, system)];
     let extra: &[(&str, &str)] = if qwen35 { QWEN35_EXAMPLES } else { &[] };
-    for (user, calls) in EXAMPLES.iter().chain(extra) {
-        messages.push(ChatMessage::new(Role::User, *user));
-        messages.push(ChatMessage::new(Role::Assistant, *calls));
+    let phone = cfg!(target_os = "android");
+    let have = active();
+    // Examples that use a tool this device doesn't have would only mislead the model.
+    let usable = |calls: &str| have.iter().any(|t| calls.contains(&format!("\"tool\": \"{}\"", t.name))) && {
+        serde_json::from_str::<Vec<Value>>(calls).is_ok_and(|v| v.iter().all(|c| have.iter().any(|t| c["tool"] == t.name)))
+    };
+    let phone_examples: &[(&str, &str)] = if phone { ANDROID_EXAMPLES } else { &[] };
+    for (user, calls) in EXAMPLES.iter().chain(extra).chain(phone_examples) {
+        if usable(calls) {
+            messages.push(ChatMessage::new(Role::User, *user));
+            messages.push(ChatMessage::new(Role::Assistant, *calls));
+        }
     }
     // One worked example of a task that takes several rounds.
     const NEXT: &str = "If the request needs another step, give the next call; otherwise answer [{\"tool\": \"done\", \"args\": {}}].";
-    for (role, text) in [
+    let multi_round: Vec<(Role, String)> = if phone { Vec::new() } else { vec![
         (Role::User, "Find my groceries list and read it to me.".to_string()),
         (Role::Assistant, r#"[{"tool": "find_files", "args": {"query": "groceries"}}]"#.to_string()),
         (Role::User, format!("Results:\n1 match(es):\n~/Documents/groceries.txt\n{NEXT}")),
         (Role::Assistant, r#"[{"tool": "read_file", "args": {"path": "~/Documents/groceries.txt"}}]"#.to_string()),
         (Role::User, format!("Results:\n~/Documents/groceries.txt:\nmilk, eggs, bread\n{NEXT}")),
         (Role::Assistant, r#"[{"tool": "done", "args": {}}]"#.to_string()),
-    ] {
+    ] };
+    for (role, text) in multi_round {
         messages.push(ChatMessage::new(role, text));
     }
     messages.push(ChatMessage::new(Role::User, request));
@@ -341,7 +387,7 @@ impl ToolProbe {
         let total: f32 = scores.iter().map(|s| (s - max).exp()).sum();
         let (i, best) = scores.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1))?;
         let label = self.labels[i].as_str();
-        (label != "multi" && REGISTRY.iter().any(|t| t.name == label)).then(|| (label, 1.0 / total * (best - max).exp()))
+        (label != "multi" && active().iter().any(|t| t.name == label)).then(|| (label, 1.0 / total * (best - max).exp()))
     }
 }
 
@@ -440,13 +486,13 @@ pub fn is_done(call: &Value) -> bool {
 
 fn find(call: &Value) -> Option<&'static Tool> {
     let name = call["tool"].as_str()?;
-    REGISTRY.iter().find(|t| t.name == name)
+    active().into_iter().find(|t| t.name == name)
 }
 
 /// Does this call bring in text that someone else wrote (a web page, a file, the
 /// clipboard, command output)? Such text can contain instructions meant to trick the assistant.
 pub fn reads_untrusted(call: &Value) -> bool {
-    matches!(call["tool"].as_str(), Some("web_search" | "web_fetch" | "read_file" | "search_text" | "clipboard" | "run_command" | "find_files"))
+    matches!(call["tool"].as_str(), Some("web_search" | "web_fetch" | "read_file" | "search_text" | "clipboard" | "run_command" | "adb_shell" | "find_files"))
 }
 
 /// Is this a call that saves something to long-term memory?
@@ -470,6 +516,7 @@ pub fn needs_confirmation(call: &Value) -> Option<Result<String>> {
     Some(match tool.name {
         "write_file" => ext::write_plan(args["path"].as_str().unwrap_or(""), args["text"].as_str().unwrap_or("")),
         "run_command" => Ok(format!("run this command in your home folder: {}", args["command"].as_str().unwrap_or(""))),
+        "adb_shell" => Ok(format!("run this on the phone with adb permissions: {}", args["command"].as_str().unwrap_or(""))),
         "forget" => crate::memory::forget_matches(args["query"].as_str().unwrap_or("")).and_then(|m| {
             if m.len() > 5 {
                 anyhow::bail!("that matches {} memories; be more specific", m.len());
@@ -523,7 +570,7 @@ pub fn run_typed(calls: &[Value]) -> Run {
 fn run_trusted(call: &Value) -> Result<Outcome> {
     eprintln!("[tool call: {call}]");
     let name = call["tool"].as_str().context("no tool name")?;
-    let tool = REGISTRY.iter().find(|t| t.name == name).with_context(|| format!("unknown tool {name:?}"))?;
+    let tool = active().into_iter().find(|t| t.name == name).with_context(|| format!("unknown tool {name:?}"))?;
     let text = match (tool.run)(&call["args"]) {
         Ok(t) => t,
         Err(e) if name == "read_file" && format!("{e:#}").contains("doesn't exist") => {
@@ -601,7 +648,7 @@ const COMMANDS: &[(&str, &str, Option<&str>)] = &[
 /// The list of typed commands, for `/help`.
 pub fn help() -> String {
     let mut s = String::from("Type a request in plain words, or use a command:\n");
-    for t in REGISTRY {
+    for t in active() {
         let usage: Vec<String> = t.args.iter().map(|a| format!("<{}>", a.name)).collect();
         let commands: Vec<&str> = COMMANDS.iter().filter(|c| c.1 == t.name).map(|c| c.0).collect();
         let shown = commands.iter().map(|c| format!("/{c}")).collect::<Vec<_>>().join(" ");
@@ -627,7 +674,7 @@ pub fn command(line: &str) -> Option<Result<Vec<Value>, String>> {
     let Some(&(_, tool_name, fixed)) = COMMANDS.iter().find(|c| c.0 == word) else {
         return Some(Err(format!("I don't know the command /{word}. Type /help to see them.")));
     };
-    let tool = REGISTRY.iter().find(|t| t.name == tool_name)?;
+    let tool = active().into_iter().find(|t| t.name == tool_name)?;
     let arg = if tool_name == "list_dir" && arg.is_empty() { "~" } else { arg };
     // "/tag add gardening plants, flowers" reads naturally; the word "add" isn't part of the tag.
     let arg = if tool_name == "tag_add" { arg.strip_prefix("add ").map_or(arg, str::trim_start) } else { arg };
@@ -673,7 +720,7 @@ pub fn command(line: &str) -> Option<Result<Vec<Value>, String>> {
 
 /// Names of all tools, for tests and `ojp-cli`.
 pub fn names() -> Vec<&'static str> {
-    REGISTRY.iter().map(|t| t.name).collect()
+    active().into_iter().map(|t| t.name).collect()
 }
 
 fn int(args: &Value, key: &str) -> Result<u64> {
@@ -711,6 +758,9 @@ fn capture(program: &str, args: &[&str]) -> Result<String> {
 }
 
 fn volume(level: u64) -> Result<String> {
+    if cfg!(target_os = "android") {
+        return crate::tools_android::volume(level);
+    }
     let level = level.min(100);
     run("wpctl", &["set-volume", "@DEFAULT_AUDIO_SINK@", &format!("{level}%")])?;
     Ok(format!("Volume set to {level}%."))
@@ -718,11 +768,17 @@ fn volume(level: u64) -> Result<String> {
 
 fn mute(state: &str) -> Result<String> {
     let on = state == "on";
+    if cfg!(target_os = "android") {
+        return crate::tools_android::mute(on);
+    }
     run("wpctl", &["set-mute", "@DEFAULT_AUDIO_SINK@", if on { "1" } else { "0" }])?;
     Ok(if on { "Muted.".into() } else { "Unmuted.".into() })
 }
 
 fn media(action: &str) -> Result<String> {
+    if cfg!(target_os = "android") {
+        return crate::tools_android::media(action);
+    }
     let (command, said) = match action {
         "play_pause" => ("play-pause", "Toggled play/pause."),
         "next" => ("next", "Skipped to the next track."),
@@ -761,11 +817,19 @@ fn schedule(minutes: u64, text: &str) -> Result<()> {
         return Ok(());
     }
     crate::reminders::add(minutes, text)?;
+    if cfg!(target_os = "android") {
+        // The phone's alarm service notifies, even with the app closed.
+        return crate::tools_android::schedule(crate::reminders::now() + minutes * 60, text);
+    }
     crate::reminders::start_watcher();
     Ok(())
 }
 
 fn reminders_list() -> Result<String> {
+    if cfg!(target_os = "android") {
+        // Nothing here announces them; the phone's alarm service does, so drop the ones already rung.
+        let _ = crate::reminders::take_due(crate::reminders::now());
+    }
     let list = crate::reminders::list();
     if list.is_empty() {
         return Ok("There are no pending timers or reminders.".into());
@@ -778,6 +842,9 @@ fn reminders_list() -> Result<String> {
 /// Launch an installed app by matching its .desktop entry's Name= (or file
 /// name) case-insensitively, so only real installed applications can start.
 fn open_app(name: &str) -> Result<String> {
+    if cfg!(target_os = "android") {
+        return crate::tools_android::open_app(name);
+    }
     let wanted = name.trim().to_lowercase();
     let entries = desktop_entries();
     let exact = entries.iter().find(|(path, display)| {
@@ -836,6 +903,9 @@ fn edit_distance(a: &str, b: &str) -> usize {
 
 /// Open a web address; only plain http(s) links without spaces.
 fn open_url(url: &str) -> Result<String> {
+    if cfg!(target_os = "android") {
+        return crate::tools_android::open_url(url);
+    }
     let ok = (url.starts_with("https://") || url.starts_with("http://"))
         && !url.contains(char::is_whitespace)
         && !url.contains(['"', '\'', '`', '<', '>', '\\']);
@@ -954,6 +1024,11 @@ fn get_time() -> Result<String> {
 
 fn system_status() -> Result<String> {
     let mut parts = Vec::new();
+    if cfg!(target_os = "android")
+        && let Ok(battery) = crate::tools_android::battery()
+    {
+        parts.push(battery);
+    }
     if let Ok(mem) = std::fs::read_to_string("/proc/meminfo") {
         let kb = |key: &str| -> Option<f64> {
             mem.lines().find(|l| l.starts_with(key))?.split_whitespace().nth(1)?.parse().ok()
@@ -1278,6 +1353,20 @@ fn desktop_entries() -> Vec<(PathBuf, String)> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn every_desktop_example_is_still_shown_to_the_planner() {
+        // The phone filter must not silently drop a desktop example (that would change the prompt).
+        let have = active();
+        for (user, calls) in EXAMPLES.iter().chain(QWEN35_EXAMPLES) {
+            let parsed: Vec<Value> = serde_json::from_str(calls).unwrap_or_else(|e| panic!("{user}: {e}"));
+            assert!(parsed.iter().all(|c| have.iter().any(|t| c["tool"] == t.name)), "{user}");
+        }
+        for (user, calls) in ANDROID_EXAMPLES {
+            let parsed: Vec<Value> = serde_json::from_str(calls).unwrap_or_else(|e| panic!("{user}: {e}"));
+            assert!(parsed.iter().all(|c| ANDROID_ONLY.iter().any(|t| c["tool"] == t.name)), "{user}");
+        }
+    }
+
     use super::*;
     use serde_json::json;
 

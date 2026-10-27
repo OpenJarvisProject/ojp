@@ -646,9 +646,6 @@ impl Engine {
     }
 
     fn plan_step(&mut self, request: &str, steps: &[tools::Step]) -> Result<Vec<serde_json::Value>> {
-        if cfg!(target_os = "android") {
-            bail!("device control isn't available on Android yet");
-        }
         let model = match (&mut self.router_llm, &mut self.main) {
             (_, Some(Main::Local(model))) | (Some(model), _) => model,
             (None, _) => bail!("device control needs a local model"),
