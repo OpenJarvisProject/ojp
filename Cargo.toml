@@ -3,7 +3,7 @@ resolver = "3"
 members = ["ojp-core", "ojp", "ojp-android"]
 
 [workspace.package]
-version = "0.0.4"
+version = "0.0.5"
 edition = "2024"
 
 [workspace.dependencies]
