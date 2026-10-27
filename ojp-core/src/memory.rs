@@ -389,7 +389,95 @@ pub fn forget(query: &str) -> Result<Vec<Memory>> {
     let ids: HashSet<u64> = matches.iter().map(|m| m.id).collect();
     let kept: Vec<Memory> = read().into_iter().filter(|m| !ids.contains(&m.id)).collect();
     write(&kept)?;
+    // Remember that these were forgotten, so a device that still has them can't bring them back.
+    let mut tombs = read_tombstones();
+    let at = now();
+    for m in &matches {
+        tombs.retain(|t| t.key != key_of(&m.text));
+        tombs.push(Tombstone { key: key_of(&m.text), at });
+    }
+    write_tombstones(&tombs)?;
     Ok(matches)
+}
+
+// --- sharing memories between paired devices ---------------------------------
+
+/// A memory that was forgotten, identified by its words (ids differ per device).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Tombstone {
+    pub key: String,
+    /// When it was forgotten, seconds since 1970.
+    pub at: u64,
+}
+
+/// Everything one device knows, for merging into another.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct SyncState {
+    pub memories: Vec<Memory>,
+    pub deleted: Vec<Tombstone>,
+}
+
+/// What makes two memories "the same" on different devices: the same meaningful words.
+fn key_of(text: &str) -> String {
+    let k = terms(text).join(" ");
+    if k.is_empty() { text.to_lowercase() } else { k }
+}
+
+fn tombstones_path() -> PathBuf {
+    path().with_file_name("memory-deleted.json")
+}
+
+fn read_tombstones() -> Vec<Tombstone> {
+    std::fs::read_to_string(tombstones_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+fn write_tombstones(list: &[Tombstone]) -> Result<()> {
+    let p = tombstones_path();
+    if let Some(dir) = p.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let tmp = p.with_extension("tmp");
+    std::fs::write(&tmp, serde_json::to_vec(list)?)?;
+    std::fs::rename(tmp, p).context("saving forgotten memories")
+}
+
+pub fn export_sync() -> SyncState {
+    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    SyncState { memories: read(), deleted: read_tombstones() }
+}
+
+/// Merge another device's memories into this one: new ones are added, and
+/// anything either device forgot stays forgotten (unless it was saved again
+/// afterwards). Returns how many memories were added or removed here.
+pub fn merge(remote: SyncState) -> Result<usize> {
+    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut local = read();
+    let mut tombs = read_tombstones();
+    let mut changes = 0;
+    for t in remote.deleted {
+        match tombs.iter_mut().find(|x| x.key == t.key) {
+            Some(x) if x.at >= t.at => {}
+            Some(x) => x.at = t.at,
+            None => tombs.push(t.clone()),
+        }
+        let before = local.len();
+        local.retain(|m| !(key_of(&m.text) == t.key && m.created <= t.at));
+        changes += before - local.len();
+    }
+    for m in remote.memories {
+        let key = key_of(&m.text);
+        if tombs.iter().any(|t| t.key == key && t.at >= m.created) || local.iter().any(|l| key_of(&l.text) == key) {
+            continue;
+        }
+        let id = local.iter().map(|x| x.id).max().unwrap_or(0) + 1;
+        local.push(Memory { id, created: m.created, text: m.text, summary: m.summary, tags: m.tags });
+        changes += 1;
+    }
+    if changes > 0 || !tombs.is_empty() {
+        write(&local)?;
+        write_tombstones(&tombs)?;
+    }
+    Ok(changes)
 }
 
 #[cfg(test)]
@@ -405,6 +493,34 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         unsafe { std::env::set_var("OJP_MEMORY_FILE", dir.join("memory.jsonl")) };
         (guard, dir)
+    }
+
+    #[test]
+    fn merging_adds_new_and_forgetting_sticks() {
+        let (_g, dir) = fresh();
+        add("My sister is called Mia").unwrap();
+        add("I work at Initech").unwrap();
+        // Another device knows one of these, plus something new.
+        let other = SyncState {
+            memories: vec![
+                Memory { id: 7, created: 100, text: "I work at Initech".into(), summary: String::new(), tags: vec![] },
+                Memory { id: 8, created: 101, text: "My cat is called Biscuit".into(), summary: String::new(), tags: vec!["pets".into()] },
+            ],
+            deleted: vec![],
+        };
+        assert_eq!(merge(other.clone()).unwrap(), 1, "only the new one is added");
+        assert_eq!(list().len(), 3);
+        assert_eq!(merge(other).unwrap(), 0, "merging twice changes nothing");
+        // Forget here; the other device still has it, and merging must not bring it back.
+        forget("sister").unwrap();
+        let theirs = SyncState { memories: vec![Memory { id: 1, created: 5, text: "my sister is called mia".into(), summary: String::new(), tags: vec![] }], deleted: vec![] };
+        assert_eq!(merge(theirs).unwrap(), 0);
+        assert!(list().iter().all(|m| !m.text.contains("sister")));
+        // And a forget made elsewhere removes it here.
+        let forgot = SyncState { memories: vec![], deleted: vec![Tombstone { key: key_of("My cat is called Biscuit"), at: u64::MAX / 2 }] };
+        assert_eq!(merge(forgot).unwrap(), 1);
+        assert!(list().iter().all(|m| !m.text.contains("Biscuit")));
+        std::fs::remove_dir_all(dir).ok();
     }
 
     #[test]
