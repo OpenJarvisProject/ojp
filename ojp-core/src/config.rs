@@ -59,9 +59,10 @@ chat_template = "chatml"
 # Paired devices work together (pair them in Settings, or with `ojp-cli link-pair-host` and
 # `ojp-cli link-pair-join`). Only devices you paired by hand can connect.
 enabled = true
-# Who answers chat. "auto": this device's own main model if it has one, otherwise a
-# paired device's. "local": never a paired device. "remote": a paired device's whenever one is reachable.
-brain = "auto"
+# Where chat answers are written. "local" (the default): always on this device. Other devices are only used
+# when you name one ("ask my laptop ..." / "remind me on my phone ..."). "auto": borrow a paired device's
+# bigger model only when this device has none. "remote": a paired device's model whenever one is reachable.
+brain = "local"
 
 [tts]
 # Speak replies aloud. Also a switch in the app's settings; the voice files
@@ -147,7 +148,7 @@ pub struct Link {
 
 impl Default for Link {
     fn default() -> Self {
-        Link { enabled: true, brain: "auto".into() }
+        Link { enabled: true, brain: "local".into() }
     }
 }
 

@@ -707,6 +707,11 @@ impl Engine {
         link.caps = caps.clone();
     }
 
+    /// Change where chat answers are written ("local", "auto", "remote"); see `[link] brain`.
+    pub fn set_brain(&mut self, brain: &str) {
+        self.brain = brain.to_string();
+    }
+
     pub fn link(&self) -> Option<&LinkHandle> {
         self.link.as_ref()
     }

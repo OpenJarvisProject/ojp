@@ -86,6 +86,10 @@ export global Settings {
     in-out property <bool> shizuku-supported: false;
     in-out property <string> shizuku-text;
     callback shizuku-action();
+    // Where chat answers are written: 0 this device (default), 1 a paired device's bigger model when this one has none,
+    // 2 a paired device's model whenever reachable.
+    in-out property <int> brain;
+    callback brain-changed(int);
     // Paired devices (see ojp-core::link) and the pairing dialog's state.
     in-out property <[Device]> devices;
     // Shown while this device waits for another to enter it.
@@ -579,6 +583,22 @@ component SettingsPage inherits Rectangle {
                     Text { text: "Devices"; font-weight: 700; color: Palette.accent-background; }
                     Text {
                         text: "Pair your other devices by hand so they work as one assistant: a phone without a big model can use your computer's, and \"remind me on my phone\" really happens on the phone. Only devices you pair can connect.";
+                        wrap: word-wrap;
+                        font-size: 0.85rem;
+                        opacity: 0.65;
+                    }
+                    HorizontalLayout {
+                        spacing: 12px;
+                        Text { text: "Write answers"; horizontal-stretch: 1; vertical-alignment: center; }
+                        ComboBox {
+                            horizontal-stretch: 0;
+                            model: ["On this device", "On a paired device if this one has no big model", "On a paired device when reachable"];
+                            current-index <=> Settings.brain;
+                            selected => { Settings.brain-changed(Settings.brain); }
+                        }
+                    }
+                    Text {
+                        text: "Requests always run on this device unless you name another one (\"remind me on my phone ...\", \"ask my laptop ...\").";
                         wrap: word-wrap;
                         font-size: 0.85rem;
                         opacity: 0.65;

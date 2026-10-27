@@ -32,6 +32,8 @@ enum Request {
     Devices,
     /// The Shizuku button in Settings.
     ShizukuAction,
+    /// 0 this device, 1 a paired device's model if this one has none, 2 whenever reachable.
+    Brain(i32),
     SetDevice { name: String, chat: bool, ask: i32, notify: bool, sync: bool },
     Unpair(String),
     Settings { profile: i32, theme: i32, dynamic_colors: bool, main_enabled: bool, tts_enabled: bool, tts_mix: ojp_core::tts::MixSlots, tts_speed: i32, tts_engine: i32, tts_moss_voice: i32, tts_clarity: i32 },
@@ -88,6 +90,11 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     settings.set_dynamic_colors(setup.config.ui.dynamic_colors);
     settings.set_dynamic_colors_supported(setup.set_dynamic_colors.is_some());
     settings.set_shizuku_supported(ojp_core::platform::available());
+    settings.set_brain(match setup.config.link.brain.as_str() {
+        "auto" => 1,
+        "remote" => 2,
+        _ => 0,
+    });
     settings.set_profile(i32::from(setup.config.models.profile == "uncensored"));
     settings.set_main_enabled(setup.config.models.main_enabled);
     settings.set_tts_supported(ojp_core::tts::AVAILABLE);
@@ -195,6 +202,10 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     settings.on_shizuku_action({
         let send = send.clone();
         move || send(Request::ShizukuAction)
+    });
+    settings.on_brain_changed({
+        let send = send.clone();
+        move |choice| send(Request::Brain(choice))
     });
     settings.on_unpair({
         let send = send.clone();
@@ -633,6 +644,16 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                         }
                     }
                     None => incoming.reply.err("no model is loaded on this device yet"),
+                }
+            }
+            Request::Brain(choice) => {
+                let brain = ["local", "auto", "remote"].get(choice as usize).copied().unwrap_or("local");
+                if let Err(e) = storage::set_str(&setup.config_path, "link", "brain", brain) {
+                    push_message(&ui, format!("Couldn't save that setting: {e:#}"), "settings");
+                }
+                let _ = reload_config(&mut setup);
+                if let Some(engine) = engine.as_mut() {
+                    engine.set_brain(brain);
                 }
             }
             Request::ShizukuAction => {

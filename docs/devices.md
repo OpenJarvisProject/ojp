@@ -4,9 +4,11 @@ Pair your devices once, by hand, and they behave like one assistant.
 
 ## What you get
 
-- **A bigger brain, when you need it.** A phone with only the small model answers chat with your
-  computer's model (when it can reach it), and falls back to its own when it can't. (`[link] brain` in
-  config.toml: `auto`, `local`, `remote`.)
+- **Your choice of where answers are written.** By default everything runs on the device you are using.
+  Other devices are only used when you name one (below), or if you choose, in Settings > Devices > *Write
+  answers*, to borrow a paired device's bigger model when this one has none (or whenever one is reachable);
+  it falls back to this device's own model if the other can't be reached. (`[link] brain` in config.toml:
+  `local` (default), `auto`, `remote`.)
 - **"On my phone ...".** *"Remind me on my phone in 10 minutes to call Mom"*, *"ask my server how much
   disk space is left"*, *"tell pixel to turn the volume down"*. The request, with the device wording
   removed, goes to that device's own assistant, which does it with its own tools. If the device can't be
