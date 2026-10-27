@@ -57,6 +57,8 @@ pub struct Setup {
     pub set_dynamic_colors: Option<fn(bool)>,
     /// Picks light or dark system status-bar icons; None where unsupported.
     pub set_light_status_bar: Option<fn(bool)>,
+    /// For the headless UI tests only: called once with the window just before it runs.
+    pub test_hook: Option<Box<dyn FnOnce(slint::Weak<AppWindow>) + Send>>,
 }
 
 fn theme_index(theme: &str) -> i32 {
@@ -69,6 +71,7 @@ fn theme_index(theme: &str) -> i32 {
 
 /// Show the window and run until it closes.
 pub fn run(mut setup: Setup) -> anyhow::Result<()> {
+    let test_hook = setup.test_hook.take();
     // The link keys, memories and reminders live under the app's own folder on Android.
     if cfg!(target_os = "android") && std::env::var_os("XDG_DATA_HOME").is_none() {
         // SAFETY: nothing else is running yet.
@@ -207,6 +210,10 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
         let send = send.clone();
         move |choice| send(Request::Brain(choice))
     });
+    settings.on_download_now({
+        let send = send.clone();
+        move || send(Request::Download(-1, true))
+    });
     settings.on_unpair({
         let send = send.clone();
         move |name| send(Request::Unpair(name.to_string()))
@@ -242,6 +249,9 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
             });
         }
     });
+    if let Some(hook) = test_hook {
+        hook(ui.as_weak());
+    }
     ui.run()?;
     Ok(())
 }
@@ -443,6 +453,13 @@ fn load_engine(setup: &Setup, ui: &slint::Weak<AppWindow>) -> Option<Engine> {
     } else {
         set_download(ui, false, String::new(), -1.0);
     }
+    // Settings shows the same fact next to the model choice, with its own Download button.
+    let (note, needs) = model_note(config, &missing);
+    let _ = ui.upgrade_in_event_loop(move |ui| {
+        let s = ui.global::<Settings>();
+        s.set_model_note(note.into());
+        s.set_model_needs_download(needs);
+    });
     let engine = match Engine::new(config) {
         Ok(engine) => {
             set_state(ui, false, Some(engine.status.join(" · ")));
@@ -465,6 +482,16 @@ fn load_engine(setup: &Setup, ui: &slint::Weak<AppWindow>) -> Option<Engine> {
     );
     let _ = ui.upgrade_in_event_loop(move |ui| ui.global::<Settings>().set_info(info.into()));
     engine
+}
+
+/// What Settings says about the chosen model's files: whether they are here, and if not, that they need downloading.
+fn model_note(config: &Config, missing: &[Item]) -> (String, bool) {
+    let name = if config.models.profile == "uncensored" { "The uncensored model" } else { "The classic models" };
+    if missing.is_empty() {
+        return (format!("{name} {} on this device.", if config.models.profile == "uncensored" { "is" } else { "are" }), false);
+    }
+    let roles: Vec<&str> = missing.iter().map(|m| m.role).collect();
+    (format!("Not on this device yet ({}). Tap Download; it resumes if interrupted, and everything works offline afterwards.", roles.join(", ")), true)
 }
 
 /// Fetch every missing model, showing overall progress. Returns false

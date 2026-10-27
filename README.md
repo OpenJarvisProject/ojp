@@ -149,17 +149,42 @@ aarch64 Linux and the Android APK: see `scripts/` and `ojp-android/android/`.
 
 ## Status
 
-| Feature | State |
+"Verified" means I ran it and looked at the result; "built" means it compiles and has unit tests but nobody has run it on the
+real target yet. Last checked at v0.0.6.
+
+**Working and verified (Linux desktop)**
+
+| Feature | How it was checked |
 |---|---|
-| Typed chat, routing, device tools, fallbacks | done |
-| In-app model download (resume, SHA-256 check) | done |
-| Prompt caching (router examples, chat history) | done |
-| Android app, Digital assistant role | done (emulator-verified) |
-| Rename the app to the assistant's name (e.g. Zelia) | planned |
-| Text-to-speech, desktop: Kokoro voices with a three-voice mixer, speed, sample button (off by default) | done |
-| Typeset display math ($$ ... $$) | done |
-| Experimental MOSS voice and your own reference clip (`docs/tts-engines.md`) | done, needs `scripts/setup-moss.sh` |
-| Text-to-speech on Android; speech-to-text; wake word ("hey zelia") | planned next |
+| Typed chat with a router, a main model, and fallbacks between them | daily use; `ojp-cli chat` |
+| Tools: timers, reminders, volume, media, open apps and links, files (read/find/search), notes, calculator, web, memory | agent test, 46/48 scenarios with the Qwen3.5 0.8B and 32/36 with the Qwen2.5 pair; the 36 original scenarios were used for tuning, so treat those numbers as optimistic |
+| Router and tool probes (read the answer from the model's hidden state: ~98% routing, 93% tool choice on held-out requests) | `ojp-cli route-eval`, `tool-eval`; model-tooling `RESULTS.md` |
+| Long-term memory with tags and summaries; typed `/commands` | unit tests, daily use |
+| In-app model download (resume, SHA-256 check), including the uncensored 0.8B bundle on Hugging Face | download and checksum verified against the public files |
+| Uncensored Qwen3.5-0.8B as the single model (Settings > AI model) | agent test, refusal test (0/18 refused), 70-request soak test |
+| Several devices as one assistant: pairing by code, encrypted link, "on my phone ..." requests, approvals on the asking device, shared memories | two real processes on one PC (pairing, remote chat, delegated reminders, refusals, memory and forget sync, VPN-only address) |
+| Text-to-speech (Kokoro voices, mixer, speed); typeset math | works (desktop only, off by default) |
+
+**Built, not yet verified on a device**
+
+| Feature | Notes |
+|---|---|
+| Android app, Digital assistant role | worked on an emulator and phone before v0.0.5 |
+| Android: phone tools (volume, media, apps, links, reminders as alarms, battery) | compiles; never run on a phone |
+| Android: optional Shizuku (Wi-Fi, Bluetooth, airplane mode, brightness, screenshots, adb commands that ask first) | compiles; never run on a phone |
+| Settings > Devices on the phone, pairing a phone with a computer | the pairing and link code is tested between two desktop processes only |
+| Settings > Model download button for the uncensored model | the logic ran headlessly through the real app code and the screens were rendered, but nothing was tapped on a phone |
+
+**Known gaps**
+
+- Android has no file tools, clipboard, speech, or background service; a phone only serves other devices while the app is open.
+- The tool probe only knows the desktop tool names; the new phone tools are chosen by the slower planner.
+- Speech-to-text, wake word ("hey zelia"), and text-to-speech on Android: planned.
+- Renaming the app to the assistant's name (e.g. Zelia): planned.
+- Not started: desktop control of other applications, a homelab agent (`docs/homelab.md`).
+
+Developer tools: `cargo run -p ojp --no-default-features --features uitest --bin ui-test` drives the real app logic
+headlessly; `--features shots --bin ui-shot -- <dir>` renders the pages to PNG at phone size.
 
 The old `ojp-cli route-eval` / benchmark harness is still in `ojp-core`.
 

@@ -86,6 +86,10 @@ export global Settings {
     in-out property <bool> shizuku-supported: false;
     in-out property <string> shizuku-text;
     callback shizuku-action();
+    // Whether the chosen model's files are on this device, with a button to fetch them.
+    in-out property <string> model-note;
+    in-out property <bool> model-needs-download;
+    callback download-now();
     // Where chat answers are written: 0 this device (default), 1 a paired device's bigger model when this one has none,
     // 2 a paired device's model whenever reachable.
     in-out property <int> brain;
@@ -485,6 +489,48 @@ component MixRow inherits VerticalLayout {
     }
 }
 
+// One of a few exclusive choices, written out in full (a drop-down list is only as wide as its button, which
+// cuts long options off on a phone).
+component ChoiceRow inherits Rectangle {
+    in property <string> title;
+    in property <string> description;
+    in property <bool> selected;
+    callback chosen;
+    background: root.selected ? Palette.accent-background.transparentize(0.88) : transparent;
+    border-radius: 10px;
+    border-width: 1px;
+    border-color: root.selected ? Palette.accent-background : Palette.border;
+    HorizontalLayout {
+        padding: 12px;
+        spacing: 12px;
+        VerticalLayout {
+            horizontal-stretch: 0;
+            padding-top: 2px;
+            alignment: start;
+            Rectangle {
+                width: 20px;
+                height: 20px;
+                border-radius: 10px;
+                border-width: 2px;
+                border-color: root.selected ? Palette.accent-background : Palette.border;
+                Rectangle {
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 5px;
+                    background: root.selected ? Palette.accent-background : transparent;
+                }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 2px;
+            Text { text: root.title; wrap: word-wrap; font-weight: 700; }
+            Text { text: root.description; wrap: word-wrap; font-size: 0.85rem; opacity: 0.7; }
+        }
+    }
+    TouchArea { clicked => { root.chosen(); } }
+}
+
 component SettingRow inherits HorizontalLayout {
     in property <string> title;
     in property <string> description;
@@ -532,31 +578,33 @@ component SettingsPage inherits Rectangle {
             }
         }
         ScrollView {
+            vertical-stretch: 1;
+            mouse-drag-pan-enabled: true;
             VerticalLayout {
                 padding: 16px;
                 spacing: 14px;
                 alignment: start;
 
                 Text { text: "Model"; font-weight: 700; color: Palette.accent-background; }
-                HorizontalLayout {
-                    spacing: 12px;
-                    Text {
-                        text: "AI model";
-                        horizontal-stretch: 1;
-                        vertical-alignment: center;
-                    }
-                    ComboBox {
-                        horizontal-stretch: 0;
-                        model: ["Classic (Qwen2.5 0.5B)", "Uncensored (Qwen3.5 0.8B)"];
-                        current-index <=> Settings.profile;
-                        selected => { Settings.changed(); }
-                    }
+                ChoiceRow {
+                    title: "Classic (Qwen2.5)";
+                    description: "A small router model plus a bigger main model that writes the answers.";
+                    selected: Settings.profile == 0;
+                    chosen => { Settings.profile = 0; Settings.changed(); }
                 }
-                Text {
-                    text: Settings.profile == 1 ? "One model that does everything, with no content filter (about 400 MB). If it isn't on this device yet, you'll get a Download button in the chat." : "The original small router plus the bigger main model.";
-                    wrap: word-wrap;
-                    font-size: 0.8rem;
-                    opacity: 0.65;
+                ChoiceRow {
+                    title: "Uncensored (Qwen3.5 0.8B)";
+                    description: "One small model (about 400 MB) with no content filter, used for everything, including the routing.";
+                    selected: Settings.profile == 1;
+                    chosen => { Settings.profile = 1; Settings.changed(); }
+                }
+                Text { text: Settings.model-note; wrap: word-wrap; font-size: 0.85rem; }
+                if Chat.download-progress >= 0: ProgressIndicator { progress: Chat.download-progress; }
+                if Chat.download-progress >= 0: Text { text: Chat.download-text; wrap: word-wrap; font-size: 0.85rem; opacity: 0.7; }
+                if Settings.model-needs-download && Chat.download-progress < 0: Button {
+                    text: "Download the model";
+                    primary: true;
+                    clicked => { Settings.download-now(); }
                 }
 
                 Rectangle { height: 1px; background: Palette.border; opacity: 0.4; }
@@ -587,18 +635,27 @@ component SettingsPage inherits Rectangle {
                         font-size: 0.85rem;
                         opacity: 0.65;
                     }
-                    HorizontalLayout {
-                        spacing: 12px;
-                        Text { text: "Write answers"; horizontal-stretch: 1; vertical-alignment: center; }
-                        ComboBox {
-                            horizontal-stretch: 0;
-                            model: ["On this device", "On a paired device if this one has no big model", "On a paired device when reachable"];
-                            current-index <=> Settings.brain;
-                            selected => { Settings.brain-changed(Settings.brain); }
-                        }
+                    Text { text: "Where answers are written"; font-weight: 700; }
+                    ChoiceRow {
+                        title: "On this device";
+                        description: "Default. This device's own model writes every answer.";
+                        selected: Settings.brain == 0;
+                        chosen => { Settings.brain = 0; Settings.brain-changed(0); }
+                    }
+                    ChoiceRow {
+                        title: "Borrow a bigger model if I have none";
+                        description: "If this device only has the small model, a paired device's bigger model writes the answer. If it can't be reached, this device answers.";
+                        selected: Settings.brain == 1;
+                        chosen => { Settings.brain = 1; Settings.brain-changed(1); }
+                    }
+                    ChoiceRow {
+                        title: "Prefer a paired device";
+                        description: "A paired device's model writes answers whenever one is reachable, even if this device has its own model.";
+                        selected: Settings.brain == 2;
+                        chosen => { Settings.brain = 2; Settings.brain-changed(2); }
                     }
                     Text {
-                        text: "Requests always run on this device unless you name another one (\"remind me on my phone ...\", \"ask my laptop ...\").";
+                        text: "Either way, a request runs on this device unless you name another one (\"remind me on my phone ...\", \"ask my laptop ...\").";
                         wrap: word-wrap;
                         font-size: 0.85rem;
                         opacity: 0.65;
@@ -629,12 +686,18 @@ component SettingsPage inherits Rectangle {
                             Text { text: "May ask this device to do things"; horizontal-stretch: 1; vertical-alignment: center; wrap: word-wrap; }
                             ComboBox {
                                 horizontal-stretch: 0;
-                                model: ["Nothing", "Basic", "Basic + files and web", "Everything (asks you first)"];
+                                model: ["Nothing", "Basic", "Files & web", "Everything"];
                                 current-index: device.ask;
                                 selected(choice) => {
-                                    Settings.device-changed(device.name, device.chat, choice == "Nothing" ? 0 : choice == "Basic" ? 1 : choice == "Everything (asks you first)" ? 3 : 2, device.notify, device.sync);
+                                    Settings.device-changed(device.name, device.chat, choice == "Nothing" ? 0 : choice == "Basic" ? 1 : choice == "Everything" ? 3 : 2, device.notify, device.sync);
                                 }
                             }
+                        }
+                        Text {
+                            text: device.ask == 0 ? "It can't ask this device to do anything." : device.ask == 1 ? "It can ask for timers, reminders, notes, volume, media, the time, status and memory." : device.ask == 2 ? "Basic, plus reading files, the clipboard and the web." : "Anything, but every risky action (writing files, running commands) asks you first, on the device that asked.";
+                            wrap: word-wrap;
+                            font-size: 0.85rem;
+                            opacity: 0.65;
                         }
                         SettingRow {
                             title: "May show messages here";
@@ -647,6 +710,7 @@ component SettingsPage inherits Rectangle {
                             checked: device.sync;
                             toggled => { Settings.device-changed(device.name, device.chat, device.ask, device.notify, !device.sync); }
                         }
+                        Rectangle { height: 6px; }
                         Rectangle { height: 1px; background: Palette.border; opacity: 0.25; }
                     }
                     if Settings.pair-code != "": Text {
@@ -822,6 +886,8 @@ component SettingsPage inherits Rectangle {
                     font-size: 0.8rem;
                     opacity: 0.65;
                 }
+                // Room under the last item, so it can be scrolled clear of the phone's navigation bar.
+                Rectangle { height: 140px; }
             }
         }
     }
@@ -852,7 +918,7 @@ export component AppWindow inherits Window {
         Palette.color-scheme = root.theme == 1 ? ColorScheme.light : root.theme == 2 ? ColorScheme.dark : ColorScheme.unknown;
     }
 
-    property <bool> show-settings;
+    in-out property <bool> show-settings;
     property <length> drawer-width: min(320px, root.width * 0.82);
     property <bool> drawer-open;
     // Where the drawer rests (0 = closed, drawer-width = open), animated

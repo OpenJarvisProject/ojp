@@ -128,5 +128,6 @@ fn android_main(app: slint::android::AndroidApp) {
         warning,
         set_dynamic_colors: Some(i_slint_backend_android_activity::set_dynamic_color),
         set_light_status_bar: Some(i_slint_backend_android_activity::set_light_status_bar),
+        test_hook: None,
     }).expect("ui event loop");
 }
