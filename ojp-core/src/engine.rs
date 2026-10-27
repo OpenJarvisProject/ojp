@@ -352,9 +352,16 @@ impl Engine {
                 }
                 Err(_) => break,
             };
+            // A small model sometimes repeats a call it already made instead of saying it is done;
+            // running it again would only waste rounds (and time), so a round of repeats ends the task.
+            let earlier: Vec<&serde_json::Value> = steps.iter().flat_map(|s| s.calls.iter()).collect();
+            let fresh: Vec<&serde_json::Value> = calls.iter().filter(|c| !tools::is_done(c) && !earlier.contains(c)).collect();
+            if fresh.is_empty() && !steps.is_empty() && std::env::var("OJP_LOOP_GUARD").map_or(true, |v| v != "0") {
+                break;
+            }
             let mut results = Vec::new();
             let mut explored = false;
-            for call in calls.iter().filter(|c| !tools::is_done(c)) {
+            for call in fresh {
                 // Text from a web page or file must not be able to plant "memories".
                 if tainted && tools::writes_memory(call) {
                     let what = call["args"]["text"].as_str().unwrap_or("");

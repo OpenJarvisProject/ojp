@@ -24,3 +24,7 @@ pub mod tts;
 pub use config::Config;
 pub use engine::{Engine, Event};
 pub use router::Route;
+
+/// One lock for every test that changes process-wide environment variables (HOME, ...).
+#[cfg(test)]
+pub(crate) static TEST_ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());

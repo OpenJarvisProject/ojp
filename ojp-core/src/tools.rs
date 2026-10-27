@@ -112,9 +112,10 @@ fn system_prompt_for(with_done: bool) -> String {
             .collect();
         s.push_str(&format!("- {}({})  // {}\n", t.name, args.join(", "), t.doc));
     }
-    if with_done {
-        s.push_str("- done()  // use this when nothing more is needed\n");
-    }
+    // `done` is deliberately not in this list in any round: the later rounds' own message explains it and
+    // their grammar allows it, and a system prompt that differs between rounds would make the model re-read
+    // the whole tool list (about 2,300 tokens, 30 seconds on a phone-class CPU) for every second round.
+    let _ = with_done;
     s.push_str(
         "Respond with ONLY a JSON array of 1 to 3 tool calls, in the order to do them, like \
          [{\"tool\": \"<name>\", \"args\": {...}}], and nothing else. Use more than one call only when the \
@@ -1019,7 +1020,8 @@ fn find_files(query: &str) -> Result<String> {
         bail!("{query:?} isn't a simple file name to search for");
     }
     let home = std::env::var("HOME").context("no home folder")?;
-    let pattern = format!("*{query}*");
+    // "packing list" should find packing-list.txt and packing_list.txt: the words may be joined any way.
+    let pattern = format!("*{}*", query.split_whitespace().collect::<Vec<_>>().join("*"));
     let out = capture(
         "find",
         &[
@@ -1278,10 +1280,9 @@ fn desktop_entries() -> Vec<(PathBuf, String)> {
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::sync::Mutex;
 
     /// Tests that change environment variables run one at a time.
-    static ENV: Mutex<()> = Mutex::new(());
+    use crate::TEST_ENV as ENV;
 
     fn calc(s: &str) -> String {
         calculate(s).unwrap()

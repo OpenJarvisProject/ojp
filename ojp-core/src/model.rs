@@ -56,7 +56,9 @@ pub struct Model {
     /// Per sequence, for recurrent models: the last prompt evaluated, and a
     /// snapshot of the state at the longest prefix it shared with the one before.
     last_prompt: [Vec<LlamaToken>; SEQS],
-    checkpoint: [Option<Checkpoint>; SEQS],
+    checkpoint: [Vec<Checkpoint>; SEQS],
+    /// Counts restores, to find the least recently used snapshot.
+    tick: u64,
     /// Index (in the last decoded batch) of the logits of the last prompt token.
     logits_idx: i32,
     /// One sequence and a small context: a probe router that sits beside a main model.
@@ -69,13 +71,18 @@ pub struct Model {
 struct CacheHeader {
     cached: Vec<Vec<i32>>,
     last_prompt: Vec<Vec<i32>>,
-    checkpoint: Vec<Option<Vec<i32>>>,
+    checkpoint: Vec<Vec<Vec<i32>>>,
 }
 
 struct Checkpoint {
     tokens: Vec<LlamaToken>,
     state: Vec<u8>,
+    used: u64,
 }
+
+/// Snapshots kept per sequence: the shortest one (the fixed start of the prompt, which every request
+/// shares) is never evicted; of the rest the least recently used goes first.
+const MAX_CHECKPOINTS: usize = 3;
 
 const END_MARKERS: [&str; 6] = ["<|endoftext|>", "<|im_end|>", "<|eot_id|>", "<|end|>", "<end_of_turn>", "</s>"];
 
@@ -135,6 +142,7 @@ impl Model {
             recurrent,
             last_prompt: Default::default(),
             checkpoint: Default::default(),
+            tick: 0,
             logits_idx: 0,
             light,
             embeddings_on: false,
@@ -196,29 +204,44 @@ impl Model {
         }
     }
 
-    fn restore(&mut self, seq: Seq) -> bool {
-        let Some(cp) = &self.checkpoint[seq as usize] else { return false };
+    fn restore(&mut self, seq: Seq, idx: usize) -> bool {
+        self.tick += 1;
+        let tick = self.tick;
+        let cp = &mut self.checkpoint[seq as usize][idx];
+        cp.used = tick;
         if std::env::var_os("OJP_DEBUG_CACHE").is_some() {
             eprintln!("cache: restoring checkpoint of {} tokens ({} bytes)", cp.tokens.len(), cp.state.len());
         }
         let ctx = self.llama.context().raw_handle();
         let t = std::time::Instant::now();
         let _ = self.llama.context().seq_rm(seq as i32, -1, -1);
+        let cp = &self.checkpoint[seq as usize][idx];
         // SAFETY: ctx is valid and the blob is a slice of the stated length.
         let loaded = unsafe { llama_crab_sys::llama_state_seq_set_data(ctx, cp.state.as_ptr(), cp.state.len(), seq as i32) };
         if std::env::var_os("OJP_DEBUG_CACHE").is_some() {
             eprintln!("cache: restore took {} ms", t.elapsed().as_millis());
         }
         if loaded == 0 {
-            if std::env::var_os("OJP_DEBUG_CACHE").is_some() {
-                eprintln!("cache: restore failed");
-            }
-            self.checkpoint[seq as usize] = None;
+            self.checkpoint[seq as usize].remove(idx);
             self.reset(seq);
             return false;
         }
-        self.cached[seq as usize] = cp.tokens.clone();
+        self.cached[seq as usize] = self.checkpoint[seq as usize][idx].tokens.clone();
         true
+    }
+
+    /// Keep `cp`, evicting the least recently used snapshot (never the shortest) when over the limit.
+    fn add_checkpoint(&mut self, seq: Seq, mut cp: Checkpoint) {
+        self.tick += 1;
+        cp.used = self.tick;
+        let list = &mut self.checkpoint[seq as usize];
+        list.push(cp);
+        if list.len() > MAX_CHECKPOINTS {
+            let shortest = (0..list.len()).min_by_key(|&i| list[i].tokens.len()).unwrap_or(0);
+            if let Some(victim) = (0..list.len()).filter(|&i| i != shortest).min_by_key(|&i| list[i].used) {
+                list.remove(victim);
+            }
+        }
     }
 
     /// Save the KV cache (all sequences) and the token lists describing it,
@@ -233,7 +256,7 @@ impl Model {
             checkpoint: self
                 .checkpoint
                 .iter()
-                .map(|cp| cp.as_ref().map(|cp| cp.tokens.iter().map(|t| t.raw()).collect()))
+                .map(|list| list.iter().map(|cp| cp.tokens.iter().map(|t| t.raw()).collect()).collect())
                 .collect(),
         };
         let header = serde_json::to_vec(&header)?;
@@ -245,11 +268,12 @@ impl Model {
             out.extend_from_slice(&(blob.len() as u64).to_le_bytes());
             out.extend_from_slice(&blob);
         }
-        // Recurrent models' snapshots, one blob per sequence (empty when none).
-        for cp in &self.checkpoint {
-            let blob: &[u8] = cp.as_ref().map_or(&[], |cp| &cp.state);
-            out.extend_from_slice(&(blob.len() as u64).to_le_bytes());
-            out.extend_from_slice(blob);
+        // Recurrent models' snapshots, in the order the header lists them.
+        for list in &self.checkpoint {
+            for cp in list {
+                out.extend_from_slice(&(cp.state.len() as u64).to_le_bytes());
+                out.extend_from_slice(&cp.state);
+            }
         }
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
@@ -292,11 +316,14 @@ impl Model {
                 }
             }
             let tokens = |raw: &[i32]| raw.iter().map(|&t| LlamaToken::from(t)).collect::<Vec<_>>();
-            for (i, cp_tokens) in header.checkpoint.iter().enumerate() {
-                let size = read_len(at)?;
-                let blob = bytes.get(at + 8..at + 8 + size).context("short cache file")?;
-                at += 8 + size;
-                self.checkpoint[i] = cp_tokens.as_ref().map(|t| Checkpoint { tokens: tokens(t), state: blob.to_vec() });
+            for (i, list) in header.checkpoint.iter().enumerate() {
+                self.checkpoint[i].clear();
+                for cp_tokens in list {
+                    let size = read_len(at)?;
+                    let blob = bytes.get(at + 8..at + 8 + size).context("short cache file")?;
+                    at += 8 + size;
+                    self.checkpoint[i].push(Checkpoint { tokens: tokens(cp_tokens), state: blob.to_vec(), used: 0 });
+                }
             }
             for i in 0..SEQS {
                 self.cached[i] = tokens(&header.cached[i]);
@@ -386,7 +413,7 @@ impl Model {
         self.cached[seq as usize].clear();
         if self.recurrent {
             self.last_prompt[seq as usize].clear();
-            self.checkpoint[seq as usize] = None;
+            self.checkpoint[seq as usize].clear();
         }
     }
 
@@ -411,10 +438,13 @@ impl Model {
             if common == cached_len && cached_len < tokens.len() {
                 cached_len
             } else {
-                let usable = self.checkpoint[seq as usize]
-                    .as_ref()
-                    .is_some_and(|cp| cp.tokens.len() < tokens.len() && tokens.starts_with(&cp.tokens));
-                if !(usable && self.restore(seq)) {
+                let best = self.checkpoint[seq as usize]
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, cp)| cp.tokens.len() < tokens.len() && tokens.starts_with(&cp.tokens))
+                    .max_by_key(|(_, cp)| cp.tokens.len())
+                    .map(|(i, _)| i);
+                if !best.is_some_and(|i| self.restore(seq, i)) {
                     let _ = self.llama.context().seq_rm(id, -1, -1);
                     self.cached[seq as usize].clear();
                 }
@@ -434,7 +464,7 @@ impl Model {
             // next one will probably depart too: snapshot the state there.
             let shared = self.last_prompt[seq as usize].iter().zip(tokens).take_while(|(a, b)| a == b).count();
             let at = shared.min(tokens.len() - 1);
-            if at > keep && self.checkpoint[seq as usize].as_ref().is_none_or(|cp| cp.tokens.len() != at) {
+            if at > keep && self.checkpoint[seq as usize].iter().all(|cp| cp.tokens.len() != at) {
                 checkpoint_at = Some(at);
             }
             self.last_prompt[seq as usize] = tokens.to_vec();
@@ -466,7 +496,7 @@ impl Model {
             start = end;
             if checkpoint_at == Some(start) {
                 let state = self.snapshot(seq);
-                self.checkpoint[seq as usize] = Some(Checkpoint { tokens: tokens[..start].to_vec(), state });
+                self.add_checkpoint(seq, Checkpoint { tokens: tokens[..start].to_vec(), state, used: 0 });
             }
         }
 

@@ -442,9 +442,8 @@ pub fn html_to_text(html: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
 
-    static ENV: Mutex<()> = Mutex::new(());
+    use crate::TEST_ENV as ENV;
 
     fn fake_home() -> (std::sync::MutexGuard<'static, ()>, PathBuf) {
         let guard = ENV.lock().unwrap_or_else(|e| e.into_inner());
