@@ -87,6 +87,7 @@ export global Settings {
     in-out property <string> shizuku-text;
     callback shizuku-action();
     // Whether the chosen model's files are on this device, with a button to fetch them.
+    in property <string> version;
     in-out property <string> model-note;
     in-out property <bool> model-needs-download;
     callback download-now();
@@ -585,6 +586,7 @@ component SettingsPage inherits Rectangle {
                 spacing: 14px;
                 alignment: start;
 
+                Text { text: "OpenJarvis " + Settings.version; font-size: 0.8rem; opacity: 0.6; }
                 Text { text: "Model"; font-weight: 700; color: Palette.accent-background; }
                 ChoiceRow {
                     title: "Classic (Qwen2.5)";

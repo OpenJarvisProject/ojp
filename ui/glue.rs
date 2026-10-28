@@ -89,6 +89,7 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     chat.set_status("Loading models…".into());
 
     let settings = ui.global::<Settings>();
+    settings.set_version(env!("CARGO_PKG_VERSION").into());
     settings.set_theme(theme_index(&setup.config.ui.theme));
     settings.set_dynamic_colors(setup.config.ui.dynamic_colors);
     settings.set_dynamic_colors_supported(setup.set_dynamic_colors.is_some());
@@ -159,6 +160,7 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
         });
     }
     let worker_tx = tx.clone();
+    let (config_path, data_dir) = (setup.config_path.clone(), setup.data_dir.clone());
     std::thread::spawn(move || worker(setup, rx, weak, worker_tx));
 
     let send = move |request| {
@@ -210,9 +212,21 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
         let send = send.clone();
         move |choice| send(Request::Brain(choice))
     });
+    // The worker thread may be busy for minutes (loading or warming up the model that is already in use), so
+    // the Settings screen and its download must not queue behind it: the note and the download run on their own.
     settings.on_download_now({
-        let send = send.clone();
-        move || send(Request::Download(-1, true))
+        let (weak, send, config_path, data_dir) = (ui.as_weak(), send.clone(), config_path.clone(), data_dir.clone());
+        move || {
+            set_download(&weak, true, "Starting the download…".into(), 0.0);
+            let (weak, send, config_path, data_dir) = (weak.clone(), send.clone(), config_path.clone(), data_dir.clone());
+            std::thread::spawn(move || {
+                let (config, _) = Config::load_or_default(&config_path, &data_dir);
+                if download_all(&download::missing(&config), &weak) {
+                    // Nothing is missing now: the worker just loads the models when it is free.
+                    send(Request::Download(-1, true));
+                }
+            });
+        }
     });
     settings.on_unpair({
         let send = send.clone();
@@ -231,6 +245,14 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
         move || {
             let Some(ui) = weak.upgrade() else { return };
             let s = ui.global::<Settings>();
+            // Say at once what the chosen model needs, from the files on disk (the worker may be busy).
+            let profile_id = if s.get_profile() == 1 { "uncensored" } else { "classic" };
+            if storage::set_str(&config_path, "models", "profile", profile_id).is_ok() {
+                let (config, _) = Config::load_or_default(&config_path, &data_dir);
+                let (note, needs) = model_note(&config, &download::missing(&config));
+                s.set_model_note(note.into());
+                s.set_model_needs_download(needs);
+            }
             send(Request::Settings {
                 profile: s.get_profile(),
                 theme: s.get_theme(),
