@@ -418,7 +418,22 @@ fn load_engine(setup: &Setup, ui: &slint::Weak<AppWindow>) -> Option<Engine> {
         Vec::new()
     };
     set_download_targets(ui, targets);
+    // Say so at once, before any network call: looking up the file sizes can take a while on a poor connection,
+    // and the Download button must not wait for it.
+    let (note, needs) = model_note(config, &missing);
+    let _ = ui.upgrade_in_event_loop(move |ui| {
+        let s = ui.global::<Settings>();
+        s.set_model_note(note.into());
+        s.set_model_needs_download(needs);
+    });
     if !missing.is_empty() {
+        let roles: Vec<&str> = missing.iter().map(|m| m.role).collect();
+        set_download(
+            ui,
+            true,
+            format!("OpenJarvis needs to download its AI models once ({}). They stay on this device, and everything runs offline after that.", roles.join(", ")),
+            -1.0,
+        );
         let sizes: Vec<Option<u64>> = missing.iter().map(|item| download::size(&item.url).ok().flatten()).collect();
         let parts: Vec<String> = missing
             .iter()
@@ -453,13 +468,6 @@ fn load_engine(setup: &Setup, ui: &slint::Weak<AppWindow>) -> Option<Engine> {
     } else {
         set_download(ui, false, String::new(), -1.0);
     }
-    // Settings shows the same fact next to the model choice, with its own Download button.
-    let (note, needs) = model_note(config, &missing);
-    let _ = ui.upgrade_in_event_loop(move |ui| {
-        let s = ui.global::<Settings>();
-        s.set_model_note(note.into());
-        s.set_model_needs_download(needs);
-    });
     let engine = match Engine::new(config) {
         Ok(engine) => {
             set_state(ui, false, Some(engine.status.join(" · ")));

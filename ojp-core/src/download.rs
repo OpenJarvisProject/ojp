@@ -6,6 +6,7 @@
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use sha2::{Digest, Sha256};
@@ -70,9 +71,28 @@ pub fn tts_missing(config: &Config) -> Vec<Item> {
     items
 }
 
-/// Size in bytes, from a HEAD request (None if the server doesn't say).
+/// An HTTP client that gives up instead of waiting forever: on some phone networks a name resolves to an
+/// address that doesn't actually work, and the system's own connect timeout is minutes long. The body of a
+/// download is not time-limited (it is big), only getting connected and getting the answer started.
+fn agent(overall: Option<Duration>) -> ureq::Agent {
+    let mut builder = ureq::Agent::config_builder()
+        .timeout_resolve(Some(Duration::from_secs(10)))
+        .timeout_connect(Some(Duration::from_secs(10)))
+        .timeout_send_request(Some(Duration::from_secs(15)))
+        .timeout_recv_response(Some(Duration::from_secs(30)));
+    if let Some(t) = overall {
+        builder = builder.timeout_global(Some(t));
+    }
+    ureq::Agent::new_with_config(builder.build())
+}
+
+/// Size in bytes, from a HEAD request (None if the server doesn't say). Gives up after 8 seconds.
 pub fn size(url: &str) -> Result<Option<u64>> {
-    let response = ureq::head(url).call()?;
+    size_within(url, Duration::from_secs(8))
+}
+
+pub fn size_within(url: &str, limit: Duration) -> Result<Option<u64>> {
+    let response = agent(Some(limit)).head(url).call()?;
     Ok(response.headers().get("content-length").and_then(|v| v.to_str().ok()?.parse().ok()))
 }
 
@@ -84,7 +104,7 @@ pub fn fetch(item: &Item, progress: &mut dyn FnMut(u64, Option<u64>)) -> Result<
     let part = part_path(&item.dest);
     let have = std::fs::metadata(&part).map_or(0, |m| m.len());
 
-    let mut request = ureq::get(&item.url);
+    let mut request = agent(None).get(&item.url);
     if have > 0 {
         request = request.header("Range", format!("bytes={have}-"));
     }
@@ -152,6 +172,17 @@ fn sha256_file(path: &Path) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_server_that_never_answers_does_not_hang_the_size_check() {
+        // Accepts the connection and then says nothing, like a black-holed network path.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/model.gguf", listener.local_addr().unwrap());
+        let started = std::time::Instant::now();
+        assert!(size_within(&url, Duration::from_millis(700)).is_err());
+        assert!(started.elapsed() < Duration::from_secs(5), "took {:?}", started.elapsed());
+        drop(listener);
+    }
 
     #[test]
     fn part_path_appends_suffix() {
