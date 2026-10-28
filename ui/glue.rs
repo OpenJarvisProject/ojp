@@ -222,6 +222,7 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
             std::thread::spawn(move || {
                 let (config, _) = Config::load_or_default(&config_path, &data_dir);
                 if download_all(&download::missing(&config), &weak) {
+                    set_model_note(&weak, "Downloaded. Loading it now…".into(), false);
                     // Nothing is missing now: the worker just loads the models when it is free.
                     send(Request::Download(-1, true));
                 }
@@ -490,13 +491,23 @@ fn load_engine(setup: &Setup, ui: &slint::Weak<AppWindow>) -> Option<Engine> {
     } else {
         set_download(ui, false, String::new(), -1.0);
     }
+    if missing.is_empty() {
+        // Loading takes a while, the first time most of all: say so, and drop the old failure notes.
+        set_model_note(ui, "Loading the model on this device… the first time can take a minute or two. Chat opens when it is ready.".into(), false);
+        set_state(ui, true, Some("Loading the model… (the first time takes a while)".into()));
+        drop_setup_messages(ui);
+    }
     let engine = match Engine::new(config) {
         Ok(engine) => {
             set_state(ui, false, Some(engine.status.join(" · ")));
+            let (ready, verb) = if config.models.profile == "uncensored" { ("The uncensored model", "is") } else { ("The models", "are") };
+            set_model_note(ui, format!("{ready} {verb} loaded and ready."), false);
+            push_message(ui, format!("{ready} {verb} loaded and ready on this device. Say something."), "ready");
             Some(engine)
         }
         Err(e) => {
             if missing.is_empty() {
+                set_model_note(ui, "The model is on this device but could not be loaded (see the chat for why).".into(), false);
                 push_message(ui, format!("{e:#}\n\n{}", setup.setup_hint), "setup");
             }
             set_state(ui, false, Some("No model loaded yet".into()));
@@ -512,6 +523,27 @@ fn load_engine(setup: &Setup, ui: &slint::Weak<AppWindow>) -> Option<Engine> {
     );
     let _ = ui.upgrade_in_event_loop(move |ui| ui.global::<Settings>().set_info(info.into()));
     engine
+}
+
+fn set_model_note(ui: &slint::Weak<AppWindow>, note: String, needs_download: bool) {
+    let _ = ui.upgrade_in_event_loop(move |ui| {
+        let s = ui.global::<Settings>();
+        s.set_model_note(note.into());
+        s.set_model_needs_download(needs_download);
+    });
+}
+
+/// Remove earlier "no model" setup notes from the chat; they stop being true once a model loads.
+fn drop_setup_messages(ui: &slint::Weak<AppWindow>) {
+    let _ = ui.upgrade_in_event_loop(move |ui| {
+        let messages = ui.global::<Chat>().get_messages();
+        let Some(model) = messages.as_any().downcast_ref::<VecModel<Message>>() else { return };
+        for i in (0..model.row_count()).rev() {
+            if model.row_data(i).is_some_and(|m| m.meta == "setup") {
+                model.remove(i);
+            }
+        }
+    });
 }
 
 /// What Settings says about the chosen model's files: whether they are here, and if not, that they need downloading.
