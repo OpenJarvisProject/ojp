@@ -60,6 +60,8 @@ pub struct Setup {
     pub set_light_status_bar: Option<fn(bool)>,
     /// Android: lets the app handle the Back button (the handler returns whether it did).
     pub set_back_handler: Option<fn(Box<dyn Fn() -> bool>)>,
+    /// Android: whether the keyboard may open by itself when the app comes back to the front.
+    pub set_keyboard_on_return: Option<fn(bool)>,
     /// For the headless UI tests only: called once with the window just before it runs.
     pub test_hook: Option<Box<dyn FnOnce(slint::Weak<AppWindow>) + Send>>,
 }
@@ -97,6 +99,24 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     settings.set_theme(theme_index(&setup.config.ui.theme));
     settings.set_dynamic_colors(setup.config.ui.dynamic_colors);
     settings.set_material(setup.config.ui.material);
+    settings.set_keyboard_on_return(setup.config.ui.keyboard_on_return);
+    settings.set_keyboard_on_return_supported(setup.set_keyboard_on_return.is_some());
+    if let Some(apply) = setup.set_keyboard_on_return {
+        apply(setup.config.ui.keyboard_on_return);
+    }
+    let apply_keyboard = setup.set_keyboard_on_return;
+    settings.on_keyboard_on_return_changed({
+        let (weak, path) = (ui.as_weak(), setup.config_path.clone());
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                let on = ui.global::<Settings>().get_keyboard_on_return();
+                let _ = storage::set_bool(&path, "ui", "keyboard_on_return", on);
+                if let Some(apply) = apply_keyboard {
+                    apply(on);
+                }
+            }
+        }
+    });
     settings.on_material_changed({
         let (weak, path) = (ui.as_weak(), setup.config_path.clone());
         move || {

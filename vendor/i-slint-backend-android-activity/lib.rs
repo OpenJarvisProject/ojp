@@ -26,6 +26,31 @@ use ndk_09 as ndk;
 
 pub use android_activity::AndroidApp;
 
+/// OJP patch: whether the on-screen keyboard may open by itself when the app comes back to the front (it does when the
+/// text box still has focus). Off by default: it then opens only when the text box is tapped.
+static KEYBOARD_ON_RETURN: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+/// When the app last came to the front, in milliseconds since the process started (0 = never).
+static FRONT_AT_MS: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+static STARTED: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
+fn now_ms() -> u64 {
+    STARTED.get_or_init(std::time::Instant::now).elapsed().as_millis() as u64 + 1
+}
+
+pub fn set_keyboard_on_return(yes: bool) {
+    KEYBOARD_ON_RETURN.store(yes, core::sync::atomic::Ordering::Relaxed);
+}
+
+pub(crate) fn app_came_to_front() {
+    FRONT_AT_MS.store(now_ms(), core::sync::atomic::Ordering::Relaxed);
+}
+
+/// False for the second after the app comes back, unless the user asked for the keyboard to open then.
+pub(crate) fn keyboard_may_open() -> bool {
+    let front = FRONT_AT_MS.load(core::sync::atomic::Ordering::Relaxed);
+    KEYBOARD_ON_RETURN.load(core::sync::atomic::Ordering::Relaxed) || front == 0 || now_ms().saturating_sub(front) > 1000
+}
+
 /// OJP patch: let the app handle the Back button (close a dialog, leave Settings, ...). Return true when handled.
 pub fn set_back_handler(handler: Box<dyn Fn() -> bool>) {
     BACK_HANDLER.with_borrow_mut(|h| *h = Some(handler));

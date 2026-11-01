@@ -70,3 +70,6 @@ changes the newer C API needs:
 - `lib.rs`, `javahelper.rs`, `androidwindowadapter.rs`: `set_back_handler` lets the app answer the Back button first
   (close a dialog, leave Settings, open the chat list), whatever has the keyboard focus. Only when it says no does Back
   go to the usual path (and close the app). A handled press also swallows its release, or the system would close the app.
+- `lib.rs`, `androidwindowadapter.rs`: the keyboard no longer opens by itself in the second after the app comes back to the
+  front (the text box still has focus then and Slint asks for the keyboard). `set_keyboard_on_return(true)` turns the old
+  behaviour back on; tapping the text box always opens it.

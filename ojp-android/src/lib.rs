@@ -129,6 +129,7 @@ fn android_main(app: slint::android::AndroidApp) {
         set_dynamic_colors: Some(i_slint_backend_android_activity::set_dynamic_color),
         set_light_status_bar: Some(i_slint_backend_android_activity::set_light_status_bar),
         set_back_handler: Some(i_slint_backend_android_activity::set_back_handler),
+        set_keyboard_on_return: Some(i_slint_backend_android_activity::set_keyboard_on_return),
         test_hook: None,
     }).expect("ui event loop");
 }

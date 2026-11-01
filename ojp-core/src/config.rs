@@ -105,6 +105,8 @@ theme = "system"
 dynamic_colors = true
 # Rounder, Material 3-like shapes: big corners and pill-shaped buttons.
 material = false
+# Android: open the keyboard by itself when you come back to the app (otherwise tap the text box).
+keyboard_on_return = false
 
 [download]
 # Where the app fetches a model whose file above is missing (first run:
@@ -226,11 +228,13 @@ pub struct Ui {
     pub dynamic_colors: bool,
     /// Rounder, Material 3-like shapes.
     pub material: bool,
+    /// Android: open the keyboard by itself when coming back to the app with the text box still focused.
+    pub keyboard_on_return: bool,
 }
 
 impl Default for Ui {
     fn default() -> Self {
-        Ui { theme: "system".into(), dynamic_colors: true, material: false }
+        Ui { theme: "system".into(), dynamic_colors: true, material: false, keyboard_on_return: false }
     }
 }
 

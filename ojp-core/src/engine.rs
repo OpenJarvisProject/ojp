@@ -1008,7 +1008,10 @@ fn generate_local(
     // The rendered history only grows at the end between turns, so the
     // prompt cache makes each turn evaluate just the newest messages.
     let prompt = template.render(messages, true);
-    let mut sampler = SamplingOptions::chat().build_sampler(model.llama())?;
+    // A small model at a low temperature with no repeat penalty falls into loops (the same sentence forever), so
+    // answers use a milder penalty over the last 256 tokens and a bit more variety.
+    let options = SamplingOptions { temperature: 0.6, top_k: 20, top_p: 0.9, penalty_last_n: 256, repeat_penalty: 1.12, ..SamplingOptions::chat() };
+    let mut sampler = options.build_sampler(model.llama())?;
     let text = model.complete(Seq::Chat, &prompt, &mut sampler, MAX_TOKENS, &mut |t| on_event(Event::Token(t.to_string())))?;
     Ok(text.trim().to_string())
 }

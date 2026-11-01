@@ -34,6 +34,7 @@ fn main() -> anyhow::Result<()> {
         set_dynamic_colors: None,
         set_light_status_bar: None,
         set_back_handler: None,
+        set_keyboard_on_return: None,
         test_hook: Some(Box::new(|ui| {
             std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_secs(3));

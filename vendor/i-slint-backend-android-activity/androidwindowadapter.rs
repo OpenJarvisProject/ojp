@@ -96,9 +96,12 @@ impl i_slint_core::window::WindowAdapterInternal for AndroidWindowAdapter {
                         self.show_cursor_handles.get(),
                     )
                     .unwrap_or_else(|e| print_jni_error(&self.app, e));
-                self.java_helper
-                    .show_or_hide_soft_input(true)
-                    .unwrap_or_else(|e| print_jni_error(&self.app, e));
+                // OJP patch: not by itself right after coming back to the app (see `keyboard_may_open`).
+                if crate::keyboard_may_open() {
+                    self.java_helper
+                        .show_or_hide_soft_input(true)
+                        .unwrap_or_else(|e| print_jni_error(&self.app, e));
+                }
 
                 if let Some(focus_item) =
                     WindowInner::from_pub(&self.window).focus_item.borrow().upgrade()
@@ -245,6 +248,7 @@ impl AndroidWindowAdapter {
                 self.do_render()?;
             }
             PollEvent::Main(MainEvent::GainedFocus) => {
+                crate::app_came_to_front();
                 self.window.dispatch_event_with_result(WindowEvent::WindowActiveChanged(true))?;
             }
             PollEvent::Main(MainEvent::LostFocus) => {

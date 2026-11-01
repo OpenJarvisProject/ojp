@@ -90,6 +90,10 @@ export global Settings {
     // Rounder, Material 3-like shapes (pill buttons, big corners).
     in-out property <bool> material;
     callback material-changed();
+    // Android: open the keyboard by itself when coming back to the app (off: only when the text box is tapped).
+    in-out property <bool> keyboard-on-return;
+    in-out property <bool> keyboard-on-return-supported;
+    callback keyboard-on-return-changed();
     in-out property <bool> dynamic-colors: true;
     // Only Android has wallpaper-based colours.
     in-out property <bool> dynamic-colors-supported;
@@ -207,6 +211,126 @@ component AppButton inherits Rectangle {
     }
 }
 
+// The platform's drop-down, or a pill with a rounded list in the Material look.
+component AppComboBox inherits Rectangle {
+    in property <[string]> model;
+    in-out property <int> current-index;
+    callback selected(string);
+    min-height: 40px;
+    preferred-height: Look.material ? 44px : 36px;
+    preferred-width: max(140px, measure.preferred-width + 64px);
+    measure := Text {
+        text: root.model[root.current-index];
+        visible: false;
+    }
+    if !Look.material: ComboBox {
+        width: parent.width;
+        height: parent.height;
+        model: root.model;
+        current-index <=> root.current-index;
+        selected(value) => { root.selected(value); }
+    }
+    if Look.material: Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: pick.pressed ? Palette.alternate-background : Palette.control-background;
+        border-radius: self.height / 2;
+        border-width: 1px;
+        border-color: Palette.border;
+        Text {
+            x: 18px;
+            width: parent.width - 52px;
+            height: parent.height;
+            text: root.model[root.current-index];
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        Path {
+            x: parent.width - 36px;
+            y: (parent.height - 8px) / 2;
+            width: 14px;
+            height: 8px;
+            viewbox-width: 14;
+            viewbox-height: 8;
+            commands: "M 1 1 L 7 7 L 13 1";
+            stroke: Palette.foreground;
+            stroke-width: 2px;
+        }
+        pick := TouchArea {
+            clicked => { list.show(); }
+        }
+        list := PopupWindow {
+            x: 0px;
+            y: parent.height + 4px;
+            width: parent.width;
+            Rectangle {
+                background: Palette.background;
+                border-radius: Look.item;
+                border-width: 1px;
+                border-color: Palette.border;
+                VerticalLayout {
+                    padding: 4px;
+                    for option[i] in root.model: Rectangle {
+                        height: 44px;
+                        border-radius: Look.small;
+                        background: row.pressed ? Palette.alternate-background : (i == root.current-index ? Palette.control-background : transparent);
+                        Text { x: 14px; text: option; vertical-alignment: center; }
+                        row := TouchArea {
+                            clicked => {
+                                root.current-index = i;
+                                root.selected(option);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The platform's one-line text field, or a pill in the Material look.
+component AppField inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder-text;
+    callback accepted(string);
+    min-height: 40px;
+    preferred-height: Look.material ? 48px : 36px;
+    if !Look.material: LineEdit {
+        width: parent.width;
+        height: parent.height;
+        text <=> root.text;
+        placeholder-text: root.placeholder-text;
+        accepted(value) => { root.accepted(value); }
+    }
+    if Look.material: Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: Palette.control-background;
+        border-radius: self.height / 2;
+        border-width: 1px;
+        border-color: field.has-focus ? Palette.accent-background : Palette.border;
+        field := TextInput {
+            x: 18px;
+            width: parent.width - 36px;
+            height: parent.height;
+            vertical-alignment: center;
+            text <=> root.text;
+            color: Palette.foreground;
+            selection-background-color: Palette.selection-background;
+            selection-foreground-color: Palette.selection-foreground;
+            accepted => { root.accepted(self.text); }
+        }
+        if root.text == "" && field.preedit-text == "": Text {
+            x: 18px;
+            height: parent.height;
+            text: root.placeholder-text;
+            vertical-alignment: center;
+            color: Palette.foreground;
+            opacity: 0.5;
+        }
+    }
+}
+
 component IconButton inherits Rectangle {
     in property <image> icon;
     callback clicked;
@@ -300,14 +424,17 @@ component ChatPage inherits Rectangle {
     background: Palette.background;
 
     function submit() {
-        if (input.text != "" && !Chat.busy) {
-            // Losing focus makes the keyboard hand over the word still being typed (it is held back until a
-            // space), so the whole message is sent and nothing is left to reappear in the next one.
-            input.clear-focus();
+        if (Chat.busy) {
+            return;
+        }
+        // Losing focus makes the keyboard hand over the word still being typed (it is held back until a
+        // space), so the whole message is sent and nothing is left to reappear in the next one.
+        input.clear-focus();
+        if (input.text != "") {
             Chat.send(input.text);
             input.text = "";
-            input.focus();
         }
+        input.focus();
     }
 
     VerticalLayout {
@@ -445,18 +572,18 @@ component ChatPage inherits Rectangle {
             box := Rectangle {
                 horizontal-stretch: 1;
                 property <length> line: 22px;
-                height: min(max(44px, input.preferred-height + 20px), 6 * self.line + 20px);
+                height: clamp(input.preferred-height + 24px, 44px, 6 * self.line + 24px);
                 background: Palette.control-background;
                 border-radius: Look.field;
                 border-width: 1px;
                 border-color: input.has-focus ? Palette.accent-background : Palette.border;
                 flick := Flickable {
-                    x: 12px;
-                    width: parent.width - 24px;
-                    y: 10px;
-                    height: parent.height - 20px;
+                    x: 16px;
+                    width: parent.width - 32px;
+                    height: min(input.preferred-height, parent.height - 24px);
+                    y: (parent.height - self.height) / 2;
                     content-width: self.width;
-                    content-height: max(input.preferred-height, self.height);
+                    content-height: input.preferred-height;
                     input := TextInput {
                         x: 0px;
                         y: 0px;
@@ -484,10 +611,12 @@ component ChatPage inherits Rectangle {
                         }
                     }
                 }
-                if input.text == "": Text {
-                    x: 12px;
-                    y: 10px;
+                // Not while the keyboard still holds the word being typed (it is not in `text` until it is finished).
+                if input.text == "" && input.preedit-text == "": Text {
+                    x: 16px;
+                    height: parent.height;
                     text: "Message " + Chat.assistant-name;
+                    vertical-alignment: center;
                     color: Palette.foreground;
                     opacity: 0.5;
                 }
@@ -501,7 +630,7 @@ component ChatPage inherits Rectangle {
                 }
                 if !Chat.thinking: AppButton {
                     text: "Send";
-                    enabled: !Chat.busy && input.text != "";
+                    enabled: !Chat.busy && (input.text != "" || input.preedit-text != "");
                     clicked => { root.submit(); }
                 }
             }
@@ -660,7 +789,7 @@ component MixRow inherits VerticalLayout {
             horizontal-stretch: 1;
             vertical-alignment: center;
         }
-        ComboBox {
+        AppComboBox {
             horizontal-stretch: 0;
             model: root.choices;
             current-index <=> root.voice;
@@ -882,7 +1011,7 @@ component SettingsPage inherits Rectangle {
                         HorizontalLayout {
                             spacing: 12px;
                             Text { text: "May ask this device to do things"; horizontal-stretch: 1; vertical-alignment: center; wrap: word-wrap; }
-                            ComboBox {
+                            AppComboBox {
                                 horizontal-stretch: 0;
                                 model: ["Nothing", "Basic", "Files & web", "Everything"];
                                 current-index: device.ask;
@@ -923,7 +1052,7 @@ component SettingsPage inherits Rectangle {
                     }
                     HorizontalLayout {
                         spacing: 8px;
-                        code-input := LineEdit {
+                        code-input := AppField {
                             placeholder-text: "Code from the other device";
                             horizontal-stretch: 1;
                         }
@@ -952,7 +1081,7 @@ component SettingsPage inherits Rectangle {
                         horizontal-stretch: 1;
                         vertical-alignment: center;
                     }
-                    ComboBox {
+                    AppComboBox {
                         horizontal-stretch: 0;
                         model: ["System", "Light", "Dark"];
                         current-index <=> Settings.theme;
@@ -985,7 +1114,7 @@ component SettingsPage inherits Rectangle {
                         horizontal-stretch: 1;
                         vertical-alignment: center;
                     }
-                    ComboBox {
+                    AppComboBox {
                         horizontal-stretch: 0;
                         model: Settings.tts-engines;
                         current-index <=> Settings.tts-engine;
@@ -999,7 +1128,7 @@ component SettingsPage inherits Rectangle {
                         horizontal-stretch: 1;
                         vertical-alignment: center;
                     }
-                    ComboBox {
+                    AppComboBox {
                         horizontal-stretch: 0;
                         model: Settings.tts-moss-voices;
                         current-index <=> Settings.tts-moss-voice;
@@ -1043,7 +1172,7 @@ component SettingsPage inherits Rectangle {
                         horizontal-stretch: 1;
                         vertical-alignment: center;
                     }
-                    ComboBox {
+                    AppComboBox {
                         horizontal-stretch: 0;
                         model: Settings.tts-speeds;
                         current-index <=> Settings.tts-speed;
@@ -1057,7 +1186,7 @@ component SettingsPage inherits Rectangle {
                         horizontal-stretch: 1;
                         vertical-alignment: center;
                     }
-                    ComboBox {
+                    AppComboBox {
                         horizontal-stretch: 0;
                         model: Settings.tts-clarities;
                         current-index <=> Settings.tts-clarity;
@@ -1083,6 +1212,12 @@ component SettingsPage inherits Rectangle {
                     description: "Off: only the small router model is loaded and answers everything (less memory, weaker answers).";
                     checked <=> Settings.main-enabled;
                     toggled => { Settings.changed(); }
+                }
+                if Settings.keyboard-on-return-supported: SettingRow {
+                    title: "Open the keyboard when I come back";
+                    description: "Off: the keyboard stays closed when you return to the app, until you tap the message box.";
+                    checked <=> Settings.keyboard-on-return;
+                    toggled => { Settings.keyboard-on-return-changed(); }
                 }
                 Text {
                     text: Settings.info;
@@ -1337,10 +1472,10 @@ export component AppWindow inherits Window {
                 padding: 18px;
                 spacing: 12px;
                 Text { text: "Rename chat"; font-weight: 700; font-size: 1.1rem; }
-                LineEdit {
+                AppField {
                     text <=> root.rename-text;
                     placeholder-text: "Chat name";
-                    accepted => { Chat.rename-chat(root.rename-id, self.text); root.rename-id = ""; }
+                    accepted(value) => { Chat.rename-chat(root.rename-id, value); root.rename-id = ""; }
                 }
                 HorizontalLayout {
                     spacing: 8px;
