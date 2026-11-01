@@ -103,6 +103,8 @@ internet = false
 theme = "system"
 # Android: tint the app with your wallpaper's colours (Material You).
 dynamic_colors = true
+# Rounder, Material 3-like shapes: big corners and pill-shaped buttons.
+material = false
 
 [download]
 # Where the app fetches a model whose file above is missing (first run:
@@ -222,11 +224,13 @@ pub struct Ui {
     pub theme: String,
     /// Android: tint the UI with the wallpaper-based system accent colour.
     pub dynamic_colors: bool,
+    /// Rounder, Material 3-like shapes.
+    pub material: bool,
 }
 
 impl Default for Ui {
     fn default() -> Self {
-        Ui { theme: "system".into(), dynamic_colors: true }
+        Ui { theme: "system".into(), dynamic_colors: true, material: false }
     }
 }
 

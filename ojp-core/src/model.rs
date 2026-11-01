@@ -25,6 +25,24 @@ pub enum Seq {
     Tool = 2,
 }
 const SEQS: usize = 3;
+
+/// Set by the Stop button: generation ends at the next batch or token, so a stuck or unwanted answer can be cut off.
+static STOP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The message of the error that cuts off a prompt that is still being read.
+pub const STOPPED: &str = "stopped";
+
+pub fn request_stop() {
+    STOP.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn clear_stop() {
+    STOP.store(false, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn stop_requested() -> bool {
+    STOP.load(std::sync::atomic::Ordering::Relaxed)
+}
 const ALL_SEQS: [Seq; SEQS] = [Seq::Route, Seq::Chat, Seq::Tool];
 
 /// CPU threads for evaluation; 0 = pick automatically (see `auto_threads`).
@@ -507,6 +525,9 @@ impl Model {
         let mut start = keep;
         let first = keep;
         while start < tokens.len() {
+            if stop_requested() {
+                bail!(STOPPED);
+            }
             let mut end = (start + n_batch).min(tokens.len());
             if let Some(at) = checkpoint_at.filter(|&at| start < at && at < end) {
                 end = at;
@@ -543,6 +564,9 @@ impl Model {
         // bytes (it treats llama.cpp's "buffer too small" as an error).
         let mut pending: Vec<LlamaToken> = Vec::new();
         for _ in 0..max_tokens {
+            if stop_requested() {
+                break;
+            }
             // SAFETY: the context handle is valid for the lifetime of
             // self.llama, and logits_idx indexes the last decoded batch.
             let token = unsafe { sampler.sample(self.llama.context().raw_handle(), logits_idx) };

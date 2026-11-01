@@ -159,8 +159,102 @@ fn wrap(s: &str) -> String {
     if s.chars().all(|c| c.is_alphanumeric() || c == '.') { s.to_string() } else { format!("({s})") }
 }
 
+/// The display widget draws only bold, italic, strikethrough, inline code, lists and links, and refuses a
+/// whole message that contains anything else (a quote, heading, code block, rule or image), showing the raw
+/// markdown instead. Rewrite those few constructs into ones it can draw: quotes get a bar, headings turn
+/// bold, code lines become inline code, rules become a line, images become their description.
+pub fn simplify_markdown(text: &str) -> String {
+    fn code_span(line: &str) -> String {
+        if line.contains('`') { format!("`` {line} ``") } else { format!("`{line}`") }
+    }
+    fn strip_images(line: &str) -> String {
+        let mut out = String::new();
+        let mut rest = line;
+        while let Some(at) = rest.find("![") {
+            out.push_str(&rest[..at]);
+            let tail = &rest[at + 2..];
+            match (tail.find("]("), tail.find(']')) {
+                (Some(close), Some(first)) if close == first => {
+                    let alt = &tail[..close];
+                    match tail[close + 2..].find(')') {
+                        Some(end) => {
+                            out.push_str(alt);
+                            rest = &tail[close + 2 + end + 1..];
+                        }
+                        None => {
+                            out.push_str("![");
+                            rest = tail;
+                        }
+                    }
+                }
+                _ => {
+                    out.push_str("![");
+                    rest = tail;
+                }
+            }
+        }
+        out.push_str(rest);
+        out
+    }
+    let mut out: Vec<String> = Vec::new();
+    let mut in_code = false;
+    for line in text.lines() {
+        let t = line.trim_start();
+        if t.starts_with("```") || t.starts_with("~~~") {
+            in_code = !in_code;
+            continue;
+        }
+        if in_code {
+            out.push(if line.trim().is_empty() { String::new() } else { code_span(line) });
+            continue;
+        }
+        let bare = t.trim_end();
+        if bare.len() >= 3 && ["-", "*", "_"].iter().any(|c| bare.chars().all(|x| x.to_string() == *c || x == ' ') && bare.matches(c).count() >= 3) {
+            out.push("────────".into());
+            continue;
+        }
+        let hashes = t.chars().take_while(|&c| c == '#').count();
+        if (1..=6).contains(&hashes) && t[hashes..].starts_with(' ') {
+            let title = t[hashes..].trim().trim_end_matches('#').trim();
+            out.push(if title.is_empty() { String::new() } else { format!("**{title}**") });
+            continue;
+        }
+        if t.starts_with('>') {
+            let mut rest = t;
+            let mut depth = 0;
+            while let Some(r) = rest.strip_prefix('>') {
+                rest = r.trim_start_matches(' ');
+                depth += 1;
+            }
+            out.push(format!("{}▎ {rest}", "▎".repeat(depth - 1)));
+            continue;
+        }
+        let mut line = strip_images(line);
+        if !line.contains('`') && line.contains('<') {
+            line = line.replace('<', "\\<");
+        }
+        out.push(line);
+    }
+    out.join("\n")
+}
+
 #[cfg(test)]
 mod tests {
+    use super::simplify_markdown;
+
+    #[test]
+    fn markdown_the_display_widget_refuses_is_rewritten() {
+        assert_eq!(simplify_markdown("> **🔥** *text*"), "▎ **🔥** *text*");
+        assert_eq!(simplify_markdown(">> deep"), "▎▎ deep");
+        assert_eq!(simplify_markdown("## Plan\n- one"), "**Plan**\n- one");
+        assert_eq!(simplify_markdown("a\n\n---\n\nb"), "a\n\n────────\n\nb");
+        assert_eq!(simplify_markdown("```rust\nlet x = 1;\n\nfoo()\n```"), "`let x = 1;`\n\n`foo()`");
+        assert_eq!(simplify_markdown("see ![a cat](http://x/y.png) here"), "see a cat here");
+        assert_eq!(simplify_markdown("plain *text* stays"), "plain *text* stays");
+        assert_eq!(simplify_markdown("use <b>tags</b>"), "use \\<b>tags\\</b>");
+        assert_eq!(simplify_markdown("a `<b>` code"), "a `<b>` code");
+    }
+
     use super::latex_to_unicode as f;
 
     #[test]

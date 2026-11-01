@@ -282,6 +282,14 @@ impl AndroidWindowAdapter {
         loop {
             let mut result = Ok(());
             let read_input = iter.next(|event| match event {
+                // OJP patch: the app gets the first say on Back.
+                InputEvent::KeyEvent(key_event)
+                    if key_event.key_code() == Keycode::Back
+                        && matches!(key_event.action(), KeyAction::Down | KeyAction::Up)
+                        && crate::back_key(key_event.action() == KeyAction::Down) =>
+                {
+                    InputStatus::Handled
+                }
                 InputEvent::KeyEvent(key_event) => match map_key_event(key_event) {
                     Some(ev) => match self.window.dispatch_event_with_result(ev) {
                         Ok(WindowEventDispatchResult::Accepted) => InputStatus::Handled,

@@ -804,6 +804,10 @@ fn callback_on_back_invoked<'local>(
     // Forward Back as a Key.Back KeyPressed + KeyReleased pair; fall back to
     // Activity.finish() if unhandled.
     let _ = i_slint_core::api::invoke_from_event_loop(move || {
+        // OJP patch: the app gets the first say on Back.
+        if crate::app_handled_back() {
+            return;
+        }
         if let Some(adaptor) = CURRENT_WINDOW.with_borrow(|x| x.upgrade()) {
             let text: SharedString = Key::Back.into();
             let pressed = adaptor

@@ -25,6 +25,25 @@ use ndk_08 as ndk;
 use ndk_09 as ndk;
 
 pub use android_activity::AndroidApp;
+
+/// OJP patch: let the app handle the Back button (close a dialog, leave Settings, ...). Return true when handled.
+pub fn set_back_handler(handler: Box<dyn Fn() -> bool>) {
+    BACK_HANDLER.with_borrow_mut(|h| *h = Some(handler));
+}
+
+pub(crate) fn app_handled_back() -> bool {
+    BACK_HANDLER.with_borrow(|h| h.as_ref().is_some_and(|f| f()))
+}
+
+pub(crate) fn back_key(down: bool) -> bool {
+    if down {
+        let handled = app_handled_back();
+        BACK_HELD.with(|held| held.set(handled));
+        handled
+    } else {
+        BACK_HELD.with(|held| held.replace(false))
+    }
+}
 use android_activity::PollEvent;
 use androidwindowadapter::AndroidWindowAdapter;
 use core::ops::ControlFlow;
@@ -37,6 +56,10 @@ use std::rc::{Rc, Weak};
 use std::sync::{Arc, Mutex};
 
 thread_local! {
+    /// OJP patch: the app's own answer to the Back button, asked before anything else; true = it handled it.
+    static BACK_HANDLER: RefCell<Option<Box<dyn Fn() -> bool>>> = const { RefCell::new(None) };
+    /// OJP patch: a Back key press the app handled, so its release is swallowed too (else the system closes the app).
+    static BACK_HELD: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
     static CURRENT_WINDOW: RefCell<Weak<AndroidWindowAdapter>> = RefCell::new(Default::default());
 }
 

@@ -59,3 +59,14 @@ changes the newer C API needs:
   `llama_sampler_init_dry` lost the `n_ctx_train` argument; the custom
   tail-free sampler's interface struct got `backend_reset`/`copy_state`.
 - `high_level/completion.rs`, `sampling/chain.rs`: pass `n_vocab` through.
+
+## Android: typing, deleting and the Back button
+
+- `i-slint-backend-android-activity/java/SlintAndroidJavaHelper.java`, `SlintInputView.setText`: the app answers every
+  keyboard edit with the text it now holds. While keys repeat (holding backspace) that answer is already out of date, and
+  applying it put deleted text back. Text that arrives within 250 ms of the keyboard's own edit is now ignored. When the
+  app clears the field (a message was sent) the leftover composing word is dropped and the keyboard's input state is
+  restarted, so the word does not come back in the next message.
+- `lib.rs`, `javahelper.rs`, `androidwindowadapter.rs`: `set_back_handler` lets the app answer the Back button first
+  (close a dialog, leave Settings, open the chat list), whatever has the keyboard focus. Only when it says no does Back
+  go to the usual path (and close the app). A handled press also swallows its release, or the system would close the app.

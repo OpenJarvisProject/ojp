@@ -22,16 +22,22 @@ pub struct StoredChat {
     /// Unix seconds of the last change; the chat list is sorted by this.
     pub updated: u64,
     pub messages: Vec<StoredMessage>,
+    /// The user chose the title, so it isn't rebuilt from the first message.
+    #[serde(default)]
+    pub renamed: bool,
 }
 
 impl StoredChat {
     pub fn new() -> StoredChat {
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
-        StoredChat { id: format!("{}", now.as_millis()), title: String::new(), updated: now.as_secs(), messages: Vec::new() }
+        StoredChat { id: format!("{}", now.as_millis()), title: String::new(), updated: now.as_secs(), messages: Vec::new(), renamed: false }
     }
 
     /// Title from the first user message, shortened at a word boundary.
     pub fn refresh_title(&mut self) {
+        if self.renamed {
+            return;
+        }
         let Some(first) = self.messages.iter().find(|m| m.from_user) else { return };
         let line = first.text.lines().next().unwrap_or_default().trim();
         self.title = if line.chars().count() <= 40 {
@@ -103,6 +109,20 @@ impl ChatStore {
         Ok(())
     }
 
+    /// Give a saved chat a title of the user's choosing (an empty one goes back to the automatic title).
+    pub fn rename(&self, id: &str, title: &str) -> Result<()> {
+        let mut chat = self.load(id)?;
+        let title = title.trim();
+        if title.is_empty() {
+            chat.renamed = false;
+            chat.refresh_title();
+        } else {
+            chat.renamed = true;
+            chat.title = title.chars().take(80).collect();
+        }
+        self.save(&chat)
+    }
+
     pub fn delete(&self, id: &str) -> Result<()> {
         let path = self.path(id);
         if path.exists() {
@@ -153,5 +173,26 @@ mod tests {
     fn ids_cannot_escape_the_directory() {
         let store = ChatStore::new(std::path::Path::new("/data"));
         assert_eq!(store.path("../../etc/passwd"), std::path::Path::new("/data/chats/etcpasswd.json"));
+    }
+
+    #[test]
+    fn a_renamed_chat_keeps_its_title() {
+        let dir = std::env::temp_dir().join("ojp-chats-rename-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = ChatStore::new(&dir);
+        let mut chat = StoredChat { id: "7".into(), ..StoredChat::new() };
+        chat.messages.push(msg(true, "first words"));
+        chat.refresh_title();
+        store.save(&chat).unwrap();
+        assert_eq!(store.load("7").unwrap().title, "first words");
+        store.rename("7", "  Holiday plans ").unwrap();
+        let mut loaded = store.load("7").unwrap();
+        assert_eq!(loaded.title, "Holiday plans");
+        loaded.messages.push(msg(true, "another"));
+        loaded.refresh_title();
+        assert_eq!(loaded.title, "Holiday plans", "a later message must not overwrite a chosen title");
+        store.rename("7", "").unwrap();
+        assert_eq!(store.load("7").unwrap().title, "first words");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

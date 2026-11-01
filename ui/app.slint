@@ -48,6 +48,10 @@ export global Chat {
     in-out property <[Message]> messages;
     // True while a reply is being generated; input is disabled meanwhile.
     in-out property <bool> busy;
+    // True while a reply is being written (the Send button is a Stop button meanwhile).
+    in-out property <bool> thinking;
+    callback stop();
+    callback rename-chat(string, string);
     // One-line status under the header (models loaded, errors).
     in-out property <string> status;
     callback send(string);
@@ -83,6 +87,9 @@ export global Chat {
 export global Settings {
     // 0 = follow the system, 1 = light, 2 = dark.
     in-out property <int> theme;
+    // Rounder, Material 3-like shapes (pill buttons, big corners).
+    in-out property <bool> material;
+    callback material-changed();
     in-out property <bool> dynamic-colors: true;
     // Only Android has wallpaper-based colours.
     in-out property <bool> dynamic-colors-supported;
@@ -147,6 +154,59 @@ export global Settings {
     callback dark-changed(bool);
 }
 
+// Corner sizes: the plain look, or (Settings > Material look) the rounder Material 3 one.
+export global Look {
+    out property <bool> material: Settings.material;
+    out property <length> card: Settings.material ? 28px : 14px;
+    out property <length> item: Settings.material ? 20px : 10px;
+    out property <length> small: Settings.material ? 14px : 8px;
+    out property <length> dialog: Settings.material ? 28px : 16px;
+    out property <length> field: Settings.material ? 28px : 14px;
+}
+
+// The platform's button, or a pill in the Material look.
+component AppButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary;
+    in property <bool> enabled: true;
+    callback clicked;
+    min-height: 40px;
+    preferred-height: Look.material ? 44px : 36px;
+    preferred-width: max(72px, measure.preferred-width + 32px);
+    measure := Text {
+        text: root.text;
+        visible: false;
+    }
+    if !Look.material: Button {
+        width: parent.width;
+        height: parent.height;
+        text: root.text;
+        primary: root.primary;
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+    if Look.material: Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: !root.enabled ? Palette.alternate-background : root.primary ? Palette.accent-background : (pill.pressed ? Palette.alternate-background : Palette.control-background);
+        border-radius: self.height / 2;
+        border-width: root.primary ? 0px : 1px;
+        border-color: Palette.border;
+        Text {
+            text: root.text;
+            color: root.primary && root.enabled ? Palette.accent-foreground : Palette.foreground;
+            opacity: root.enabled ? 1 : 0.5;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            font-weight: 600;
+        }
+        pill := TouchArea {
+            enabled: root.enabled;
+            clicked => { root.clicked(); }
+        }
+    }
+}
+
 component IconButton inherits Rectangle {
     in property <image> icon;
     callback clicked;
@@ -167,8 +227,21 @@ component IconButton inherits Rectangle {
 
 component Bubble inherits Rectangle {
     in property <Message> message;
+    // Held down for half a second: the text is offered for selecting and copying.
+    callback long-pressed(string);
+    property <bool> fired;
+    property <bool> down: press.pressed;
+    changed down => { if (!self.down) { self.fired = false; } }
     background: message.from-user ? Palette.accent-background : Palette.alternate-background;
-    border-radius: 14px;
+    border-radius: Look.card;
+    Timer {
+        interval: 500ms;
+        running: root.down && !root.fired;
+        triggered => {
+            root.fired = true;
+            root.long-pressed(root.message.text);
+        }
+    }
 
     VerticalLayout {
         padding: 10px;
@@ -216,18 +289,24 @@ component Bubble inherits Rectangle {
             opacity: 0.6;
         }
     }
+    press := TouchArea { }
 }
 
 component ChatPage inherits Rectangle {
     callback open-menu;
+    callback show-text(string);
     // The chat list is always visible beside the chat, so no menu button.
     in property <bool> docked;
     background: Palette.background;
 
     function submit() {
         if (input.text != "" && !Chat.busy) {
+            // Losing focus makes the keyboard hand over the word still being typed (it is held back until a
+            // space), so the whole message is sent and nothing is left to reappear in the next one.
+            input.clear-focus();
             Chat.send(input.text);
             input.text = "";
+            input.focus();
         }
     }
 
@@ -258,7 +337,7 @@ component ChatPage inherits Rectangle {
                     progress: Chat.load-progress;
                 }
             }
-            Button {
+            AppButton {
                 text: "New chat";
                 enabled: !Chat.busy;
                 clicked => { Chat.clear(); }
@@ -292,7 +371,10 @@ component ChatPage inherits Rectangle {
                     padding-right: message.from-user ? 12px : 56px;
                     padding-top: 4px;
                     padding-bottom: 4px;
-                    Bubble { message: message; }
+                    Bubble {
+                        message: message;
+                        long-pressed(text) => { root.show-text(text); }
+                    }
                 }
             }
         }
@@ -304,7 +386,7 @@ component ChatPage inherits Rectangle {
             vertical-stretch: 0;
             Rectangle {
                 background: Palette.alternate-background;
-                border-radius: 14px;
+                border-radius: Look.card;
                 VerticalLayout {
                     padding: 12px;
                     spacing: 10px;
@@ -338,14 +420,14 @@ component ChatPage inherits Rectangle {
                     if Chat.download-progress >= 0: ProgressIndicator {
                         progress: Chat.download-progress;
                     }
-                    if Chat.download-progress < 0 && Chat.download-targets.length == 0: Button {
+                    if Chat.download-progress < 0 && Chat.download-targets.length == 0: AppButton {
                         text: "Download";
                         primary: true;
                         clicked => { Chat.download(-1); }
                     }
                     if Chat.download-progress < 0: VerticalLayout {
                         spacing: 8px;
-                        for target[index] in Chat.download-targets: Button {
+                        for target[index] in Chat.download-targets: AppButton {
                             text: target;
                             primary: index == 0;
                             clicked => { Chat.download(index); }
@@ -359,16 +441,69 @@ component ChatPage inherits Rectangle {
             padding: 10px;
             spacing: 8px;
             vertical-stretch: 0;
-            input := LineEdit {
+            // A box that grows with what is typed (up to about six lines), then scrolls.
+            box := Rectangle {
                 horizontal-stretch: 1;
-                placeholder-text: "Message " + Chat.assistant-name;
-                enabled: !Chat.busy;
-                accepted => { root.submit(); }
+                property <length> line: 22px;
+                height: min(max(44px, input.preferred-height + 20px), 6 * self.line + 20px);
+                background: Palette.control-background;
+                border-radius: Look.field;
+                border-width: 1px;
+                border-color: input.has-focus ? Palette.accent-background : Palette.border;
+                flick := Flickable {
+                    x: 12px;
+                    width: parent.width - 24px;
+                    y: 10px;
+                    height: parent.height - 20px;
+                    content-width: self.width;
+                    content-height: max(input.preferred-height, self.height);
+                    input := TextInput {
+                        x: 0px;
+                        y: 0px;
+                        width: flick.content-width;
+                        wrap: word-wrap;
+                        single-line: false;
+                        font-size: 1rem;
+                        color: Palette.foreground;
+                        selection-background-color: Palette.selection-background;
+                        selection-foreground-color: Palette.selection-foreground;
+                        cursor-position-changed(pos) => {
+                            if (pos.y < -flick.content-y) {
+                                flick.content-y = -pos.y;
+                            } else if (pos.y + box.line > -flick.content-y + flick.height) {
+                                flick.content-y = -(pos.y + box.line - flick.height);
+                            }
+                        }
+                        key-pressed(event) => {
+                            // On a computer Enter sends and Shift+Enter starts a new line; on a phone Enter is a new line.
+                            if (event.text == Key.Return && !event.modifiers.shift && Platform.os != OperatingSystemType.android) {
+                                root.submit();
+                                return accept;
+                            }
+                            return reject;
+                        }
+                    }
+                }
+                if input.text == "": Text {
+                    x: 12px;
+                    y: 10px;
+                    text: "Message " + Chat.assistant-name;
+                    color: Palette.foreground;
+                    opacity: 0.5;
+                }
             }
-            Button {
-                text: "Send";
-                enabled: !Chat.busy && input.text != "";
-                clicked => { root.submit(); }
+            VerticalLayout {
+                alignment: end;
+                horizontal-stretch: 0;
+                if Chat.thinking: AppButton {
+                    text: "Stop";
+                    clicked => { Chat.stop(); }
+                }
+                if !Chat.thinking: AppButton {
+                    text: "Send";
+                    enabled: !Chat.busy && input.text != "";
+                    clicked => { root.submit(); }
+                }
             }
         }
     }
@@ -377,6 +512,8 @@ component ChatPage inherits Rectangle {
 component Sidebar inherits Rectangle {
     callback close;
     callback open-settings;
+    callback rename-requested(string, string);
+    callback delete-requested(string, string);
     background: Palette.alternate-background;
 
     VerticalLayout {
@@ -387,7 +524,7 @@ component Sidebar inherits Rectangle {
             font-size: 1.3rem;
             font-weight: 700;
         }
-        Button {
+        AppButton {
             text: "New chat";
             primary: true;
             enabled: !Chat.busy;
@@ -407,7 +544,7 @@ component Sidebar inherits Rectangle {
                 }
                 for chat in Chat.chats: Rectangle {
                     height: 44px;
-                    border-radius: 10px;
+                    border-radius: Look.item;
                     background: chat.id == Chat.current-chat ? Palette.control-background : (row-touch.pressed ? Palette.background : transparent);
                     row-touch := TouchArea {
                         enabled: !Chat.busy;
@@ -425,9 +562,59 @@ component Sidebar inherits Rectangle {
                             vertical-alignment: center;
                             overflow: elide;
                         }
-                        IconButton {
-                            icon: @image-url("../assets/delete.png");
-                            clicked => { Chat.delete-chat(chat.id); }
+                        // Three dots: opens a small menu with Rename and Delete.
+                        Rectangle {
+                            width: 44px;
+                            border-radius: 22px;
+                            background: dots.pressed ? Palette.alternate-background : transparent;
+                            HorizontalLayout {
+                                alignment: center;
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 3px;
+                                    for i in 3: Rectangle {
+                                        height: 4px;
+                                        width: 4px;
+                                        border-radius: 2px;
+                                        background: Palette.foreground;
+                                    }
+                                }
+                            }
+                            dots := TouchArea {
+                                clicked => { menu.show(); }
+                            }
+                            menu := PopupWindow {
+                                x: parent.width - 160px;
+                                y: parent.height;
+                                width: 160px;
+                                Rectangle {
+                                    background: Palette.background;
+                                    border-radius: Look.item;
+                                    border-width: 1px;
+                                    border-color: Palette.border;
+                                    VerticalLayout {
+                                        padding: 4px;
+                                        Rectangle {
+                                            height: 44px;
+                                            border-radius: Look.small;
+                                            background: rename-touch.pressed ? Palette.alternate-background : transparent;
+                                            Text { x: 12px; text: "Rename"; vertical-alignment: center; }
+                                            rename-touch := TouchArea {
+                                                clicked => { root.rename-requested(chat.id, chat.title); }
+                                            }
+                                        }
+                                        Rectangle {
+                                            height: 44px;
+                                            border-radius: Look.small;
+                                            background: delete-touch.pressed ? Palette.alternate-background : transparent;
+                                            Text { x: 12px; text: "Delete"; vertical-alignment: center; color: #d33; }
+                                            delete-touch := TouchArea {
+                                                clicked => { root.delete-requested(chat.id, chat.title); }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -435,7 +622,7 @@ component Sidebar inherits Rectangle {
         }
         Rectangle {
             height: 44px;
-            border-radius: 10px;
+            border-radius: Look.item;
             background: settings-touch.pressed ? Palette.background : transparent;
             settings-touch := TouchArea {
                 clicked => { root.open-settings(); }
@@ -505,7 +692,7 @@ component ChoiceRow inherits Rectangle {
     in property <bool> selected;
     callback chosen;
     background: root.selected ? Palette.accent-background.transparentize(0.88) : transparent;
-    border-radius: 10px;
+    border-radius: Look.item;
     border-width: 1px;
     border-color: root.selected ? Palette.accent-background : Palette.border;
     HorizontalLayout {
@@ -518,7 +705,7 @@ component ChoiceRow inherits Rectangle {
             Rectangle {
                 width: 20px;
                 height: 20px;
-                border-radius: 10px;
+                border-radius: Look.item;
                 border-width: 2px;
                 border-color: root.selected ? Palette.accent-background : Palette.border;
                 Rectangle {
@@ -572,7 +759,7 @@ component SettingsPage inherits Rectangle {
             padding: 8px;
             spacing: 8px;
             vertical-stretch: 0;
-            Button {
+            AppButton {
                 text: "‹ Back";
                 horizontal-stretch: 0;
                 clicked => { root.back(); }
@@ -612,7 +799,7 @@ component SettingsPage inherits Rectangle {
                 if Chat.load-progress >= 0: Text { text: Chat.load-text; wrap: word-wrap; font-size: 0.85rem; opacity: 0.7; }
                 if Chat.download-progress >= 0: ProgressIndicator { progress: Chat.download-progress; }
                 if Chat.download-progress >= 0: Text { text: Chat.download-text; wrap: word-wrap; font-size: 0.85rem; opacity: 0.7; }
-                if Settings.model-needs-download && Chat.download-progress < 0: Button {
+                if Settings.model-needs-download && Chat.download-progress < 0: AppButton {
                     text: "Download the model";
                     primary: true;
                     clicked => { Settings.download-now(); }
@@ -630,7 +817,7 @@ component SettingsPage inherits Rectangle {
                         opacity: 0.65;
                     }
                     Text { text: Settings.shizuku-text; wrap: word-wrap; }
-                    Button {
+                    AppButton {
                         text: "Allow with Shizuku";
                         clicked => { Settings.shizuku-action(); }
                     }
@@ -680,7 +867,7 @@ component SettingsPage inherits Rectangle {
                                 Text { text: device.name; font-weight: 700; }
                                 Text { text: device.status; font-size: 0.85rem; opacity: 0.65; wrap: word-wrap; }
                             }
-                            Button {
+                            AppButton {
                                 text: "Remove";
                                 horizontal-stretch: 0;
                                 clicked => { Settings.unpair(device.name); }
@@ -729,7 +916,7 @@ component SettingsPage inherits Rectangle {
                         wrap: word-wrap;
                         font-weight: 700;
                     }
-                    Button {
+                    AppButton {
                         text: "Show a pairing code";
                         enabled: !Settings.pair-busy;
                         clicked => { Settings.pair-host(); }
@@ -740,7 +927,7 @@ component SettingsPage inherits Rectangle {
                             placeholder-text: "Code from the other device";
                             horizontal-stretch: 1;
                         }
-                        Button {
+                        AppButton {
                             text: "Pair";
                             horizontal-stretch: 0;
                             enabled: !Settings.pair-busy && code-input.text != "";
@@ -771,6 +958,12 @@ component SettingsPage inherits Rectangle {
                         current-index <=> Settings.theme;
                         selected => { Settings.changed(); }
                     }
+                }
+                SettingRow {
+                    title: "Material look";
+                    description: "Rounder shapes and pill-shaped buttons, closer to Flutter's Material 3.";
+                    checked <=> Settings.material;
+                    toggled => { Settings.material-changed(); }
                 }
                 if Settings.dynamic-colors-supported: SettingRow {
                     title: "Dynamic colours";
@@ -877,7 +1070,7 @@ component SettingsPage inherits Rectangle {
                     font-size: 0.8rem;
                     opacity: 0.65;
                 }
-                if Settings.tts-supported && Settings.tts-enabled: Button {
+                if Settings.tts-supported && Settings.tts-enabled: AppButton {
                     text: "Play a sample";
                     clicked => { Settings.preview(); }
                 }
@@ -930,6 +1123,13 @@ export component AppWindow inherits Window {
     }
 
     in-out property <bool> show-settings;
+    // Text offered for selecting and copying (hold a message), and the delete / rename dialogs.
+    property <bool> sheet-open;
+    property <string> sheet-text;
+    property <string> delete-id;
+    property <string> delete-title;
+    property <string> rename-id;
+    property <string> rename-text;
     property <length> drawer-width: min(320px, root.width * 0.82);
     property <bool> drawer-open;
     // Where the drawer rests (0 = closed, drawer-width = open), animated
@@ -952,6 +1152,44 @@ export component AppWindow inherits Window {
 
     // Stay clear of the phone's status/navigation bars and, while it's
     // open, the on-screen keyboard. All zero on desktop.
+    // What the phone's Back button does: close what is open, else go back a level. False in the chat list,
+    // where the app closes as usual. (The app asks this first, whatever has the keyboard focus.)
+    public function go-back() -> bool {
+        if (root.sheet-open) {
+            root.sheet-open = false;
+            return true;
+        }
+        if (root.delete-id != "") {
+            root.delete-id = "";
+            return true;
+        }
+        if (root.rename-id != "") {
+            root.rename-id = "";
+            return true;
+        }
+        if (root.show-settings) {
+            root.show-settings = false;
+            return true;
+        }
+        if (!root.wide && !root.drawer-open) {
+            root.drawer-open = true;
+            return true;
+        }
+        return false;
+    }
+
+    scope := FocusScope {
+        init => { self.focus(); }
+        key-pressed(event) => {
+            if ((event.text == Key.Back || event.text == Key.Escape) && root.go-back()) {
+                return accept;
+            }
+            if (event.text == Key.Escape && root.drawer-open && !root.wide) {
+                root.drawer-open = false;
+                return accept;
+            }
+            return reject;
+        }
     swipe := SwipeGestureHandler {
         x: root.safe-area-insets.left;
         y: root.safe-area-insets.top;
@@ -973,6 +1211,10 @@ export component AppWindow inherits Window {
             width: parent.width - self.x;
             docked: root.wide;
             open-menu => { root.drawer-open = true; }
+            show-text(text) => {
+                root.sheet-text = text;
+                root.sheet-open = true;
+            }
         }
 
         if root.drawer-pos > 0 && !root.wide: Rectangle {
@@ -987,6 +1229,14 @@ export component AppWindow inherits Window {
             width: root.wide ? root.docked-width : root.drawer-width;
             height: parent.height;
             close => { root.drawer-open = false; }
+            rename-requested(id, title) => {
+                root.rename-text = title;
+                root.rename-id = id;
+            }
+            delete-requested(id, title) => {
+                root.delete-title = title;
+                root.delete-id = id;
+            }
             open-settings => {
                 root.drawer-open = false;
                 root.show-settings = true;
@@ -994,6 +1244,115 @@ export component AppWindow inherits Window {
         }
         if root.show-settings: SettingsPage {
             back => { root.show-settings = false; }
+        }
+    }
+    }
+
+    // Dialogs on top of everything.
+    if root.sheet-open: Rectangle {
+        background: #000000a0;
+        TouchArea { clicked => { root.sheet-open = false; } }
+        Rectangle {
+            width: min(parent.width - 32px, 560px);
+            height: min(parent.height - 120px, 520px);
+            background: Palette.background;
+            border-radius: Look.dialog;
+            TouchArea { }
+            VerticalLayout {
+                padding: 14px;
+                spacing: 10px;
+                Text { text: "Select and copy"; font-weight: 700; }
+                Text { text: "Drag to select part of the text, or copy all of it."; font-size: 0.8rem; opacity: 0.65; wrap: word-wrap; }
+                Rectangle {
+                    vertical-stretch: 1;
+                    background: Palette.control-background;
+                    border-radius: Look.item;
+                    ScrollView {
+                        sheet-copy := TextInput {
+                            width: parent.width - 20px;
+                            x: 10px;
+                            y: 8px;
+                            text: root.sheet-text;
+                            read-only: true;
+                            wrap: word-wrap;
+                            color: Palette.foreground;
+                            selection-background-color: Palette.selection-background;
+                            selection-foreground-color: Palette.selection-foreground;
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+                    AppButton { text: "Close"; clicked => { root.sheet-open = false; } }
+                    AppButton {
+                        text: "Copy all";
+                        primary: true;
+                        clicked => { sheet-copy.select-all(); sheet-copy.copy(); root.sheet-open = false; }
+                    }
+                }
+            }
+        }
+    }
+    if root.delete-id != "": Rectangle {
+        background: #000000a0;
+        TouchArea { clicked => { root.delete-id = ""; } }
+        Rectangle {
+            width: min(parent.width - 48px, 420px);
+            height: dlg.preferred-height;
+            background: Palette.background;
+            border-radius: Look.dialog;
+            TouchArea { }
+            dlg := VerticalLayout {
+                padding: 18px;
+                spacing: 12px;
+                Text { text: "Delete this chat?"; font-weight: 700; font-size: 1.1rem; }
+                Text { text: "\"" + root.delete-title + "\" will be gone for good."; wrap: word-wrap; opacity: 0.8; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+                    AppButton { text: "Cancel"; clicked => { root.delete-id = ""; } }
+                    AppButton {
+                        text: "Delete";
+                        primary: true;
+                        clicked => {
+                            Chat.delete-chat(root.delete-id);
+                            root.delete-id = "";
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if root.rename-id != "": Rectangle {
+        background: #000000a0;
+        TouchArea { clicked => { root.rename-id = ""; } }
+        Rectangle {
+            width: min(parent.width - 48px, 420px);
+            height: rdlg.preferred-height;
+            background: Palette.background;
+            border-radius: Look.dialog;
+            TouchArea { }
+            rdlg := VerticalLayout {
+                padding: 18px;
+                spacing: 12px;
+                Text { text: "Rename chat"; font-weight: 700; font-size: 1.1rem; }
+                LineEdit {
+                    text <=> root.rename-text;
+                    placeholder-text: "Chat name";
+                    accepted => { Chat.rename-chat(root.rename-id, self.text); root.rename-id = ""; }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+                    AppButton { text: "Cancel"; clicked => { root.rename-id = ""; } }
+                    AppButton {
+                        text: "Save";
+                        primary: true;
+                        clicked => { Chat.rename-chat(root.rename-id, root.rename-text); root.rename-id = ""; }
+                    }
+                }
+            }
         }
     }
 }

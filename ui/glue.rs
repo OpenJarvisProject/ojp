@@ -22,6 +22,7 @@ enum Request {
     NewChat,
     OpenChat(String),
     DeleteChat(String),
+    RenameChat(String, String),
     /// Download missing models into `Setup::locations[i]`, or into the
     /// current location for a negative index; the bool is "include the
     /// main model".
@@ -57,6 +58,8 @@ pub struct Setup {
     pub set_dynamic_colors: Option<fn(bool)>,
     /// Picks light or dark system status-bar icons; None where unsupported.
     pub set_light_status_bar: Option<fn(bool)>,
+    /// Android: lets the app handle the Back button (the handler returns whether it did).
+    pub set_back_handler: Option<fn(Box<dyn Fn() -> bool>)>,
     /// For the headless UI tests only: called once with the window just before it runs.
     pub test_hook: Option<Box<dyn FnOnce(slint::Weak<AppWindow>) + Send>>,
 }
@@ -72,6 +75,7 @@ fn theme_index(theme: &str) -> i32 {
 /// Show the window and run until it closes.
 pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     let test_hook = setup.test_hook.take();
+    let setup_back_handler = setup.set_back_handler;
     // The link keys, memories and reminders live under the app's own folder on Android.
     if cfg!(target_os = "android") && std::env::var_os("XDG_DATA_HOME").is_none() {
         // SAFETY: nothing else is running yet.
@@ -92,6 +96,15 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     settings.set_version(env!("CARGO_PKG_VERSION").into());
     settings.set_theme(theme_index(&setup.config.ui.theme));
     settings.set_dynamic_colors(setup.config.ui.dynamic_colors);
+    settings.set_material(setup.config.ui.material);
+    settings.on_material_changed({
+        let (weak, path) = (ui.as_weak(), setup.config_path.clone());
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                let _ = storage::set_bool(&path, "ui", "material", ui.global::<Settings>().get_material());
+            }
+        }
+    });
     settings.set_dynamic_colors_supported(setup.set_dynamic_colors.is_some());
     settings.set_shizuku_supported(ojp_core::platform::available());
     settings.set_brain(match setup.config.link.brain.as_str() {
@@ -173,6 +186,7 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
             messages.push(Message { meta: "thinking…".into(), ..Default::default() });
             if let Some(ui) = weak.upgrade() {
                 ui.global::<Chat>().set_busy(true);
+                ui.global::<Chat>().set_thinking(true);
             }
             send(Request::Ask(text.into()));
         }
@@ -196,6 +210,12 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
         let send = send.clone();
         move |id| send(Request::DeleteChat(id.into()))
     });
+    chat.on_rename_chat({
+        let send = send.clone();
+        move |id, title| send(Request::RenameChat(id.into(), title.into()))
+    });
+    // Not through the worker: it is the one busy generating, so this only sets the flag it checks.
+    chat.on_stop(ojp_core::model::request_stop);
     settings.on_pair_host({
         let (weak, send) = (ui.as_weak(), send.clone());
         move || pair_in_background(weak.clone(), send.clone(), None)
@@ -272,6 +292,10 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
             });
         }
     });
+    if let Some(set_back_handler) = setup_back_handler {
+        let weak = ui.as_weak();
+        set_back_handler(Box::new(move || weak.upgrade().is_some_and(|ui| ui.invoke_go_back())));
+    }
     if let Some(hook) = test_hook {
         hook(ui.as_weak());
     }
@@ -281,7 +305,7 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
 
 /// Markdown for display, with LaTeX math turned into Unicode first.
 fn render(text: &str) -> StyledText {
-    let text = ojp_core::format::latex_to_unicode(text);
+    let text = ojp_core::format::simplify_markdown(&ojp_core::format::latex_to_unicode(text));
     StyledText::from_markdown(&text).unwrap_or_else(|_| StyledText::from_plain_text(&text))
 }
 
@@ -367,6 +391,9 @@ fn set_state(ui: &slint::Weak<AppWindow>, busy: bool, status: Option<String>) {
     let _ = ui.upgrade_in_event_loop(move |ui| {
         let chat = ui.global::<Chat>();
         chat.set_busy(busy);
+        if !busy {
+            chat.set_thinking(false);
+        }
         if let Some(status) = status {
             chat.set_status(status.into());
         }
@@ -846,6 +873,18 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 }
                 Err(e) => push_message(&ui, format!("Couldn't open that chat: {e:#}"), "error"),
             },
+            Request::RenameChat(id, title) => {
+                if let Err(e) = store.rename(&id, &title) {
+                    push_message(&ui, format!("Couldn't rename the chat: {e:#}"), "settings");
+                }
+                if id == chat.id
+                    && let Ok(renamed) = store.load(&id)
+                {
+                    chat.title = renamed.title;
+                    chat.renamed = renamed.renamed;
+                }
+                show_chat(&ui, &store, &chat);
+            }
             Request::DeleteChat(id) => {
                 let _ = store.delete(&id);
                 if id == chat.id {
@@ -935,13 +974,19 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 let engine = engine.as_mut().expect("checked above");
                 let start = Instant::now();
                 let mut meta = Vec::new();
+                ojp_core::model::clear_stop();
                 let result = engine.ask(&text, &mut |event| match event {
                     Event::Routed { route, ms } => meta.push(format!("{} ({ms} ms)", route.label())),
                     Event::Token(token) => edit_last(&ui, move |m| m.text = format!("{}{token}", m.text).into()),
                     Event::Notice(notice) => meta.push(notice),
                 });
-                if let Err(e) = &result {
-                    meta.push(format!("error: {e:#}"));
+                let stopped = ojp_core::model::stop_requested();
+                ojp_core::model::clear_stop();
+                match &result {
+                    Err(_) if stopped => meta.push("stopped".into()),
+                    Err(e) => meta.push(format!("error: {e:#}")),
+                    Ok(_) if stopped => meta.push("stopped".into()),
+                    Ok(_) => {}
                 }
                 meta.push(format!("{:.1} s", start.elapsed().as_secs_f32()));
                 let meta = meta.join(" · ");
@@ -949,7 +994,11 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 chat.messages.push(StoredMessage { from_user: true, text, meta: String::new() });
                 chat.messages.push(StoredMessage {
                     from_user: false,
-                    text: result.unwrap_or_default(),
+                    text: match result {
+                        Ok(text) => text,
+                        Err(_) if stopped => "(stopped)".into(),
+                        Err(_) => String::new(),
+                    },
                     meta: meta.clone(),
                 });
                 chat.refresh_title();

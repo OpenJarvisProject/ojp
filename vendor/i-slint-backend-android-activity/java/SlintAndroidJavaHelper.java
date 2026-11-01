@@ -14,6 +14,7 @@ import android.view.ViewTreeObserver;
 import android.view.WindowInsets;
 import android.view.WindowInsetsAnimation;
 import android.view.WindowMetrics;
+import android.os.SystemClock;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.content.ClipData;
@@ -132,6 +133,8 @@ class SlintInputView extends View {
     private int mInputType = EditorInfo.TYPE_CLASS_TEXT;
     private int mInBatch = 0;
     private boolean mPending = false;
+    // OJP patch: when the keyboard last changed the text (see setText).
+    private long mLastEdit = 0;
     private SlintEditable mEditable;
 
     public class SlintEditable extends SpannableStringBuilder {
@@ -153,6 +156,7 @@ class SlintInputView extends View {
 
         public void update() {
             mPending = false;
+            mLastEdit = SystemClock.uptimeMillis();
             mText = toString();
             mCursorPosition = Selection.getSelectionStart(this);
             mAnchorPosition = Selection.getSelectionEnd(this);
@@ -207,6 +211,12 @@ class SlintInputView extends View {
             int inputType) {
         boolean typeChanged = mInputType != inputType;
         boolean textChanged = !mText.equals(text);
+        // OJP patch: the app answers every keyboard edit with the text it now holds, a moment later. While keys
+        // repeat (holding backspace) that answer is already out of date: applying it put deleted text back.
+        // Text that arrives right after the keyboard's own edit is such an answer; ignore it.
+        if (!typeChanged && textChanged && SystemClock.uptimeMillis() - mLastEdit < 250) {
+            return;
+        }
         boolean selectionChanged = mCursorPosition != cursorPosition || mAnchorPosition != anchorPosition;
 
         mText = text;
@@ -229,6 +239,11 @@ class SlintInputView extends View {
             try {
                 if (textChanged) {
                     mEditable.replace(0, mEditable.length(), text);
+                    if (preeditStart < 0 || preeditEnd <= preeditStart) {
+                        // OJP patch: the app holds no composing word any more (e.g. the message was sent), so the
+                        // keyboard must not keep one either: it would put that word back into the next message.
+                        BaseInputConnection.removeComposingSpans(mEditable);
+                    }
                 }
                 if (Selection.getSelectionStart(mEditable) != cursorPosition
                         || Selection.getSelectionEnd(mEditable) != anchorPosition) {
@@ -239,6 +254,10 @@ class SlintInputView extends View {
                 mPending = false;
             }
             imm.updateSelection(this, cursorPosition, anchorPosition, preeditStart, preeditEnd);
+            if (textChanged && text.isEmpty()) {
+                // OJP patch: the text was cleared by the app: start the keyboard's input state afresh.
+                imm.restartInput(this);
+            }
         }
     }
 

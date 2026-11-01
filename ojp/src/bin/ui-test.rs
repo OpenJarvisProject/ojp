@@ -33,6 +33,7 @@ fn main() -> anyhow::Result<()> {
         warning,
         set_dynamic_colors: None,
         set_light_status_bar: None,
+        set_back_handler: None,
         test_hook: Some(Box::new(|ui| {
             std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_secs(3));
