@@ -40,6 +40,44 @@ pub fn clear_stop() {
     STOP.store(false, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// What the answer to one request cost, summed over every model call it made (for the small timing line under a reply).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Stats {
+    pub read_tokens: u64,
+    pub read_ms: u64,
+    pub gen_tokens: u64,
+    pub gen_ms: u64,
+}
+
+static STATS: [std::sync::atomic::AtomicU64; 4] = [const { std::sync::atomic::AtomicU64::new(0) }; 4];
+
+pub fn reset_stats() {
+    for s in &STATS {
+        s.store(0, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+pub fn stats() -> Stats {
+    let get = |i: usize| STATS[i].load(std::sync::atomic::Ordering::Relaxed);
+    Stats { read_tokens: get(0), read_ms: get(1), gen_tokens: get(2), gen_ms: get(3) }
+}
+
+fn add_stats(read_tokens: u64, read_ms: u64, gen_tokens: u64, gen_ms: u64) {
+    for (s, v) in STATS.iter().zip([read_tokens, read_ms, gen_tokens, gen_ms]) {
+        s.fetch_add(v, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+type EvalHook = Box<dyn Fn(usize, usize) + Send>;
+static EVAL_HOOK: std::sync::Mutex<Option<EvalHook>> = std::sync::Mutex::new(None);
+
+/// Told (tokens read, tokens in the prompt) while a long prompt is being read, so the app can show progress.
+pub fn set_eval_hook(hook: Option<EvalHook>) {
+    if let Ok(mut h) = EVAL_HOOK.lock() {
+        *h = hook;
+    }
+}
+
 pub fn stop_requested() -> bool {
     STOP.load(std::sync::atomic::Ordering::Relaxed)
 }
@@ -524,6 +562,7 @@ impl Model {
         let mut logits_idx = 0;
         let mut start = keep;
         let first = keep;
+        let read_started = std::time::Instant::now();
         while start < tokens.len() {
             if stop_requested() {
                 bail!(STOPPED);
@@ -548,6 +587,12 @@ impl Model {
             if let Some(report) = self.on_eval.as_mut() {
                 report(start - first, tokens.len() - first);
             }
+            if tokens.len() - first > 96
+                && let Ok(hook) = EVAL_HOOK.lock()
+                && let Some(hook) = hook.as_ref()
+            {
+                hook(start - first, tokens.len() - first);
+            }
             if checkpoint_at == Some(start) {
                 let state = self.snapshot(seq);
                 self.add_checkpoint(seq, Checkpoint { tokens: tokens[..start].to_vec(), state, used: 0 });
@@ -555,6 +600,10 @@ impl Model {
         }
 
         self.logits_idx = logits_idx;
+        let read_ms = read_started.elapsed().as_millis() as u64;
+        let read_tokens = (tokens.len() - first) as u64;
+        let gen_started = std::time::Instant::now();
+        let mut gen_tokens = 0u64;
         let mut text = String::new();
         // Tokens sampled but not yet turned into text. A multi-byte UTF-8
         // character can be split across tokens, and decoding those alone
@@ -586,7 +635,9 @@ impl Model {
             self.llama.context().decode(&batch)?;
             self.cached[seq as usize].push(token);
             logits_idx = 0;
+            gen_tokens += 1;
         }
+        add_stats(read_tokens, read_ms, gen_tokens, gen_started.elapsed().as_millis() as u64);
         if !pending.is_empty() {
             let piece = self.llama.model().detokenize(&pending, false)?;
             on_text(&piece);

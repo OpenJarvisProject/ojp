@@ -1,6 +1,7 @@
 #!/bin/sh
-# Upload the unc-0.8b bundle to Hugging Face. Needs a write token:
+# Upload a model bundle (unc-0.8b by default, or e.g. unc-2b) to Hugging Face. Needs a write token:
 #   hf auth login   (once)  or  HF_TOKEN=hf_xxx;  then  scripts/upload-hf.sh [org/repo] [bundle-dir]
+#   scripts/upload-hf.sh OpenJarvisProject/Qwen3.5-2B-Uncensored-OJP-GGUF /mnt/a/OJP/ojp-models/unc-2b
 set -e
 REPO=${1:-OpenJarvisProject/Qwen3.5-0.8B-Uncensored-OJP-GGUF}
 DIR=${2:-/media/ojp-models/unc-0.8b}
@@ -14,7 +15,10 @@ repo, d = sys.argv[1], sys.argv[2]
 api = HfApi(token=os.environ.get("HF_TOKEN"))
 api.create_repo(repo, repo_type="model", exist_ok=True)
 api.upload_file(path_or_fileobj=f"{d}/MODELCARD.md", path_in_repo="README.md", repo_id=repo)
-for f in ("unc-0.8b-q5km.gguf.probe.json", "unc-0.8b-q5km.gguf.tools.json", "SHA256SUMS", "unc-0.8b-q5km.gguf"):
+names = sorted(os.listdir(d))
+ggufs = [f for f in names if f.endswith(".gguf")]
+small = [f for f in names if f.endswith((".probe.json", ".tools.json")) or f == "SHA256SUMS"]
+for f in small + ggufs:
     print("uploading", f, flush=True)
     api.upload_file(path_or_fileobj=f"{d}/{f}", path_in_repo=f, repo_id=repo)
 print("done: https://huggingface.co/" + repo)

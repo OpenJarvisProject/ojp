@@ -35,12 +35,12 @@ pub fn missing(config: &Config) -> Vec<Item> {
         }
     };
     add("router", &d.router, &d.router_sha256, &config.models.router);
-    if config.models.profile == "uncensored"
+    if let Some(files) = crate::config::single_model_files(&config.models.profile)
         && let Some(model) = &config.models.router
     {
         // The probes are fitted to this exact file and sit beside it.
         for (i, role) in [(1, "router probe"), (2, "tool probe")] {
-            let (file, url, sha) = crate::config::UNCENSORED_FILES[i];
+            let (file, url, sha) = files[i];
             let _ = file;
             let mut name = model.file_name().unwrap_or_default().to_os_string();
             name.push(if i == 1 { ".probe.json" } else { ".tools.json" });

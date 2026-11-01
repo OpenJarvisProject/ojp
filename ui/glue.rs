@@ -66,6 +66,23 @@ pub struct Setup {
     pub test_hook: Option<Box<dyn FnOnce(slint::Weak<AppWindow>) + Send>>,
 }
 
+/// The model choice in Settings: 0 classic, 1 uncensored 0.8B, 2 uncensored 2B (Developer option).
+fn profile_index(profile: &str) -> i32 {
+    match profile {
+        "uncensored" => 1,
+        "uncensored-2b" => 2,
+        _ => 0,
+    }
+}
+
+fn profile_id(index: i32) -> &'static str {
+    match index {
+        1 => "uncensored",
+        2 => "uncensored-2b",
+        _ => "classic",
+    }
+}
+
 fn theme_index(theme: &str) -> i32 {
     match theme {
         "light" => 1,
@@ -132,7 +149,7 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
         "remote" => 2,
         _ => 0,
     });
-    settings.set_profile(i32::from(setup.config.models.profile == "uncensored"));
+    settings.set_profile(profile_index(&setup.config.models.profile));
     settings.set_main_enabled(setup.config.models.main_enabled);
     settings.set_tts_supported(ojp_core::tts::AVAILABLE);
     settings.set_tts_enabled(ojp_core::tts::AVAILABLE && setup.config.tts.enabled);
@@ -219,8 +236,16 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
         }
     });
     chat.on_clear({
-        let send = send.clone();
-        move || send(Request::NewChat)
+        let (send, weak, messages) = (send.clone(), ui.as_weak(), messages.clone());
+        move || {
+            // While an answer is being written, the new chat first cuts it off (the worker is busy with it); the
+            // screen is cleared at once, the worker catches up when it has stopped.
+            if weak.upgrade().is_some_and(|ui| ui.global::<Chat>().get_thinking()) {
+                ojp_core::model::request_stop();
+                messages.set_vec(Vec::new());
+            }
+            send(Request::NewChat);
+        }
     });
     chat.on_open_chat({
         let send = send.clone();
@@ -287,7 +312,7 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
             let Some(ui) = weak.upgrade() else { return };
             let s = ui.global::<Settings>();
             // Say at once what the chosen model needs, from the files on disk (the worker may be busy).
-            let profile_id = if s.get_profile() == 1 { "uncensored" } else { "classic" };
+            let profile_id = profile_id(s.get_profile());
             if storage::set_str(&config_path, "models", "profile", profile_id).is_ok() {
                 let (config, _) = Config::load_or_default(&config_path, &data_dir);
                 let (note, needs) = model_note(&config, &download::missing(&config));
@@ -567,7 +592,11 @@ fn load_engine(setup: &Setup, ui: &slint::Weak<AppWindow>) -> Option<Engine> {
     let engine = match loaded {
         Ok(engine) => {
             set_state(ui, false, Some(engine.status.join(" · ")));
-            let (ready, verb) = if config.models.profile == "uncensored" { ("The uncensored model", "is") } else { ("The models", "are") };
+            let (ready, verb) = match config.models.profile.as_str() {
+                "uncensored" => ("The uncensored model", "is"),
+                "uncensored-2b" => ("The uncensored 2B model", "is"),
+                _ => ("The models", "are"),
+            };
             set_model_note(ui, format!("{ready} {verb} loaded and ready."), false);
             push_message(ui, format!("{ready} {verb} loaded and ready on this device. Say something."), "ready");
             Some(engine)
@@ -628,9 +657,13 @@ fn drop_setup_messages(ui: &slint::Weak<AppWindow>) {
 
 /// What Settings says about the chosen model's files: whether they are here, and if not, that they need downloading.
 fn model_note(config: &Config, missing: &[Item]) -> (String, bool) {
-    let name = if config.models.profile == "uncensored" { "The uncensored model" } else { "The classic models" };
+    let (name, verb) = match config.models.profile.as_str() {
+        "uncensored" => ("The uncensored model", "is"),
+        "uncensored-2b" => ("The uncensored 2B model", "is"),
+        _ => ("The classic models", "are"),
+    };
     if missing.is_empty() {
-        return (format!("{name} {} on this device.", if config.models.profile == "uncensored" { "is" } else { "are" }), false);
+        return (format!("{name} {verb} on this device."), false);
     }
     let roles: Vec<&str> = missing.iter().map(|m| m.role).collect();
     (format!("Not on this device yet ({}). Tap Download; it resumes if interrupted, and everything works offline afterwards.", roles.join(", ")), true)
@@ -925,12 +958,12 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 let moss_voice = moss_voices.get(tts_moss_voice as usize).map_or("Bella", |(id, _)| id.as_str());
                 let theme = ["system", "light", "dark"].get(theme as usize).copied().unwrap_or("system");
                 let path = &setup.config_path;
-                let profile_id = if profile == 1 { "uncensored" } else { "classic" };
+                let profile_id = profile_id(profile);
                 let saved = storage::set_str(path, "models", "profile", profile_id)
                     .and_then(|_| storage::set_str(path, "ui", "theme", theme))
                     .and_then(|_| storage::set_bool(path, "ui", "dynamic_colors", dynamic_colors))
                     // The uncensored profile forces this off in memory; don't persist that.
-                    .and_then(|_| if profile == 1 { Ok(()) } else { storage::set_bool(path, "models", "main_enabled", main_enabled) })
+                    .and_then(|_| if profile != 0 { Ok(()) } else { storage::set_bool(path, "models", "main_enabled", main_enabled) })
                     .and_then(|_| storage::set_bool(path, "tts", "enabled", tts_enabled))
                     .and_then(|_| storage::set_str(path, "tts", "voice", voice_id))
                     .and_then(|_| storage::set_f64(path, "tts", "speed", speed as f64))
@@ -995,11 +1028,26 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 let start = Instant::now();
                 let mut meta = Vec::new();
                 ojp_core::model::clear_stop();
+                ojp_core::model::reset_stats();
+                // Reading a long prompt (the first message of a chat, a tool list) can take a while on a phone: say so.
+                ojp_core::model::set_eval_hook(Some(Box::new({
+                    let ui = ui.clone();
+                    move |done, of| {
+                        let text = format!("reading the conversation… {}%", done * 100 / of.max(1));
+                        edit_last(&ui, move |m| {
+                            if m.text.is_empty() {
+                                m.meta = text.into();
+                            }
+                        });
+                    }
+                })));
                 let result = engine.ask(&text, &mut |event| match event {
                     Event::Routed { route, ms } => meta.push(format!("{} ({ms} ms)", route.label())),
                     Event::Token(token) => edit_last(&ui, move |m| m.text = format!("{}{token}", m.text).into()),
                     Event::Notice(notice) => meta.push(notice),
                 });
+                ojp_core::model::set_eval_hook(None);
+                let stats = ojp_core::model::stats();
                 let stopped = ojp_core::model::stop_requested();
                 ojp_core::model::clear_stop();
                 match &result {
@@ -1009,6 +1057,18 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                     Ok(_) => {}
                 }
                 meta.push(format!("{:.1} s", start.elapsed().as_secs_f32()));
+                if stats.read_tokens + stats.gen_tokens > 0 {
+                    let rate = |n: u64, ms: u64| if ms == 0 { 0.0 } else { n as f64 * 1000.0 / ms as f64 };
+                    meta.push(format!(
+                        "read {} tokens in {:.1} s ({:.0}/s), wrote {} in {:.1} s ({:.1}/s)",
+                        stats.read_tokens,
+                        stats.read_ms as f64 / 1000.0,
+                        rate(stats.read_tokens, stats.read_ms),
+                        stats.gen_tokens,
+                        stats.gen_ms as f64 / 1000.0,
+                        rate(stats.gen_tokens, stats.gen_ms)
+                    ));
+                }
                 let meta = meta.join(" · ");
 
                 chat.messages.push(StoredMessage { from_user: true, text, meta: String::new() });

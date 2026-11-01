@@ -466,7 +466,7 @@ component ChatPage inherits Rectangle {
             }
             AppButton {
                 text: "New chat";
-                enabled: !Chat.busy;
+                enabled: !Chat.busy || Chat.thinking;
                 clicked => { Chat.clear(); }
             }
         }
@@ -656,7 +656,7 @@ component Sidebar inherits Rectangle {
         AppButton {
             text: "New chat";
             primary: true;
-            enabled: !Chat.busy;
+            enabled: !Chat.busy || Chat.thinking;
             clicked => {
                 Chat.clear();
                 root.close();
@@ -1212,6 +1212,13 @@ component SettingsPage inherits Rectangle {
                     description: "Off: only the small router model is loaded and answers everything (less memory, weaker answers).";
                     checked <=> Settings.main-enabled;
                     toggled => { Settings.changed(); }
+                }
+                Text { text: "Models (testing)"; font-weight: 700; }
+                ChoiceRow {
+                    title: "Uncensored 2B (Qwen3.5 2B)";
+                    description: "A larger single model (about 1 GB, roughly half the speed of the 0.8B). Temporary, for trying it out.";
+                    selected: Settings.profile == 2;
+                    chosen => { Settings.profile = 2; Settings.changed(); }
                 }
                 if Settings.keyboard-on-return-supported: SettingRow {
                     title: "Open the keyboard when I come back";

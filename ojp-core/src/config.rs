@@ -268,6 +268,35 @@ pub const UNCENSORED_FILES: [(&str, &str, &str); 3] = [
     ),
 ];
 
+/// The larger one-model profile (Developer option, for testing): HauhauCS's uncensored Qwen3.5-2B, trimmed and
+/// quantized by OJP the same way (Q5_K_M, 1,066 MB), probes fitted to this exact file. File, URL, SHA-256.
+pub const UNCENSORED_2B_FILES: [(&str, &str, &str); 3] = [
+    (
+        "unc-2b-q5km.gguf",
+        "https://huggingface.co/OpenJarvisProject/Qwen3.5-2B-Uncensored-OJP-GGUF/resolve/main/unc-2b-q5km.gguf",
+        "d96f7bdaf5a4bcc7379030e6131ea0296e6993d71ee0c18c70059bb8c757378d",
+    ),
+    (
+        "unc-2b-q5km.gguf.probe.json",
+        "https://huggingface.co/OpenJarvisProject/Qwen3.5-2B-Uncensored-OJP-GGUF/resolve/main/unc-2b-q5km.gguf.probe.json",
+        "061d3a85e1aafcf06e6aae373d507715939a560dd6059f6106aefbe04a326e29",
+    ),
+    (
+        "unc-2b-q5km.gguf.tools.json",
+        "https://huggingface.co/OpenJarvisProject/Qwen3.5-2B-Uncensored-OJP-GGUF/resolve/main/unc-2b-q5km.gguf.tools.json",
+        "3cf885b9176544bc9b37f431b1df262d8327179511fa691c5b0c2ad39ff229a8",
+    ),
+];
+
+/// The three files (model, router probe, tool probe) of a one-model profile, or None for the classic pair.
+pub fn single_model_files(profile: &str) -> Option<&'static [(&'static str, &'static str, &'static str); 3]> {
+    match profile {
+        "uncensored" => Some(&UNCENSORED_FILES),
+        "uncensored-2b" => Some(&UNCENSORED_2B_FILES),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct Models {
@@ -407,8 +436,8 @@ impl Config {
                 *model = base.join(&*model);
             }
         }
-        if self.models.profile == "uncensored" {
-            let (file, url, sha) = UNCENSORED_FILES[0];
+        if let Some(files) = single_model_files(&self.models.profile) {
+            let (file, url, sha) = files[0];
             self.models.router = Some(base.join("models").join(file));
             self.models.router_probe = None; // found next to the model
             self.models.main_enabled = false;
@@ -500,6 +529,19 @@ mod tests {
 #[cfg(test)]
 mod profile_tests {
     use super::*;
+
+    #[test]
+    fn the_2b_profile_points_at_its_own_files() {
+        let dir = std::env::temp_dir().join("ojp-profile-2b-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "[models]\nprofile = \"uncensored-2b\"\n").unwrap();
+        let c = Config::load_or_init(&path, Path::new("/data/ojp")).unwrap();
+        assert_eq!(c.models.router.as_deref(), Some(Path::new("/data/ojp/models/unc-2b-q5km.gguf")));
+        assert!(!c.models.main_enabled);
+        assert!(c.download.router.as_deref().is_some_and(|u| u.contains("Qwen3.5-2B-Uncensored-OJP-GGUF")));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn uncensored_profile_points_at_the_single_model() {
