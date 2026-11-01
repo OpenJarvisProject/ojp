@@ -59,6 +59,10 @@ export global Chat {
     callback open-chat(string);
     callback delete-chat(string);
 
+    // While the model loads: 0..1, or negative when nothing is loading, and a line saying what it is doing.
+    in-out property <float> load-progress: -1;
+    in-out property <string> load-text;
+
     // First-run model download panel.
     in-out property <bool> download-needed;
     in-out property <string> download-text;
@@ -249,6 +253,9 @@ component ChatPage inherits Rectangle {
                     font-size: 0.8rem;
                     opacity: 0.6;
                     overflow: elide;
+                }
+                if Chat.load-progress >= 0: ProgressIndicator {
+                    progress: Chat.load-progress;
                 }
             }
             Button {
@@ -601,6 +608,8 @@ component SettingsPage inherits Rectangle {
                     chosen => { Settings.profile = 1; Settings.changed(); }
                 }
                 Text { text: Settings.model-note; wrap: word-wrap; font-size: 0.85rem; }
+                if Chat.load-progress >= 0: ProgressIndicator { progress: Chat.load-progress; }
+                if Chat.load-progress >= 0: Text { text: Chat.load-text; wrap: word-wrap; font-size: 0.85rem; opacity: 0.7; }
                 if Chat.download-progress >= 0: ProgressIndicator { progress: Chat.download-progress; }
                 if Chat.download-progress >= 0: Text { text: Chat.download-text; wrap: word-wrap; font-size: 0.85rem; opacity: 0.7; }
                 if Settings.model-needs-download && Chat.download-progress < 0: Button {

@@ -497,7 +497,27 @@ fn load_engine(setup: &Setup, ui: &slint::Weak<AppWindow>) -> Option<Engine> {
         set_state(ui, true, Some("Loading the model… (the first time takes a while)".into()));
         drop_setup_messages(ui);
     }
-    let engine = match Engine::new(config) {
+    let started = Instant::now();
+    let shown = std::sync::Mutex::new((-1.0f32, String::new()));
+    let report_ui = ui.clone();
+    let progress: ojp_core::engine::Progress = std::sync::Arc::new(move |fraction, label| {
+        // No update that wouldn't move the bar or change the words.
+        let Ok(mut last) = shown.lock() else { return };
+        if (fraction - last.0).abs() < 0.01 && last.1 == label && fraction < 1.0 {
+            return;
+        }
+        *last = (fraction, label.to_owned());
+        let text = progress_text(fraction, label, started.elapsed());
+        let _ = report_ui.upgrade_in_event_loop(move |ui| {
+            let chat = ui.global::<Chat>();
+            chat.set_load_progress(fraction);
+            chat.set_load_text(text.clone().into());
+            chat.set_status(text.into());
+        });
+    });
+    let loaded = Engine::new_with_progress(config, progress);
+    let _ = ui.upgrade_in_event_loop(|ui| ui.global::<Chat>().set_load_progress(-1.0));
+    let engine = match loaded {
         Ok(engine) => {
             set_state(ui, false, Some(engine.status.join(" · ")));
             let (ready, verb) = if config.models.profile == "uncensored" { ("The uncensored model", "is") } else { ("The models", "are") };
@@ -523,6 +543,19 @@ fn load_engine(setup: &Setup, ui: &slint::Weak<AppWindow>) -> Option<Engine> {
     );
     let _ = ui.upgrade_in_event_loop(move |ui| ui.global::<Settings>().set_info(info.into()));
     engine
+}
+
+/// "Reading the tool list… 42% · about 20 s left". The time left is the pace since the files were opened,
+/// so it only appears once there is a pace to go by.
+fn progress_text(fraction: f32, label: &str, elapsed: Duration) -> String {
+    let percent = (fraction * 100.0).round() as u32;
+    let opened = ojp_core::engine::OPENED_AT;
+    if fraction <= opened + 0.03 || fraction >= 1.0 {
+        return format!("{label}… {percent}%");
+    }
+    let left = elapsed.as_secs_f32() * (1.0 - fraction) / fraction;
+    let left = if left < 90.0 { format!("about {} s left", (left / 5.0).ceil() as u32 * 5) } else { format!("about {} min left", (left / 60.0).ceil() as u32) };
+    format!("{label}… {percent}% · {left}")
 }
 
 fn set_model_note(ui: &slint::Weak<AppWindow>, note: String, needs_download: bool) {

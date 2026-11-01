@@ -329,8 +329,17 @@ fn planner_messages(template: Template, request: &str, steps: &[Step], with_done
     messages
 }
 
+/// What every first-step planner prompt shares (see `Model::set_prefix_hint`).
+fn hint_planner_prefix(model: &mut Model, template: Template) {
+    let render = |request: &str| template.render(&planner_messages(template, request, &[], false), true);
+    model.set_prefix_hint(Seq::Tool, &[&render("hello"), &render("what time is it")]);
+}
+
 pub fn plan(model: &mut Model, template: Template, request: &str, steps: &[Step]) -> Result<Vec<Value>> {
     let with_done = !steps.is_empty();
+    if !with_done {
+        hint_planner_prefix(model, template);
+    }
     let messages = planner_messages(template, request, steps, with_done);
     let prompt = template.render(&messages, true);
     // SAFETY: llama_sampler_init_grammar parses the grammar during the call.
@@ -418,6 +427,7 @@ fn has_path(request: &str) -> bool {
 /// list and examples, so its cache is reused), but the grammar allows only that tool:
 /// the probe has chosen the tool, the model only writes the arguments.
 fn plan_forced(model: &mut Model, template: Template, request: &str, tool: &str) -> Result<Vec<Value>> {
+    hint_planner_prefix(model, template);
     let messages = planner_messages(template, request, &[], false);
     let prompt = template.render(&messages, true);
     // SAFETY: llama_sampler_init_grammar parses the grammar during the call.

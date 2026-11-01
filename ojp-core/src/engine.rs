@@ -164,10 +164,53 @@ pub struct Engine {
     pending: Option<Pending>,
     /// What loaded, and what was skipped and why, for display.
     pub status: Vec<String>,
+    /// Where each model's warm-up cache lives, and whether the tool prompt is in it yet (a phone adds it the
+    /// first time a tool is used, then saves the cache again).
+    router_cache: Option<std::path::PathBuf>,
+    main_cache: Option<std::path::PathBuf>,
+    tools_saved: bool,
+}
+
+/// Progress through the start-up warm-up, shared with the callback each model calls after every batch.
+#[derive(Clone)]
+struct WarmProgress {
+    report: Progress,
+    /// Tokens (estimated) already evaluated, and in all the warm-up that is still to do.
+    base: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    total: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+/// Reports (fraction done 0..1, what is happening) while the engine starts.
+pub type Progress = std::sync::Arc<dyn Fn(f32, &str) + Send + Sync>;
+
+/// Where the bar starts once the model files are open; the warm-up fills the rest.
+pub const OPENED_AT: f32 = 0.15;
+
+impl WarmProgress {
+    /// Make `model` report its progress through a step expected to evaluate about `expected` tokens.
+    fn arm(&self, model: &mut Model, label: &'static str, expected: usize) {
+        use std::sync::atomic::Ordering::Relaxed;
+        let me = self.clone();
+        model.set_progress(Some(Box::new(move |done, of| {
+            let work = me.base.load(Relaxed) as f32 + expected as f32 * done as f32 / of.max(1) as f32;
+            (me.report)(OPENED_AT + (1.0 - OPENED_AT) * (work / me.total.load(Relaxed).max(1) as f32).min(1.0), label);
+        })));
+    }
+
+    fn done(&self, model: &mut Model, expected: usize) {
+        self.base.fetch_add(expected, std::sync::atomic::Ordering::Relaxed);
+        model.set_progress(None);
+    }
 }
 
 impl Engine {
     pub fn new(config: &Config) -> Result<Engine> {
+        Engine::new_with_progress(config, std::sync::Arc::new(|_, _| {}))
+    }
+
+    /// Like `new`, calling `progress` with how far along the start-up is (0 to 1) and what it is doing.
+    pub fn new_with_progress(config: &Config, progress: Progress) -> Result<Engine> {
+        progress(0.02, "Opening the model");
         crate::model::set_threads(config.models.threads);
         let mut status = Vec::new();
         // A probe router next to a main model only classifies, so it needs one short sequence.
@@ -211,6 +254,7 @@ impl Engine {
         if router_llm.is_none() && main.is_none() {
             bail!("no model available:\n  {}", status.join("\n  "));
         }
+        progress(OPENED_AT, "Getting the model ready");
 
         let template = config.template()?;
         crate::tools_ext::set_policy(crate::tools_ext::Policy { internet: config.tools.internet });
@@ -240,53 +284,95 @@ impl Engine {
                 let _ = model.complete(Seq::Chat, &chat_prompt, &mut sampler, 1, &mut |_| {});
             }
         };
+        // The tool prompt is about 2,500 tokens, by far the biggest part of the warm-up. A phone does it the first
+        // time a tool is actually used instead (and saves the cache then), so the first start is quick.
+        let tools_at_load = !cfg!(target_os = "android") && std::env::var_os("OJP_LAZY_TOOLS").is_none();
+        let tool_tokens = if tools_at_load { 2_500 } else { 0 };
+        let warm = WarmProgress { report: progress.clone(), base: Default::default(), total: Default::default() };
+        let mut router_cache = None;
+        let mut main_cache = None;
+        // Which models still need warming (no saved cache that fits), and about how many tokens that is.
+        let mut router_todo = false;
+        let mut main_todo = false;
+        let mut expected_total = 0usize;
+        let router_expected = |model: &Model| 145 + if model.is_recurrent() { 145 } else { 0 } + if light_router { 0 } else { tool_tokens } + if router_only { 110 } else { 0 };
+        let tool_prompt = tools::system_prompt();
         if let Some(model) = router_llm.as_mut() {
-            let tool_prompt = tools::system_prompt();
             let path = cache_path(config, config.models.router.as_deref(), &[&chat_prompt, &format!("{router_only}{light_router}{}", router.has_probe()), &tool_prompt]);
-            if path.as_ref().is_none_or(|p| model.load_cache(p).is_err()) {
-                let _ = router.classify(model, "hello");
-                // Evaluates the tool prompt once so the first tool call is fast.
-                if !light_router {
-                    let _ = tools::ask(model, template, "what time is it");
-                }
-                if model.is_recurrent() {
-                    // A recurrent model can't rewind: it snapshots where two prompts diverge.
-                    let _ = router.classify(model, "what time is it");
-                    if !light_router {
-                        let _ = tools::ask(model, template, "hello");
-                    }
-                }
-                if router_only {
-                    warm_chat(model);
-                }
-                if let Some(p) = &path {
-                    let _ = model.save_cache(p);
-                }
+            router_todo = path.as_ref().is_none_or(|p| model.load_cache(p).is_err());
+            if router_todo {
+                expected_total += router_expected(model);
             }
+            router_cache = path;
         }
         if let Some(Main::Local(model)) = main.as_mut() {
-            // The main model also routes and picks tools when it is loaded (it is
-            // much better at both than the small router), so warm those prompts too.
-            let tool_prompt = tools::system_prompt();
             let path = cache_path(config, config.models.main.as_deref(), &[&chat_prompt, &tool_prompt, "routes+tools"]);
-            if path.as_ref().is_none_or(|p| model.load_cache(p).is_err()) {
-                warm_chat(model);
+            main_todo = path.as_ref().is_none_or(|p| model.load_cache(p).is_err());
+            if main_todo {
                 let routes_here = !(router.has_probe() && router_llm.is_some());
-                if routes_here {
-                    let _ = router.classify(model, "hello");
-                }
+                expected_total += 110 + if routes_here { 145 } else { 0 } + tool_tokens + if model.is_recurrent() { 150 } else { 0 };
+            }
+            main_cache = path;
+        }
+        warm.total.store(expected_total, std::sync::atomic::Ordering::Relaxed);
+        if let (Some(model), true) = (router_llm.as_mut(), router_todo) {
+            warm.arm(model, "Reading the router prompt", 145);
+            let _ = router.classify(model, "hello");
+            warm.done(model, 145);
+            // Evaluates the tool prompt once so the first tool call is fast.
+            if !light_router && tools_at_load {
+                warm.arm(model, "Reading the tool list (first time only)", tool_tokens);
                 let _ = tools::ask(model, template, "what time is it");
-                if model.is_recurrent() {
-                    if routes_here {
-                        let _ = router.classify(model, "what time is it");
-                    }
+                warm.done(model, tool_tokens);
+            }
+            if model.is_recurrent() {
+                // A recurrent model can't rewind: it snapshots where two prompts diverge.
+                warm.arm(model, "Reading the router prompt", 145);
+                let _ = router.classify(model, "what time is it");
+                warm.done(model, 145);
+                if !light_router && tools_at_load {
                     let _ = tools::ask(model, template, "hello");
                 }
-                if let Some(p) = &path {
-                    let _ = model.save_cache(p);
-                }
+            }
+            if router_only {
+                warm.arm(model, "Reading the chat prompt", 110);
+                warm_chat(model);
+                warm.done(model, 110);
+            }
+            if let Some(p) = &router_cache {
+                let _ = model.save_cache(p);
             }
         }
+        if let (Some(Main::Local(model)), true) = (main.as_mut(), main_todo) {
+            // The main model also routes and picks tools when it is loaded (it is
+            // much better at both than the small router), so warm those prompts too.
+            warm.arm(model, "Reading the chat prompt", 110);
+            warm_chat(model);
+            warm.done(model, 110);
+            let routes_here = !(router.has_probe() && router_llm.is_some());
+            if routes_here {
+                warm.arm(model, "Reading the router prompt", 145);
+                let _ = router.classify(model, "hello");
+                warm.done(model, 145);
+            }
+            if tools_at_load {
+                warm.arm(model, "Reading the tool list (first time only)", tool_tokens);
+                let _ = tools::ask(model, template, "what time is it");
+                warm.done(model, tool_tokens);
+            }
+            if model.is_recurrent() {
+                if routes_here {
+                    let _ = router.classify(model, "what time is it");
+                }
+                if tools_at_load {
+                    let _ = tools::ask(model, template, "hello");
+                }
+            }
+            if let Some(p) = &main_cache {
+                let _ = model.save_cache(p);
+            }
+        }
+        progress(1.0, "Ready");
         let tool_probe = config.models.router.as_ref().and_then(|r| tools::ToolProbe::find(r));
         let link = if config.link.enabled { Identity::load_or_create().ok() } else { None }.map(|me| {
             let caps = std::sync::Arc::new(Caps::default());
@@ -313,6 +399,9 @@ impl Engine {
             pending: None,
             system_prompt,
             status,
+            router_cache,
+            main_cache,
+            tools_saved: tools_at_load,
         })
     }
 
@@ -646,14 +735,24 @@ impl Engine {
     }
 
     fn plan_step(&mut self, request: &str, steps: &[tools::Step]) -> Result<Vec<serde_json::Value>> {
+        let on_main = matches!(self.main, Some(Main::Local(_)));
         let model = match (&mut self.router_llm, &mut self.main) {
             (_, Some(Main::Local(model))) | (Some(model), _) => model,
             (None, _) => bail!("device control needs a local model"),
         };
-        if steps.is_empty() {
-            return tools::ask_fast(model, self.template, self.tool_probe.as_ref(), self.route_hidden.as_deref(), request);
+        let result = if steps.is_empty() {
+            tools::ask_fast(model, self.template, self.tool_probe.as_ref(), self.route_hidden.as_deref(), request)
+        } else {
+            tools::plan(model, self.template, request, steps)
+        };
+        if result.is_ok() && !self.tools_saved {
+            // The tool prompt is now in the model's cache: keep it for the next start.
+            self.tools_saved = true;
+            if let Some(path) = if on_main { &self.main_cache } else { &self.router_cache } {
+                let _ = model.save_cache(path);
+            }
         }
-        tools::plan(model, self.template, request, steps)
+        result
     }
 
     fn messages(&self) -> Vec<ChatMessage> {

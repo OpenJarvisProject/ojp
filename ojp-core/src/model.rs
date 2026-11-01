@@ -65,6 +65,11 @@ pub struct Model {
     light: bool,
     /// Whether the context is currently set to output hidden states (see `last_hidden`).
     embeddings_on: bool,
+    /// Per sequence, for recurrent models: the tokens that every prompt of this kind starts with (see
+    /// `set_prefix_hint`), so the snapshot at the point they diverge is taken the first time, not the second.
+    prefix_hint: [Vec<LlamaToken>; SEQS],
+    /// Told (tokens done, tokens in this prompt) after each batch of a long prompt, for a progress bar.
+    on_eval: Option<Box<dyn FnMut(usize, usize) + Send>>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -146,7 +151,29 @@ impl Model {
             logits_idx: 0,
             light,
             embeddings_on: false,
+            prefix_hint: Default::default(),
+            on_eval: None,
         })
+    }
+
+    /// Report progress through long prompts: called after every batch with (tokens done, tokens in the prompt).
+    pub fn set_progress(&mut self, callback: Option<Box<dyn FnMut(usize, usize) + Send>>) {
+        self.on_eval = callback;
+    }
+
+    /// Tell a recurrent model what prompts of this kind have in common (the tokens before the part that
+    /// varies, e.g. the tool list and examples before the user's request). Its first evaluation then takes the
+    /// snapshot at that point itself; without this it only learns where prompts diverge from a second,
+    /// different prompt, which means evaluating the long shared part twice. Set once; later calls do nothing.
+    pub fn set_prefix_hint(&mut self, seq: Seq, prompts: &[&str]) {
+        let seq = self.norm(seq);
+        if !self.recurrent || !self.prefix_hint[seq as usize].is_empty() || prompts.len() < 2 {
+            return;
+        }
+        let tokens: Vec<Vec<LlamaToken>> = prompts.iter().filter_map(|p| self.llama.model().tokenize(p, true, true).ok()).collect();
+        let Some(first) = tokens.first() else { return };
+        let common = tokens.iter().skip(1).map(|t| first.iter().zip(t).take_while(|(a, b)| a == b).count()).min().unwrap_or(0);
+        self.prefix_hint[seq as usize] = first[..common].to_vec();
     }
 
     /// Whether the memory can drop a sequence's newest tokens.
@@ -463,7 +490,9 @@ impl Model {
             // Where this prompt departs from the previous one is where the
             // next one will probably depart too: snapshot the state there.
             let shared = self.last_prompt[seq as usize].iter().zip(tokens).take_while(|(a, b)| a == b).count();
-            let at = shared.min(tokens.len() - 1);
+            let hint = &self.prefix_hint[seq as usize];
+            let hinted = if !hint.is_empty() && tokens.starts_with(hint) { hint.len() } else { 0 };
+            let at = shared.max(hinted).min(tokens.len() - 1);
             if at > keep && self.checkpoint[seq as usize].iter().all(|cp| cp.tokens.len() != at) {
                 checkpoint_at = Some(at);
             }
@@ -476,6 +505,7 @@ impl Model {
         let n_batch = self.llama.context().n_batch() as usize;
         let mut logits_idx = 0;
         let mut start = keep;
+        let first = keep;
         while start < tokens.len() {
             let mut end = (start + n_batch).min(tokens.len());
             if let Some(at) = checkpoint_at.filter(|&at| start < at && at < end) {
@@ -494,6 +524,9 @@ impl Model {
             self.cached[seq as usize].extend_from_slice(chunk);
             logits_idx = chunk.len() as i32 - 1;
             start = end;
+            if let Some(report) = self.on_eval.as_mut() {
+                report(start - first, tokens.len() - first);
+            }
             if checkpoint_at == Some(start) {
                 let state = self.snapshot(seq);
                 self.add_checkpoint(seq, Checkpoint { tokens: tokens[..start].to_vec(), state, used: 0 });
