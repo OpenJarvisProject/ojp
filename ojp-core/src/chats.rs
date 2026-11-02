@@ -62,11 +62,13 @@ impl Default for StoredChat {
 
 pub struct ChatStore {
     dir: PathBuf,
+    /// Unsent messages, one per chat (`new` for a chat that has no messages yet): `<data dir>/drafts.json`.
+    drafts: PathBuf,
 }
 
 impl ChatStore {
     pub fn new(data_dir: &std::path::Path) -> ChatStore {
-        ChatStore { dir: data_dir.join("chats") }
+        ChatStore { dir: data_dir.join("chats"), drafts: data_dir.join("drafts.json") }
     }
 
     fn path(&self, id: &str) -> PathBuf {
@@ -106,6 +108,34 @@ impl ChatStore {
         let tmp = path.with_extension("json.tmp");
         std::fs::write(&tmp, serde_json::to_vec_pretty(chat)?)?;
         std::fs::rename(&tmp, &path)?;
+        Ok(())
+    }
+
+    fn read_drafts(&self) -> std::collections::BTreeMap<String, String> {
+        std::fs::read(&self.drafts).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    }
+
+    /// The unsent message typed in chat `key` (`new` for a chat with no messages), or "".
+    pub fn draft(&self, key: &str) -> String {
+        self.read_drafts().remove(key).unwrap_or_default()
+    }
+
+    /// Remember (or, when empty, forget) the unsent message of chat `key`.
+    pub fn set_draft(&self, key: &str, text: &str) -> Result<()> {
+        let mut drafts = self.read_drafts();
+        if text.is_empty() {
+            if drafts.remove(key).is_none() {
+                return Ok(());
+            }
+        } else {
+            drafts.insert(key.to_string(), text.chars().take(20_000).collect());
+        }
+        if let Some(parent) = self.drafts.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let tmp = self.drafts.with_extension("json.tmp");
+        std::fs::write(&tmp, serde_json::to_vec(&drafts)?)?;
+        std::fs::rename(&tmp, &self.drafts)?;
         Ok(())
     }
 
@@ -193,6 +223,23 @@ mod tests {
         assert_eq!(loaded.title, "Holiday plans", "a later message must not overwrite a chosen title");
         store.rename("7", "").unwrap();
         assert_eq!(store.load("7").unwrap().title, "first words");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unsent_messages_are_kept_per_chat() {
+        let dir = std::env::temp_dir().join("ojp-drafts-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = ChatStore::new(&dir);
+        assert_eq!(store.draft("new"), "");
+        store.set_draft("new", "half a thought").unwrap();
+        store.set_draft("123", "another one").unwrap();
+        assert_eq!(store.draft("new"), "half a thought");
+        assert_eq!(ChatStore::new(&dir).draft("123"), "another one", "survives a restart");
+        store.set_draft("new", "").unwrap();
+        assert_eq!(store.draft("new"), "");
+        assert_eq!(store.draft("123"), "another one");
+        assert!(store.list().is_empty(), "drafts are not chats");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

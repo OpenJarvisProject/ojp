@@ -100,9 +100,9 @@ const ANDROID_ONLY: &[Tool] = &[
     Tool { name: "bluetooth", doc: "turn the phone's Bluetooth on or off", args: &[Arg { name: "state", kind: ArgKind::Choice(&["on", "off"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::bluetooth(text(a, "state")? == "on") },
     Tool { name: "airplane", doc: "turn airplane mode on or off", args: &[Arg { name: "state", kind: ArgKind::Choice(&["on", "off"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::airplane(text(a, "state")? == "on") },
     Tool { name: "brightness", doc: "set the screen brightness, 0-100", args: &[Arg { name: "level", kind: ArgKind::Int { max: 100 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::brightness(int(a, "level")?) },
-    Tool { name: "wifi_info", doc: "say which Wi-Fi network the phone is connected to, with its signal strength", args: &[], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |_| crate::tools_android::wifi_info() },
+    Tool { name: "phone_read", doc: "look something up on the phone by running a read-only shell command through Shizuku (it changes nothing, so it runs without asking). Useful commands: `cmd wifi status` (Wi-Fi network, signal, speed), `ip -f inet addr show wlan0` (IP address), `dumpsys battery`, `dumpsys wifi`, `getprop ro.build.version.release` (Android version), `settings get system screen_brightness`, `pm list packages -3` (installed apps), `df -h /storage/emulated/0` (storage), `uptime`", args: &[Arg { name: "command", kind: ArgKind::Text { max: 250 } }], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::phone_read(text(a, "command")?) },
     Tool { name: "screenshot", doc: "take a screenshot of the screen", args: &[], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |_| crate::tools_android::screenshot() },
-    Tool { name: "adb_shell", doc: "run a shell command on the phone with adb permissions (asks the user first)", args: &[Arg { name: "command", kind: ArgKind::Text { max: 250 } }], kind: Kind::Act, risk: Risk::Confirm, explore: false, run: |a| crate::tools_android::adb_shell(text(a, "command")?) },
+    Tool { name: "adb_shell", doc: "run any other shell command on the phone with adb permissions, for things that change something (asks the user first)", args: &[Arg { name: "command", kind: ArgKind::Text { max: 250 } }], kind: Kind::Act, risk: Risk::Confirm, explore: false, run: |a| crate::tools_android::adb_shell(text(a, "command")?) },
 ];
 
 /// The tools of the desktop registry that also work on a phone.
@@ -239,7 +239,11 @@ const ANDROID_EXAMPLES: &[(&str, &str)] = &[
     ("Put the phone in airplane mode.", r#"[{"tool": "airplane", "args": {"state": "on"}}]"#),
     ("Make the screen dimmer, around 20%.", r#"[{"tool": "brightness", "args": {"level": 20}}]"#),
     ("Grab a screenshot.", r#"[{"tool": "screenshot", "args": {}}]"#),
-    ("What Wi-Fi network am I connected to?", r#"[{"tool": "wifi_info", "args": {}}]"#),
+    ("What Wi-Fi network am I connected to?", r#"[{"tool": "phone_read", "args": {"command": "cmd wifi status"}}]"#),
+    ("What is my IP address?", r#"[{"tool": "phone_read", "args": {"command": "ip -f inet addr show wlan0"}}]"#),
+    ("Which Android version is this?", r#"[{"tool": "phone_read", "args": {"command": "getprop ro.build.version.release"}}]"#),
+    ("How much storage do I have left?", r#"[{"tool": "phone_read", "args": {"command": "df -h /storage/emulated/0"}}]"#),
+    ("What is the screen brightness set to?", r#"[{"tool": "phone_read", "args": {"command": "settings get system screen_brightness"}}]"#),
     ("Run pm list packages on the phone.", r#"[{"tool": "adb_shell", "args": {"command": "pm list packages"}}]"#),
 ];
 
@@ -405,10 +409,10 @@ impl ToolProbe {
 /// `ask`, taking the fast path when a tool probe is confident. `hidden` is the
 /// router model's state for this request (see `Router::hidden`).
 pub fn ask_fast(model: &mut Model, template: Template, probe: Option<&ToolProbe>, hidden: Option<&[f32]>, request: &str) -> Result<Vec<Value>> {
-    // A plain question about the phone's Wi-Fi link has one answer; a small model should not have to guess it
-    // (it used to reach for the web search).
-    if cfg!(target_os = "android") && is_wifi_question(request) {
-        return Ok(vec![serde_json::json!({"tool": "wifi_info", "args": {}})]);
+    // On a phone the tool probe knows nothing about the phone's own tools (it was fitted before they existed), so
+    // the planner decides there, from its examples.
+    if cfg!(target_os = "android") {
+        return ask(model, template, request);
     }
     if let (Some(probe), Some(hidden)) = (probe, hidden)
         && let Some((tool, p)) = probe.predict(hidden)
@@ -419,15 +423,6 @@ pub fn ask_fast(model: &mut Model, template: Template, probe: Option<&ToolProbe>
         return Ok(calls);
     }
     ask(model, template, request)
-}
-
-/// "What Wi-Fi am I connected to?", "which network am I on?": asking about the link, not switching Wi-Fi on or off.
-fn is_wifi_question(request: &str) -> bool {
-    let q = request.to_lowercase();
-    let wifi = q.contains("wifi") || q.contains("wi-fi") || q.contains("wi fi") || q.contains("wireless network");
-    let switching = ["turn ", "switch ", "enable", "disable", "toggle", " on wifi", "on the wifi"].iter().any(|w| q.contains(w)) && !q.contains("connected");
-    let asking = ["connected to", "what wifi", "which wifi", "what wi-fi", "which wi-fi", "what network", "which network", "ssid", "signal", "am i on", "currently on", "name of the wifi", "name of my wifi"].iter().any(|w| q.contains(w));
-    wifi && asking && !switching
 }
 
 /// Whether the request names a file path or a file with an extension (read_file needs an exact path;
@@ -1379,16 +1374,6 @@ fn desktop_entries() -> Vec<(PathBuf, String)> {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn wifi_questions_are_told_apart_from_switching_wifi() {
-        for q in ["tell me what WiFi I'm currently connected to using shizuku", "What Wi-Fi network am I on?", "which wifi am i connected to", "how strong is my wifi signal"] {
-            assert!(is_wifi_question(q), "{q}");
-        }
-        for q in ["turn off the wifi", "switch the Wi-Fi on", "what's the weather", "disable wifi please"] {
-            assert!(!is_wifi_question(q), "{q}");
-        }
-    }
-
     #[test]
     fn every_desktop_example_is_still_shown_to_the_planner() {
         // The phone filter must not silently drop a desktop example (that would change the prompt).

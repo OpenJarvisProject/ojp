@@ -653,7 +653,8 @@ impl Engine {
             self.history[last] = ChatMessage::new(
                 Role::User,
                 format!(
-                    "{request}\n\n{done}[Looked up on this computer: {}]\nAnswer in one or two short sentences using only that.{}",
+                    "{request}\n\n{done}[Looked up on this {}: {}]\nAnswer in one or two short sentences using only that. If it does not contain what was asked, say what is missing; never write placeholders in brackets.{}",
+                    if cfg!(target_os = "android") { "phone" } else { "computer" },
                     facts.join("\n"),
                     // Qwen3.5-based models paraphrased and invented numbers; this keeps them to the text.
                     if self.template.qwen35_tuned() { " Copy names and numbers exactly as written and add nothing." } else { "" }

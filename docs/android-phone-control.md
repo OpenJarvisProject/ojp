@@ -8,12 +8,15 @@ closed; Android 13+ asks once to allow notifications), battery, plus the tools t
 (time, calculator, notes, memory, web).
 
 **With Shizuku (optional):** Wi-Fi, Bluetooth, airplane mode, brightness, screenshots and `adb_shell`, any
-shell command with adb's rights. `adb_shell` always asks first. Shizuku is a separate free app; start it once
+shell command with adb's rights. `adb_shell` always asks first. `phone_read` is the lookup version: the assistant picks
+a read-only command itself (for example `cmd wifi status`, `ip -f inet addr show wlan0`, `dumpsys battery`, `getprop`)
+and it runs without asking, but only if it passes a read-only check (no redirects, chaining, or anything that changes
+settings, packages or files); everything else goes through `adb_shell`. Shizuku is a separate free app; start it once
 (wireless debugging, no PC needed on Android 11+), then Settings > Phone control > *Allow with Shizuku*.
 Nothing in OJP needs it, and without it those tools just say what to do.
 
 Another device can ask the phone for these things ("turn off the wifi on my phone") within the permission
-level you gave it (see devices.md); `adb_shell` needs the *Everything* level and your yes on the asking device.
+level you gave it (see devices.md); `adb_shell` and `phone_read` need the *Everything* level and your yes on the asking device.
 
 How it is wired: `ojp_core::platform` holds one `(method, argument) -> text` function that the app points at
 `PhoneActions.invoke`, so ojp-core has no JNI. The Shizuku API classes (Apache-2.0) are fetched by

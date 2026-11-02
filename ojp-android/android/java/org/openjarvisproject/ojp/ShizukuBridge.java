@@ -27,11 +27,26 @@ final class ShizukuBridge {
 
     private ShizukuBridge() {}
 
+    /**
+     * Shizuku's API remembers a granted permission for as long as the process lives, so after the user switches this
+     * app off inside Shizuku it would keep saying "allowed" (and the Settings button would do nothing). Forget the
+     * remembered answer so the next check asks Shizuku again.
+     */
+    private static void forgetCachedPermission() {
+        try {
+            java.lang.reflect.Field f = Shizuku.class.getDeclaredField("permissionGranted");
+            f.setAccessible(true);
+            f.setBoolean(null, false);
+        } catch (Throwable ignored) {
+        }
+    }
+
     /** "none" (not installed or not running), "old", "permission" (running, not allowed yet) or "ready". */
     static String state() {
         try {
             if (!Shizuku.pingBinder()) return "none";
             if (Shizuku.isPreV11()) return "old";
+            forgetCachedPermission();
             return Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED ? "ready" : "permission";
         } catch (Throwable t) {
             return "none";

@@ -320,7 +320,7 @@ pub fn remote_allowed(tool: &str, level: AskLevel) -> bool {
     match level {
         AskLevel::Off => false,
         AskLevel::Basic => BASIC.contains(&tool),
-        AskLevel::Full => !matches!(tool, "write_file" | "run_command" | "forget" | "tag_add" | "adb_shell"),
+        AskLevel::Full => !matches!(tool, "write_file" | "run_command" | "forget" | "tag_add" | "adb_shell" | "phone_read"),
         AskLevel::Everything => true,
     }
 }

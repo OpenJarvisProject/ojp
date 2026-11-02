@@ -87,53 +87,60 @@ pub fn adb_shell(command: &str) -> Result<String> {
     Ok(if out.is_empty() { "Done (no output).".into() } else { out })
 }
 
-/// Which Wi-Fi network the phone is on, and how good the link is. With Shizuku the network's name and signal come
-/// from the system; without it Android only tells apps whether the phone is on Wi-Fi at all.
-pub fn wifi_info() -> Result<String> {
-    if platform::shizuku() == platform::Shizuku::Ready {
-        let out = shell("cmd wifi status")?;
-        return Ok(describe_wifi(&out));
+/// Commands the assistant may run on its own, because they only look at things and change nothing.
+const LOOKUPS: &[&str] = &[
+    "ip", "ifconfig", "netstat", "ss", "getprop", "uptime", "date", "id", "whoami", "uname", "df", "du", "free", "ls", "cat", "head", "tail", "wc",
+    "grep", "sort", "uniq", "cut", "tr", "ps", "pidof", "which", "getenforce", "hostname", "dumpsys", "settings", "pm", "cmd", "wm", "find", "stat",
+    "service", "lsmod", "mount", "printenv", "nslookup", "ping", "arp",
+];
+
+/// Words that turn a lookup into a change, wherever they appear in the command.
+const CHANGERS: &[&str] = &[
+    " add ", " del ", " delete ", " flush ", " set ", " put ", " change ", " replace ", " reset ", " unplug ", " enable ", " disable ", " install ",
+    " uninstall ", " clear ", " grant ", " revoke ", " kill ", " start ", " stop ", " remove ", " rm ", " mv ", " cp ", " write ", " reboot ", " -exec", " -delete",
+    " -ok", " -fprint", "svc ",
+];
+
+/// Whether `command` only looks at things (see [`LOOKUPS`]): no redirects, no chaining, no substitutions, every
+/// piece of a pipeline a lookup, and `settings`/`pm`/`cmd`/`wm` used only in their reading forms.
+pub fn is_lookup(command: &str) -> bool {
+    let c = command.trim();
+    if c.is_empty() || c.len() > 250 || c.contains(['>', '<', '`', ';', '\n', '&', '\\']) || c.contains("$(") || c.contains("${") {
+        return false;
     }
-    Ok(match call("wifi_link", "").unwrap_or_default().as_str() {
-        "wifi" => "The phone is on Wi-Fi, but Android hides the network's name from apps. Allow Open Jarvis in Shizuku (Settings) and ask again to see it.".into(),
-        "cellular" => "The phone is on mobile data, not Wi-Fi.".into(),
-        "ethernet" => "The phone is on a wired connection, not Wi-Fi.".into(),
-        "none" => "The phone has no network connection right now.".into(),
-        _ => "The phone is connected through something other than Wi-Fi.".into(),
+    let padded = format!(" {} ", c.to_lowercase());
+    if CHANGERS.iter().any(|w| padded.contains(w)) {
+        return false;
+    }
+    c.split('|').all(|piece| {
+        let mut words = piece.split_whitespace();
+        let Some(first) = words.next() else { return false };
+        let rest: Vec<&str> = words.collect();
+        if !LOOKUPS.contains(&first) {
+            return false;
+        }
+        match first {
+            // Only the reading forms of these.
+            "settings" => rest.first().is_some_and(|w| matches!(*w, "get" | "list")),
+            "pm" => rest.first().is_some_and(|w| matches!(*w, "list" | "path" | "dump" | "resolve-activity" | "get-install-location")),
+            "cmd" => matches!(rest.as_slice(), ["wifi", "status" | "list-scan-results" | "list-networks"] | ["package", "list", ..]),
+            "wm" => matches!(rest.as_slice(), ["size"] | ["density"]),
+            "service" => rest.first() == Some(&"list"),
+            "mount" => rest.is_empty(),
+            "ping" => rest.iter().any(|w| *w == "-c"),
+            _ => true,
+        }
     })
 }
 
-/// One sentence from the output of `cmd wifi status`.
-pub fn describe_wifi(out: &str) -> String {
-    let lower = out.to_lowercase();
-    if lower.contains("wifi is disabled") {
-        return "Wi-Fi is turned off.".into();
+/// Look something up on the phone by running a read-only shell command through Shizuku.
+pub fn phone_read(command: &str) -> Result<String> {
+    if !is_lookup(command) {
+        bail!("that isn't a read-only lookup, so I won't run it on my own; adb_shell can run it after asking you");
     }
-    let quoted = |after: &str| -> Option<String> {
-        let at = out.find(after)? + after.len();
-        let rest = &out[at..];
-        Some(rest[..rest.find('"')?].to_string())
-    };
-    let Some(ssid) = quoted("Wifi is connected to \"").or_else(|| quoted("SSID: \"")).filter(|s| !s.is_empty() && s != "<unknown ssid>") else {
-        return "Wi-Fi is on, but the phone isn't connected to a network.".into();
-    };
-    let number = |key: &str| -> Option<i64> {
-        let at = out.find(key)? + key.len();
-        let rest = &out[at..];
-        let end = rest.find(|c: char| !(c.is_ascii_digit() || c == '-')).unwrap_or(rest.len());
-        rest[..end].parse().ok()
-    };
-    let mut details = Vec::new();
-    if let Some(freq) = number("Frequency: ") {
-        details.push(if freq < 3000 { "2.4 GHz" } else if freq < 5900 { "5 GHz" } else { "6 GHz" }.to_string());
-    }
-    if let Some(rssi) = number("RSSI: ") {
-        details.push(format!("signal {rssi} dBm"));
-    }
-    if let Some(speed) = number("Link speed: ") {
-        details.push(format!("{speed} Mbps"));
-    }
-    if details.is_empty() { format!("Connected to Wi-Fi \"{ssid}\".") } else { format!("Connected to Wi-Fi \"{ssid}\" ({}).", details.join(", ")) }
+    let out = shell(command.trim())?;
+    let out: String = out.chars().take(2500).collect();
+    Ok(if out.trim().is_empty() { "(the command printed nothing)".into() } else { out })
 }
 
 /// Words for the Shizuku state, shown in Settings.
@@ -155,12 +162,41 @@ mod tests {
     use crate::platform::testing::{calls, fake, uninstall, REPLY};
 
     #[test]
-    fn wifi_status_output_becomes_one_sentence() {
-        let on = "Wifi is enabled\n==== Primary ClientModeManager instance ====\nWifi is connected to \"HomeNet\"\nWifiInfo: SSID: \"HomeNet\", BSSID: aa:bb, Supplicant state: COMPLETED, RSSI: -48, Link speed: 866Mbps, Frequency: 5180MHz, Net ID: 0";
-        assert_eq!(describe_wifi(on), "Connected to Wi-Fi \"HomeNet\" (5 GHz, signal -48 dBm, 866 Mbps).");
-        assert_eq!(describe_wifi("Wifi is disabled"), "Wi-Fi is turned off.");
-        assert_eq!(describe_wifi("Wifi is enabled\nWifi is not connected"), "Wi-Fi is on, but the phone isn't connected to a network.");
-        assert_eq!(describe_wifi("Wifi is connected to \"Cafe\""), "Connected to Wi-Fi \"Cafe\".");
+    fn only_lookups_run_without_asking() {
+        for ok in [
+            "ip -f inet addr show wlan0",
+            "cmd wifi status",
+            "dumpsys battery",
+            "dumpsys wifi | grep SSID",
+            "getprop ro.build.version.release",
+            "settings get system screen_brightness",
+            "pm list packages -3",
+            "df -h /storage/emulated/0",
+            "ls /sdcard/Download",
+            "wm size",
+        ] {
+            assert!(is_lookup(ok), "{ok}");
+        }
+        for bad in [
+            "rm -rf /sdcard/x",
+            "settings put system screen_brightness 10",
+            "svc wifi disable",
+            "cmd wifi set-wifi-enabled disabled",
+            "ip link set wlan0 down",
+            "dumpsys battery set level 5",
+            "cat /sdcard/a > /sdcard/b",
+            "ls; reboot",
+            "ls && rm x",
+            "echo $(reboot)",
+            "pm uninstall com.x",
+            "pm clear com.x",
+            "find / -delete",
+            "cmd connectivity airplane-mode enable",
+            "wm size 100x100",
+            "",
+        ] {
+            assert!(!is_lookup(bad), "{bad}");
+        }
     }
 
     #[test]

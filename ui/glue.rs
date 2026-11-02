@@ -256,6 +256,16 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
         let send = send.clone();
         move |id| send(Request::DeleteChat(id.into()))
     });
+    // What is typed but not sent is kept (per chat) so it is there again after leaving the chat or the app.
+    chat.on_draft_changed({
+        let (weak, store) = (ui.as_weak(), ChatStore::new(&data_dir));
+        move |text| {
+            if let Some(ui) = weak.upgrade() {
+                let id = ui.global::<Chat>().get_current_chat();
+                let _ = store.set_draft(if id.is_empty() { "new" } else { id.as_str() }, &text);
+            }
+        }
+    });
     chat.on_rename_chat({
         let send = send.clone();
         move |id, title| send(Request::RenameChat(id.into(), title.into()))
@@ -481,6 +491,7 @@ fn push_message(ui: &slint::Weak<AppWindow>, text: String, meta: &'static str) {
 fn show_chat(ui: &slint::Weak<AppWindow>, store: &ChatStore, chat: &StoredChat) {
     let messages: Vec<StoredMessage> = chat.messages.clone();
     let id = if chat.messages.is_empty() { String::new() } else { chat.id.clone() };
+    let draft = store.draft(if id.is_empty() { "new" } else { &id });
     let list: Vec<(String, String)> = store.list().into_iter().map(|c| (c.id, c.title)).collect();
     let _ = ui.upgrade_in_event_loop(move |ui| {
         let chat = ui.global::<Chat>();
@@ -488,6 +499,7 @@ fn show_chat(ui: &slint::Weak<AppWindow>, store: &ChatStore, chat: &StoredChat) 
         let model = model.as_any().downcast_ref::<VecModel<Message>>().expect("VecModel");
         model.set_vec(messages.iter().map(to_message).collect::<Vec<_>>());
         chat.set_current_chat(id.into());
+        chat.set_draft(draft.into());
         let list: Vec<ChatSummary> =
             list.into_iter().map(|(id, title)| ChatSummary { id: id.into(), title: title.into() }).collect();
         chat.set_chats(Rc::new(VecModel::from(list)).into());
@@ -966,6 +978,7 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
             }
             Request::DeleteChat(id) => {
                 let _ = store.delete(&id);
+                let _ = store.set_draft(&id, "");
                 if id == chat.id {
                     chat = StoredChat::new();
                     if let Some(engine) = engine.as_mut() {

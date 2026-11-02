@@ -52,6 +52,9 @@ export global Chat {
     in-out property <bool> thinking;
     // What the assistant is doing while `thinking` ("Reading the conversation… 40%", "Writing the answer").
     in-out property <string> thinking-stage;
+    // The message typed but not sent in this chat (kept between visits and restarts).
+    in-out property <string> draft;
+    callback draft-changed(string);
     callback stop();
     callback rename-chat(string, string);
     // One-line status under the header (models loaded, errors).
@@ -435,6 +438,10 @@ component ChatPage inherits Rectangle {
         triggered => { root.think-secs += 1; }
     }
 
+    // The draft the app restored (opening a chat, starting the app) goes into the box.
+    property <string> restored: Chat.draft;
+    changed restored => { if (input.text != self.restored) { input.text = self.restored; } }
+
     function submit() {
         if (Chat.busy) {
             return;
@@ -445,6 +452,8 @@ component ChatPage inherits Rectangle {
         if (input.text != "") {
             Chat.send(input.text);
             input.text = "";
+            Chat.draft = "";
+            Chat.draft-changed("");
         }
         input.focus();
     }
@@ -638,6 +647,10 @@ component ChatPage inherits Rectangle {
                         color: Palette.foreground;
                         selection-background-color: Palette.selection-background;
                         selection-foreground-color: Palette.selection-foreground;
+                        edited => {
+                            Chat.draft = self.text;
+                            Chat.draft-changed(self.text);
+                        }
                         cursor-position-changed(pos) => {
                             if (pos.y < -flick.content-y) {
                                 flick.content-y = -pos.y;
