@@ -50,6 +50,8 @@ export global Chat {
     in-out property <bool> busy;
     // True while a reply is being written (the Send button is a Stop button meanwhile).
     in-out property <bool> thinking;
+    // What the assistant is doing while `thinking` ("Reading the conversation… 40%", "Writing the answer").
+    in-out property <string> thinking-stage;
     callback stop();
     callback rename-chat(string, string);
     // One-line status under the header (models loaded, errors).
@@ -423,6 +425,16 @@ component ChatPage inherits Rectangle {
     in property <bool> docked;
     background: Palette.background;
 
+    // Seconds since the current answer started, counted while `Chat.thinking`.
+    property <int> think-secs;
+    property <bool> is-thinking: Chat.thinking;
+    changed is-thinking => { if (self.is-thinking) { self.think-secs = 0; } }
+    Timer {
+        interval: 1s;
+        running: Chat.thinking;
+        triggered => { root.think-secs += 1; }
+    }
+
     function submit() {
         if (Chat.busy) {
             return;
@@ -491,18 +503,50 @@ component ChatPage inherits Rectangle {
                 padding-top: 4px;
                 padding-bottom: 4px;
                 alignment: start;
-                for message in Chat.messages: HorizontalLayout {
-                    // Indent from the opposite side so user and assistant
-                    // messages read as two columns.
-                    padding-left: message.from-user ? 56px : 12px;
-                    padding-right: message.from-user ? 12px : 56px;
-                    padding-top: 4px;
-                    padding-bottom: 4px;
-                    Bubble {
-                        message: message;
-                        long-pressed(text) => { root.show-text(text); }
+                for message in Chat.messages: VerticalLayout {
+                    // The assistant's empty bubble that waits for the first word is not drawn: the thinking
+                    // indicator under the list stands in for it.
+                    if message.from-user || message.text != "" || message.meta != "": HorizontalLayout {
+                        // Indent from the opposite side so user and assistant
+                        // messages read as two columns.
+                        padding-left: message.from-user ? 56px : 12px;
+                        padding-right: message.from-user ? 12px : 56px;
+                        padding-top: 4px;
+                        padding-bottom: 4px;
+                        Bubble {
+                            message: message;
+                            long-pressed(text) => { root.show-text(text); }
+                        }
                     }
                 }
+            }
+        }
+
+        // While the assistant works: a spinner, how long it has been at it, and what it is doing now.
+        if Chat.thinking: HorizontalLayout {
+            padding-left: 18px;
+            padding-right: 18px;
+            padding-top: 2px;
+            padding-bottom: 2px;
+            spacing: 10px;
+            vertical-stretch: 0;
+            Image {
+                width: 20px;
+                height: 20px;
+                source: @image-url("../assets/spinner.svg");
+                colorize: Palette.accent-background;
+                property <angle> spin;
+                transform-rotation: self.spin;
+                animate spin { duration: 900ms; iteration-count: -1; easing: linear; }
+                init => { self.spin = 360deg; }
+            }
+            Text {
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+                text: "Thinking · " + (root.think-secs >= 60 ? Math.floor(root.think-secs / 60) + " min " + Math.mod(root.think-secs, 60) + " s" : root.think-secs + " s") + (Chat.thinking-stage != "" ? " · " + Chat.thinking-stage : "");
+                font-size: 0.9rem;
+                opacity: 0.75;
+                overflow: elide;
             }
         }
 

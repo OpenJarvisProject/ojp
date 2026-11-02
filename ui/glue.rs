@@ -220,10 +220,11 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
         let (send, messages, weak) = (send.clone(), messages.clone(), ui.as_weak());
         move |text| {
             messages.push(Message { from_user: true, text: text.clone(), ..Default::default() });
-            messages.push(Message { meta: "thinking…".into(), ..Default::default() });
+            messages.push(Message::default());
             if let Some(ui) = weak.upgrade() {
                 ui.global::<Chat>().set_busy(true);
                 ui.global::<Chat>().set_thinking(true);
+                ui.global::<Chat>().set_thinking_stage("Understanding your message".into());
             }
             send(Request::Ask(text.into()));
         }
@@ -430,6 +431,11 @@ fn edit_last(ui: &slint::Weak<AppWindow>, edit: impl FnOnce(&mut Message) + Send
             messages.set_row_data(last, message);
         }
     });
+}
+
+/// What the thinking indicator under the chat says the assistant is doing.
+fn set_stage(ui: &slint::Weak<AppWindow>, stage: String) {
+    let _ = ui.upgrade_in_event_loop(move |ui| ui.global::<Chat>().set_thinking_stage(stage.into()));
 }
 
 fn set_state(ui: &slint::Weak<AppWindow>, busy: bool, status: Option<String>) {
@@ -1032,18 +1038,26 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 // Reading a long prompt (the first message of a chat, a tool list) can take a while on a phone: say so.
                 ojp_core::model::set_eval_hook(Some(Box::new({
                     let ui = ui.clone();
-                    move |done, of| {
-                        let text = format!("reading the conversation… {}%", done * 100 / of.max(1));
-                        edit_last(&ui, move |m| {
-                            if m.text.is_empty() {
-                                m.meta = text.into();
-                            }
+                    move |done, of| set_stage(&ui, format!("Reading the conversation… {}%", done * 100 / of.max(1)))
+                })));
+                let mut wrote = false;
+                let result = engine.ask(&text, &mut |event| match event {
+                    Event::Routed { route, ms } => {
+                        meta.push(format!("{} ({ms} ms)", route.label()));
+                        set_stage(&ui, match route.label() {
+                            "device_control" => "Working with your device (choosing and running tools)".into(),
+                            "coding" => "Writing code".into(),
+                            "reasoning" => "Thinking it through".into(),
+                            _ => "Writing the answer".into(),
                         });
                     }
-                })));
-                let result = engine.ask(&text, &mut |event| match event {
-                    Event::Routed { route, ms } => meta.push(format!("{} ({ms} ms)", route.label())),
-                    Event::Token(token) => edit_last(&ui, move |m| m.text = format!("{}{token}", m.text).into()),
+                    Event::Token(token) => {
+                        if !wrote {
+                            wrote = true;
+                            set_stage(&ui, "Writing the answer".into());
+                        }
+                        edit_last(&ui, move |m| m.text = format!("{}{token}", m.text).into())
+                    }
                     Event::Notice(notice) => meta.push(notice),
                 });
                 ojp_core::model::set_eval_hook(None);
