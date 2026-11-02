@@ -866,20 +866,40 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
             }
             Request::ShizukuAction => {
                 use ojp_core::platform::{self, Shizuku};
-                // Ask for access when Shizuku is running; otherwise open its app (or say it isn't there).
+                // Ask for access when Shizuku is running; otherwise open its app (the original or a fork).
                 let result = match platform::shizuku() {
                     Shizuku::NeedsPermission => platform::call("shizuku_request", ""),
-                    Shizuku::Ready => Ok(String::new()),
-                    _ => platform::call("open_shizuku", ""),
+                    Shizuku::Ready => Ok("ready".into()),
+                    _ => platform::call("open_shizuku", "").map(|_| "opened".into()),
                 };
-                if let Err(e) = result {
-                    push_message(&ui, format!("{e:#}. Get Shizuku from its project page (github.com/RikkaApps/Shizuku) or F-Droid, then start it."), "settings");
+                match result.as_deref() {
+                    Ok("denied") => {
+                        push_message(
+                            &ui,
+                            "Shizuku won't ask again because \"don't ask again\" was chosen for Open Jarvis earlier. Opening Shizuku: in its list of authorized apps, switch Open Jarvis on.".into(),
+                            "settings",
+                        );
+                        let _ = platform::call("open_shizuku", "");
+                    }
+                    Ok(_) => {}
+                    Err(e) => push_message(&ui, format!("{e:#}. Any Shizuku app works (the original or a fork): install one and start it."), "settings"),
                 }
+                // Whether it was allowed in the dialog or in Shizuku's own screen, pick the new state up when it changes.
+                let later = tx.clone();
+                std::thread::spawn(move || {
+                    for _ in 0..90 {
+                        std::thread::sleep(Duration::from_secs(1));
+                        if platform::shizuku() == Shizuku::Ready {
+                            break;
+                        }
+                    }
+                    let _ = later.send(Request::Devices);
+                });
                 let _ = tx.send(Request::Devices);
             }
             Request::Devices => {
                 if ojp_core::platform::available() {
-                    let text = ojp_core::tools_android::shizuku_text().to_string();
+                    let text = ojp_core::tools_android::shizuku_text();
                     let _ = ui.upgrade_in_event_loop(move |ui| ui.global::<Settings>().set_shizuku_text(text.into()));
                 }
                 if let Some(link) = engine.as_ref().and_then(|e| e.link()) {

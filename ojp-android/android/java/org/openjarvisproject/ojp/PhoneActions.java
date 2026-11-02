@@ -4,6 +4,9 @@ import android.app.Activity;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.Context;
+import android.net.NetworkCapabilities;
+import android.net.Network;
+import android.net.ConnectivityManager;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
@@ -98,13 +101,28 @@ public final class PhoneActions {
             case "shizuku_state":
                 return ShizukuBridge.state();
             case "shizuku_request":
-                ShizukuBridge.requestPermission();
-                return "";
+                return ShizukuBridge.requestPermission();
+            case "shizuku_manager":
+                return ShizukuBridge.manager(ctx());
             case "open_shizuku": {
-                Intent i = ctx().getPackageManager().getLaunchIntentForPackage("moe.shizuku.privileged.api");
-                if (i == null) throw new Exception("Shizuku isn't installed");
+                // Whichever Shizuku build is installed (the original or a fork), found by the permission it declares.
+                String found = ShizukuBridge.manager(ctx());
+                if (found.isEmpty()) throw new Exception("No Shizuku app was found (the original and its forks both work)");
+                Intent i = ctx().getPackageManager().getLaunchIntentForPackage(found.substring(found.indexOf('\t') + 1));
+                if (i == null) throw new Exception("Couldn't open the Shizuku app");
                 activity.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
                 return "";
+            }
+            case "wifi_link": {
+                // What Android tells any app without special rights: whether the phone is on Wi-Fi at all.
+                ConnectivityManager cm = (ConnectivityManager) ctx().getSystemService(Context.CONNECTIVITY_SERVICE);
+                Network n = cm.getActiveNetwork();
+                NetworkCapabilities caps = n == null ? null : cm.getNetworkCapabilities(n);
+                if (caps == null) return "none";
+                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return "wifi";
+                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) return "cellular";
+                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) return "ethernet";
+                return "other";
             }
             case "shell":
                 return ShizukuBridge.run(arg);

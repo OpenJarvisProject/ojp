@@ -73,3 +73,6 @@ changes the newer C API needs:
 - `lib.rs`, `androidwindowadapter.rs`: the keyboard no longer opens by itself in the second after the app comes back to the
   front (the text box still has focus then and Slint asks for the keyboard). `set_keyboard_on_return(true)` turns the old
   behaviour back on; tapping the text box always opens it.
+- `java/SlintAndroidJavaHelper.java`, `trackKeyboard`: the cursor handle (the little drop under the text cursor) stayed on
+  screen after the keyboard was closed by the system (Back button, the keyboard's hide button), because Slint still has the
+  text box focused. It is now hidden when the keyboard's height returns to zero.

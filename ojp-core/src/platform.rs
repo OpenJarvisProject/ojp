@@ -54,6 +54,13 @@ pub fn shizuku() -> Shizuku {
     }
 }
 
+/// The installed Shizuku manager app, whichever build it is (the original or a fork): (label, package).
+pub fn shizuku_manager() -> Option<(String, String)> {
+    let found = call("shizuku_manager", "").ok()?;
+    let (label, package) = found.split_once('\t')?;
+    Some((label.to_string(), package.to_string()))
+}
+
 /// Run a shell command with adb-level rights through Shizuku. Fails with a message saying what to
 /// do when Shizuku isn't ready, or with the command's own output when it exits non-zero.
 pub fn shell(command: &str) -> Result<String> {

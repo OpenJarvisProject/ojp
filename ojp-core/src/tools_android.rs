@@ -87,13 +87,65 @@ pub fn adb_shell(command: &str) -> Result<String> {
     Ok(if out.is_empty() { "Done (no output).".into() } else { out })
 }
 
+/// Which Wi-Fi network the phone is on, and how good the link is. With Shizuku the network's name and signal come
+/// from the system; without it Android only tells apps whether the phone is on Wi-Fi at all.
+pub fn wifi_info() -> Result<String> {
+    if platform::shizuku() == platform::Shizuku::Ready {
+        let out = shell("cmd wifi status")?;
+        return Ok(describe_wifi(&out));
+    }
+    Ok(match call("wifi_link", "").unwrap_or_default().as_str() {
+        "wifi" => "The phone is on Wi-Fi, but Android hides the network's name from apps. Allow Open Jarvis in Shizuku (Settings) and ask again to see it.".into(),
+        "cellular" => "The phone is on mobile data, not Wi-Fi.".into(),
+        "ethernet" => "The phone is on a wired connection, not Wi-Fi.".into(),
+        "none" => "The phone has no network connection right now.".into(),
+        _ => "The phone is connected through something other than Wi-Fi.".into(),
+    })
+}
+
+/// One sentence from the output of `cmd wifi status`.
+pub fn describe_wifi(out: &str) -> String {
+    let lower = out.to_lowercase();
+    if lower.contains("wifi is disabled") {
+        return "Wi-Fi is turned off.".into();
+    }
+    let quoted = |after: &str| -> Option<String> {
+        let at = out.find(after)? + after.len();
+        let rest = &out[at..];
+        Some(rest[..rest.find('"')?].to_string())
+    };
+    let Some(ssid) = quoted("Wifi is connected to \"").or_else(|| quoted("SSID: \"")).filter(|s| !s.is_empty() && s != "<unknown ssid>") else {
+        return "Wi-Fi is on, but the phone isn't connected to a network.".into();
+    };
+    let number = |key: &str| -> Option<i64> {
+        let at = out.find(key)? + key.len();
+        let rest = &out[at..];
+        let end = rest.find(|c: char| !(c.is_ascii_digit() || c == '-')).unwrap_or(rest.len());
+        rest[..end].parse().ok()
+    };
+    let mut details = Vec::new();
+    if let Some(freq) = number("Frequency: ") {
+        details.push(if freq < 3000 { "2.4 GHz" } else if freq < 5900 { "5 GHz" } else { "6 GHz" }.to_string());
+    }
+    if let Some(rssi) = number("RSSI: ") {
+        details.push(format!("signal {rssi} dBm"));
+    }
+    if let Some(speed) = number("Link speed: ") {
+        details.push(format!("{speed} Mbps"));
+    }
+    if details.is_empty() { format!("Connected to Wi-Fi \"{ssid}\".") } else { format!("Connected to Wi-Fi \"{ssid}\" ({}).", details.join(", ")) }
+}
+
 /// Words for the Shizuku state, shown in Settings.
-pub fn shizuku_text() -> &'static str {
+pub fn shizuku_text() -> String {
+    let manager = platform::shizuku_manager();
+    let name = manager.as_ref().map_or("Shizuku".to_string(), |(label, _)| label.clone());
     match platform::shizuku() {
-        platform::Shizuku::Ready => "Shizuku is on: Open Jarvis can change Wi-Fi, Bluetooth, brightness and run commands for you.",
-        platform::Shizuku::NeedsPermission => "Shizuku is running. Tap the button to allow Open Jarvis.",
-        platform::Shizuku::TooOld => "The installed Shizuku is too old; update it.",
-        platform::Shizuku::Unavailable => "Shizuku isn't running (optional). Install it and start it to let the assistant change Wi-Fi, Bluetooth, brightness and run commands.",
+        platform::Shizuku::Ready => format!("{name} is on: Open Jarvis can change Wi-Fi, Bluetooth, brightness and run commands for you."),
+        platform::Shizuku::NeedsPermission => format!("{name} is running. Tap the button to allow Open Jarvis."),
+        platform::Shizuku::TooOld => format!("The installed {name} is too old; update it."),
+        platform::Shizuku::Unavailable if manager.is_some() => format!("Found {name}, but it isn't running. Tap the button to open it and start it."),
+        platform::Shizuku::Unavailable => "No Shizuku app found (optional; the original and its forks both work). Install one and start it to let the assistant change Wi-Fi, Bluetooth, brightness and run commands.".into(),
     }
 }
 
@@ -101,6 +153,15 @@ pub fn shizuku_text() -> &'static str {
 mod tests {
     use super::*;
     use crate::platform::testing::{calls, fake, uninstall, REPLY};
+
+    #[test]
+    fn wifi_status_output_becomes_one_sentence() {
+        let on = "Wifi is enabled\n==== Primary ClientModeManager instance ====\nWifi is connected to \"HomeNet\"\nWifiInfo: SSID: \"HomeNet\", BSSID: aa:bb, Supplicant state: COMPLETED, RSSI: -48, Link speed: 866Mbps, Frequency: 5180MHz, Net ID: 0";
+        assert_eq!(describe_wifi(on), "Connected to Wi-Fi \"HomeNet\" (5 GHz, signal -48 dBm, 866 Mbps).");
+        assert_eq!(describe_wifi("Wifi is disabled"), "Wi-Fi is turned off.");
+        assert_eq!(describe_wifi("Wifi is enabled\nWifi is not connected"), "Wi-Fi is on, but the phone isn't connected to a network.");
+        assert_eq!(describe_wifi("Wifi is connected to \"Cafe\""), "Connected to Wi-Fi \"Cafe\".");
+    }
 
     #[test]
     fn plain_actions_use_the_platform_layer() {

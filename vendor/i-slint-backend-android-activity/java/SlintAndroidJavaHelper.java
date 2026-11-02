@@ -523,6 +523,7 @@ public class SlintAndroidJavaHelper {
                                         keyboardBottom = 0;
                                     }
 
+                                    trackKeyboard(keyboardBottom);
                                     SlintAndroidJavaHelper.setInsets(
                                             windowRect.top, windowRect.left,
                                             windowRect.bottom, windowRect.right,
@@ -534,6 +535,25 @@ public class SlintAndroidJavaHelper {
                             });
                         }
                     });
+        }
+    }
+
+    // OJP patch: the little cursor drop under the text box stayed on screen after the keyboard was closed with
+    // the Back button or the keyboard's own hide button (Slint still has the box focused then): hide it when the
+    // keyboard's height goes back to zero.
+    private boolean mKeyboardWasShown = false;
+
+    private void trackKeyboard(final int bottom) {
+        if (bottom > 0) {
+            mKeyboardWasShown = true;
+        } else if (mKeyboardWasShown) {
+            mKeyboardWasShown = false;
+            mActivity.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    mInputView.setCursorPos(0, 0, 0, 0, 0, 0);
+                }
+            });
         }
     }
 
@@ -557,6 +577,7 @@ public class SlintAndroidJavaHelper {
         Insets safeAreaInsets = Insets.max(sysBars, cutout);
         Insets keyboardAreaInsets = insets.getInsets(WindowInsets.Type.ime());
         Rect windowRect = get_view_rect();
+        trackKeyboard(keyboardAreaInsets.bottom);
         SlintAndroidJavaHelper.setInsets(
                 windowRect.top, windowRect.left,
                 windowRect.bottom, windowRect.right,

@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Reminders and timers show as notifications (Android 13+ asks once). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- To tell whether the phone is on Wi-Fi or mobile data ("what Wi-Fi am I on?"). -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Optional Shizuku support: lets the assistant run adb-level commands once the user allows it there. -->
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
