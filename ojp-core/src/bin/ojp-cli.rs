@@ -380,6 +380,22 @@ fn main() -> anyhow::Result<()> {
                 println!("{}: {}", item.role, item.dest.display());
             }
         }
+        Some("plan") => {
+            // The tool call the planner picks for each request read from standard input (one per line); nothing runs.
+            // OJP_PHONE_TOOLS=1 uses the phone's tool list.
+            let [_, model_path] = args.as_slice() else {
+                anyhow::bail!("usage: ojp-cli plan <model.gguf>   (requests on standard input)");
+            };
+            unsafe { std::env::set_var("OJP_TOOLS_DRY_RUN", "1") };
+            let mut model = load_cached(model_path)?;
+            for request in std::io::stdin().lines().map_while(Result::ok).filter(|l| !l.trim().is_empty()) {
+                let call = ojp_core::tools::ask(&mut model, Template::from_env(), &request);
+                match call {
+                    Ok(calls) => println!("{request}\t{}", calls.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(" ")),
+                    Err(e) => println!("{request}\tERROR {e:#}"),
+                }
+            }
+        }
         Some("tool-eval") => {
             let [_, model_path] = args.as_slice() else {
                 anyhow::bail!("usage: ojp-core tool-eval <model.gguf>");

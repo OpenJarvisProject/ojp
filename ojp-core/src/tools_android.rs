@@ -150,6 +150,7 @@ pub fn shizuku_text() -> String {
     match platform::shizuku() {
         platform::Shizuku::Ready => format!("{name} is on: Open Jarvis can change Wi-Fi, Bluetooth, brightness and run commands for you."),
         platform::Shizuku::NeedsPermission => format!("{name} is running. Tap the button to allow Open Jarvis."),
+        platform::Shizuku::Denied => format!("{name} has Open Jarvis switched off, and it won't ask again. Tap the button to open it, then switch Open Jarvis on in its list of authorized apps."),
         platform::Shizuku::TooOld => format!("The installed {name} is too old; update it."),
         platform::Shizuku::Unavailable if manager.is_some() => format!("Found {name}, but it isn't running. Tap the button to open it and start it."),
         platform::Shizuku::Unavailable => "No Shizuku app found (optional; the original and its forks both work). Install one and start it to let the assistant change Wi-Fi, Bluetooth, brightness and run commands.".into(),

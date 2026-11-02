@@ -100,7 +100,7 @@ const ANDROID_ONLY: &[Tool] = &[
     Tool { name: "bluetooth", doc: "turn the phone's Bluetooth on or off", args: &[Arg { name: "state", kind: ArgKind::Choice(&["on", "off"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::bluetooth(text(a, "state")? == "on") },
     Tool { name: "airplane", doc: "turn airplane mode on or off", args: &[Arg { name: "state", kind: ArgKind::Choice(&["on", "off"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::airplane(text(a, "state")? == "on") },
     Tool { name: "brightness", doc: "set the screen brightness, 0-100", args: &[Arg { name: "level", kind: ArgKind::Int { max: 100 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::brightness(int(a, "level")?) },
-    Tool { name: "phone_read", doc: "look something up on the phone by running a read-only shell command through Shizuku (it changes nothing, so it runs without asking). Useful commands: `cmd wifi status` (Wi-Fi network, signal, speed), `ip -f inet addr show wlan0` (IP address), `dumpsys battery`, `dumpsys wifi`, `getprop ro.build.version.release` (Android version), `settings get system screen_brightness`, `pm list packages -3` (installed apps), `df -h /storage/emulated/0` (storage), `uptime`", args: &[Arg { name: "command", kind: ArgKind::Text { max: 250 } }], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::phone_read(text(a, "command")?) },
+    Tool { name: "phone_read", doc: "look something up on the phone by running a read-only shell command through Shizuku (it changes nothing, so it runs without asking). Useful commands: `cmd wifi status` (anything about the Wi-Fi: network name, 2.4 or 5 GHz band, signal, speed), `ip -f inet addr show wlan0` (IP address), `dumpsys battery`, `dumpsys wifi`, `getprop ro.build.version.release` (Android version), `settings get system screen_brightness`, `pm list packages -3` (installed apps), `df -h /sdcard` (storage), `uptime`", args: &[Arg { name: "command", kind: ArgKind::Text { max: 250 } }], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::phone_read(text(a, "command")?) },
     Tool { name: "screenshot", doc: "take a screenshot of the screen", args: &[], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |_| crate::tools_android::screenshot() },
     Tool { name: "adb_shell", doc: "run any other shell command on the phone with adb permissions, for things that change something (asks the user first)", args: &[Arg { name: "command", kind: ArgKind::Text { max: 250 } }], kind: Kind::Act, risk: Risk::Confirm, explore: false, run: |a| crate::tools_android::adb_shell(text(a, "command")?) },
 ];
@@ -111,9 +111,15 @@ const ANDROID_COMMON: &[&str] = &[
     "reminders_list", "web_search", "web_fetch", "remember", "recall", "memories_list", "tags_list", "tag_add", "forget", "notes_list",
 ];
 
+/// Whether the phone's tool set is in use: on a phone, or (to try the phone's tools from a computer, with
+/// `ojp-cli plan`) when OJP_PHONE_TOOLS is set.
+pub fn phone_mode() -> bool {
+    cfg!(target_os = "android") || std::env::var_os("OJP_PHONE_TOOLS").is_some()
+}
+
 /// The tools this device has: all of the registry on a computer; on a phone, the ones that work there plus its own.
 fn active() -> Vec<&'static Tool> {
-    if cfg!(target_os = "android") {
+    if phone_mode() {
         REGISTRY.iter().filter(|t| ANDROID_COMMON.contains(&t.name)).chain(ANDROID_ONLY.iter()).collect()
     } else {
         REGISTRY.iter().collect()
@@ -126,7 +132,7 @@ pub fn system_prompt() -> String {
 }
 
 fn system_prompt_for(with_done: bool) -> String {
-    let mut s = String::from(if cfg!(target_os = "android") { "You control this phone through tools. Available tools:\n" } else { "You control this computer through tools. Available tools:\n" });
+    let mut s = String::from(if phone_mode() { "You control this phone through tools. Available tools:\n" } else { "You control this computer through tools. Available tools:\n" });
     for t in active() {
         let args: Vec<String> = t
             .args
@@ -242,9 +248,15 @@ const ANDROID_EXAMPLES: &[(&str, &str)] = &[
     ("What Wi-Fi network am I connected to?", r#"[{"tool": "phone_read", "args": {"command": "cmd wifi status"}}]"#),
     ("What is my IP address?", r#"[{"tool": "phone_read", "args": {"command": "ip -f inet addr show wlan0"}}]"#),
     ("Which Android version is this?", r#"[{"tool": "phone_read", "args": {"command": "getprop ro.build.version.release"}}]"#),
-    ("How much storage do I have left?", r#"[{"tool": "phone_read", "args": {"command": "df -h /storage/emulated/0"}}]"#),
+    ("How much storage do I have left?", r#"[{"tool": "phone_read", "args": {"command": "df -h /sdcard"}}]"#),
     ("What is the screen brightness set to?", r#"[{"tool": "phone_read", "args": {"command": "settings get system screen_brightness"}}]"#),
-    ("Run pm list packages on the phone.", r#"[{"tool": "adb_shell", "args": {"command": "pm list packages"}}]"#),
+    ("Set the screen timeout to one minute.", r#"[{"tool": "adb_shell", "args": {"command": "settings put system screen_off_timeout 60000"}}]"#),
+    ("What apps do I have installed?", r#"[{"tool": "phone_read", "args": {"command": "pm list packages -3"}}]"#),
+    ("Is my Bluetooth on?", r#"[{"tool": "phone_read", "args": {"command": "settings get global bluetooth_on"}}]"#),
+    ("What phone model is this?", r#"[{"tool": "phone_read", "args": {"command": "getprop ro.product.model"}}]"#),
+    ("Is auto brightness on?", r#"[{"tool": "phone_read", "args": {"command": "settings get system screen_brightness_mode"}}]"#),
+    ("Is my Wi-Fi turned on?", r#"[{"tool": "phone_read", "args": {"command": "settings get global wifi_on"}}]"#),
+    ("How much battery is left?", r#"[{"tool": "phone_read", "args": {"command": "dumpsys battery"}}]"#),
 ];
 
 /// Extra instructions for Qwen3.5-based models only (their planner guessed file names and mixed
@@ -297,7 +309,7 @@ fn planner_messages(template: Template, request: &str, steps: &[Step], with_done
     }
     let mut messages = vec![ChatMessage::new(Role::System, system)];
     let extra: &[(&str, &str)] = if qwen35 { QWEN35_EXAMPLES } else { &[] };
-    let phone = cfg!(target_os = "android");
+    let phone = phone_mode();
     let have = active();
     // Examples that use a tool this device doesn't have would only mislead the model.
     let usable = |calls: &str| have.iter().any(|t| calls.contains(&format!("\"tool\": \"{}\"", t.name))) && {
@@ -411,7 +423,7 @@ impl ToolProbe {
 pub fn ask_fast(model: &mut Model, template: Template, probe: Option<&ToolProbe>, hidden: Option<&[f32]>, request: &str) -> Result<Vec<Value>> {
     // On a phone the tool probe knows nothing about the phone's own tools (it was fitted before they existed), so
     // the planner decides there, from its examples.
-    if cfg!(target_os = "android") {
+    if phone_mode() {
         return ask(model, template, request);
     }
     if let (Some(probe), Some(hidden)) = (probe, hidden)
@@ -531,6 +543,10 @@ pub fn is_explore(call: &Value) -> bool {
 pub fn needs_confirmation(call: &Value) -> Option<Result<String>> {
     let tool = find(call)?;
     if tool.risk != Risk::Confirm {
+        return None;
+    }
+    // A shell command that only looks at things needs no yes, even when the model chose the asking tool for it.
+    if tool.name == "adb_shell" && crate::tools_android::is_lookup(call["args"]["command"].as_str().unwrap_or("")) {
         return None;
     }
     let args = &call["args"];

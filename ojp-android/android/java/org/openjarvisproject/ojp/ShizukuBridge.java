@@ -28,26 +28,34 @@ final class ShizukuBridge {
     private ShizukuBridge() {}
 
     /**
-     * Shizuku's API remembers a granted permission for as long as the process lives, so after the user switches this
-     * app off inside Shizuku it would keep saying "allowed" (and the Settings button would do nothing). Forget the
-     * remembered answer so the next check asks Shizuku again.
+     * Shizuku's API remembers its answers for as long as the process lives: a granted permission stays "granted" and
+     * a "don't ask again" stays "denied", whatever the user later does inside Shizuku. After switching this app off
+     * (or back to "ask") in Shizuku, the Settings button would then do nothing. Forget both remembered answers so the
+     * next check asks Shizuku itself.
      */
-    private static void forgetCachedPermission() {
-        try {
-            java.lang.reflect.Field f = Shizuku.class.getDeclaredField("permissionGranted");
-            f.setAccessible(true);
-            f.setBoolean(null, false);
-        } catch (Throwable ignored) {
+    private static void forgetCachedAnswers() {
+        for (String name : new String[] {"permissionGranted", "shouldShowRequestPermissionRationale"}) {
+            try {
+                java.lang.reflect.Field f = Shizuku.class.getDeclaredField(name);
+                f.setAccessible(true);
+                f.setBoolean(null, false);
+            } catch (Throwable ignored) {
+            }
         }
     }
 
-    /** "none" (not installed or not running), "old", "permission" (running, not allowed yet) or "ready". */
+    /**
+     * "none" (not installed or not running), "old", "permission" (running, not allowed yet: the question can be
+     * shown), "denied" (running, and Shizuku will not show the question again: it has to be switched on inside
+     * Shizuku) or "ready".
+     */
     static String state() {
         try {
             if (!Shizuku.pingBinder()) return "none";
             if (Shizuku.isPreV11()) return "old";
-            forgetCachedPermission();
-            return Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED ? "ready" : "permission";
+            forgetCachedAnswers();
+            if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) return "ready";
+            return Shizuku.shouldShowRequestPermissionRationale() ? "denied" : "permission";
         } catch (Throwable t) {
             return "none";
         }
@@ -75,14 +83,13 @@ final class ShizukuBridge {
     }
 
     /**
-     * Shows Shizuku's "allow this app?" dialog. Returns "asked", "denied" (the user said "don't ask again" earlier, so
-     * the dialog will not appear: it has to be switched on in Shizuku itself) or the state when it is not running.
+     * Shows Shizuku's "allow this app?" dialog. Returns "asked", or the state when the dialog cannot be shown
+     * ("denied", "none", ...).
      */
     static String requestPermission() {
         try {
             String state = state();
             if (!state.equals("permission")) return state;
-            if (Shizuku.shouldShowRequestPermissionRationale()) return "denied";
             Shizuku.requestPermission(REQUEST_CODE);
             return "asked";
         } catch (Throwable t) {

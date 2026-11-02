@@ -40,6 +40,8 @@ pub enum Shizuku {
     Unavailable,
     /// Running, but this app hasn't been allowed yet.
     NeedsPermission,
+    /// Running, but Shizuku won't show its question again: it has to be switched on inside Shizuku.
+    Denied,
     Ready,
     /// A Shizuku too old to use.
     TooOld,
@@ -49,6 +51,7 @@ pub fn shizuku() -> Shizuku {
     match call("shizuku_state", "").as_deref() {
         Ok("ready") => Shizuku::Ready,
         Ok("permission") => Shizuku::NeedsPermission,
+        Ok("denied") => Shizuku::Denied,
         Ok("old") => Shizuku::TooOld,
         _ => Shizuku::Unavailable,
     }
@@ -67,6 +70,7 @@ pub fn shell(command: &str) -> Result<String> {
     match shizuku() {
         Shizuku::Ready => {}
         Shizuku::NeedsPermission => bail!("Shizuku is running but hasn't allowed Open Jarvis yet: open Settings and tap the Shizuku button"),
+        Shizuku::Denied => bail!("Shizuku has Open Jarvis switched off: open Shizuku and switch it on in its list of authorized apps"),
         Shizuku::TooOld => bail!("the installed Shizuku is too old; update it"),
         Shizuku::Unavailable => bail!("that needs Shizuku: install it, start it (it can start itself over wireless debugging), then allow Open Jarvis in Settings"),
     }

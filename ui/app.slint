@@ -250,16 +250,13 @@ component AppComboBox inherits Rectangle {
             vertical-alignment: center;
             overflow: elide;
         }
-        Path {
-            x: parent.width - 36px;
-            y: (parent.height - 8px) / 2;
-            width: 14px;
-            height: 8px;
-            viewbox-width: 14;
-            viewbox-height: 8;
-            commands: "M 1 1 L 7 7 L 13 1";
-            stroke: Palette.foreground;
-            stroke-width: 2px;
+        Image {
+            x: parent.width - 40px;
+            y: (parent.height - 20px) / 2;
+            width: 20px;
+            height: 20px;
+            source: @image-url("../assets/chevron.svg");
+            colorize: Palette.foreground;
         }
         pick := TouchArea {
             clicked => { list.show(); }
@@ -753,18 +750,13 @@ component Sidebar inherits Rectangle {
                             width: 44px;
                             border-radius: 22px;
                             background: dots.pressed ? Palette.alternate-background : transparent;
-                            HorizontalLayout {
-                                alignment: center;
-                                VerticalLayout {
-                                    alignment: center;
-                                    spacing: 3px;
-                                    for i in 3: Rectangle {
-                                        height: 4px;
-                                        width: 4px;
-                                        border-radius: 2px;
-                                        background: Palette.foreground;
-                                    }
-                                }
+                            Image {
+                                x: (parent.width - 22px) / 2;
+                                y: (parent.height - 22px) / 2;
+                                width: 22px;
+                                height: 22px;
+                                source: @image-url("../assets/more.svg");
+                                colorize: Palette.foreground;
                             }
                             dots := TouchArea {
                                 clicked => { menu.show(); }

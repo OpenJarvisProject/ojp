@@ -882,15 +882,12 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 let result = match platform::shizuku() {
                     Shizuku::NeedsPermission => platform::call("shizuku_request", ""),
                     Shizuku::Ready => Ok("ready".into()),
+                    // Shizuku won't show its question: take the user to its list of authorized apps.
                     _ => platform::call("open_shizuku", "").map(|_| "opened".into()),
                 };
                 match result.as_deref() {
+                    // Asked, but the state changed between looking and asking.
                     Ok("denied") => {
-                        push_message(
-                            &ui,
-                            "Shizuku won't ask again because \"don't ask again\" was chosen for Open Jarvis earlier. Opening Shizuku: in its list of authorized apps, switch Open Jarvis on.".into(),
-                            "settings",
-                        );
                         let _ = platform::call("open_shizuku", "");
                     }
                     Ok(_) => {}
