@@ -94,15 +94,17 @@ pub(crate) mod testing {
 
     pub static CALLS: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
     pub static REPLY: Mutex<Option<String>> = Mutex::new(None);
+    pub static SHIZUKU: Mutex<&str> = Mutex::new("ready");
 
     /// Install a recording fake; replies come from `REPLY` (or "ok"). Hold `crate::TEST_ENV`.
     pub fn fake() {
         CALLS.lock().unwrap().clear();
         *REPLY.lock().unwrap() = None;
+        *SHIZUKU.lock().unwrap() = "ready";
         install(|m, a| {
             CALLS.lock().unwrap().push((m.into(), a.into()));
             Ok(match m {
-                "shizuku_state" => "ready".into(),
+                "shizuku_state" => SHIZUKU.lock().unwrap().to_string(),
                 "shell" => REPLY.lock().unwrap().clone().unwrap_or_else(|| "exit=0\n".into()),
                 _ => REPLY.lock().unwrap().clone().unwrap_or_else(|| "ok".into()),
             })

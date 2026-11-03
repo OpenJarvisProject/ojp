@@ -67,7 +67,7 @@ const REGISTRY: &[Tool] = &[
     Tool { name: "volume", doc: "set the speaker volume, 0-100", args: &[Arg { name: "level", kind: ArgKind::Int { max: 100 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| volume(int(a, "level")?) },
     Tool { name: "mute", doc: "turn the speaker sound off or on (muting)", args: &[Arg { name: "state", kind: ArgKind::Choice(&["on", "off"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| mute(text(a, "state")?) },
     Tool { name: "media", doc: "play, pause or skip the music or video player (not the volume)", args: &[Arg { name: "action", kind: ArgKind::Choice(&["play_pause", "next", "previous"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| media(text(a, "action")?) },
-    Tool { name: "open_app", doc: "launch an installed application by name", args: &[Arg { name: "name", kind: ArgKind::Text { max: 40 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| open_app(text(a, "name")?) },
+    Tool { name: "open_app", doc: "launch an installed application by name (not settings pages)", args: &[Arg { name: "name", kind: ArgKind::Text { max: 40 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| open_app(text(a, "name")?) },
     Tool { name: "open_url", doc: "show the user a web page in their browser (to read a page yourself, use web_fetch)", args: &[Arg { name: "url", kind: ArgKind::Text { max: 200 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| open_url(text(a, "url")?) },
     Tool { name: "note_add", doc: "save a short note", args: &[Arg { name: "text", kind: ArgKind::Text { max: 200 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| note_add(text(a, "text")?) },
     Tool { name: "calculate", doc: "exact arithmetic, e.g. 7^3+4*7*2-3 (use * / ^ sqrt() sin() ln() pi)", args: &[Arg { name: "expression", kind: ArgKind::Text { max: 120 } }], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |a| calculate(text(a, "expression")?) },
@@ -93,14 +93,19 @@ const REGISTRY: &[Tool] = &[
     Tool { name: "notes_list", doc: "show the saved notes", args: &[], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |_| notes_list() },
 ];
 
-/// Tools only a phone has (see `tools_android`). Wi-Fi, Bluetooth, brightness, airplane mode, screenshots
-/// and raw shell commands need Shizuku; they say so when it isn't there.
+/// Tools only a phone has (see `tools_android`). Wi-Fi, Bluetooth and airplane mode are flipped with Shizuku and
+/// otherwise open their settings page; screenshots and raw shell commands need Shizuku and say so when it isn't there.
 const ANDROID_ONLY: &[Tool] = &[
     Tool { name: "wifi", doc: "turn the phone's Wi-Fi on or off", args: &[Arg { name: "state", kind: ArgKind::Choice(&["on", "off"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::wifi(text(a, "state")? == "on") },
     Tool { name: "bluetooth", doc: "turn the phone's Bluetooth on or off", args: &[Arg { name: "state", kind: ArgKind::Choice(&["on", "off"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::bluetooth(text(a, "state")? == "on") },
     Tool { name: "airplane", doc: "turn airplane mode on or off", args: &[Arg { name: "state", kind: ArgKind::Choice(&["on", "off"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::airplane(text(a, "state")? == "on") },
     Tool { name: "brightness", doc: "set the screen brightness, 0-100", args: &[Arg { name: "level", kind: ArgKind::Int { max: 100 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::brightness(int(a, "level")?) },
-    Tool { name: "phone_read", doc: "look something up on the phone by running a read-only shell command through Shizuku (it changes nothing, so it runs without asking). Useful commands: `cmd wifi status` (anything about the Wi-Fi: network name, 2.4 or 5 GHz band, signal, speed), `ip -f inet addr show wlan0` (IP address), `dumpsys battery`, `dumpsys wifi`, `getprop ro.build.version.release` (Android version), `settings get system screen_brightness`, `pm list packages -3` (installed apps), `df -h /sdcard` (storage), `uptime`", args: &[Arg { name: "command", kind: ArgKind::Text { max: 250 } }], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::phone_read(text(a, "command")?) },
+    Tool { name: "phone_read", doc: "look something up on the phone by running a read-only shell command (it changes nothing, so it runs without asking). Useful commands: `cmd wifi status` (anything about the Wi-Fi: network name, 2.4 or 5 GHz band, signal, speed), `ip -f inet addr show wlan0` (IP address), `dumpsys battery`, `dumpsys wifi`, `getprop ro.build.version.release` (Android version), `settings get system screen_brightness`, `pm list packages -3` (installed apps), `df -h /sdcard` (storage), `uptime`", args: &[Arg { name: "command", kind: ArgKind::Text { max: 250 } }], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::phone_read(text(a, "command")?) },
+    Tool { name: "flashlight", doc: "flashlight (torch) on or off", args: &[Arg { name: "state", kind: ArgKind::Choice(&["on", "off"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::flashlight(text(a, "state")? == "on") },
+    Tool { name: "alarm", doc: "set an alarm for a time of day (24-hour)", args: &[Arg { name: "hour", kind: ArgKind::Int { max: 23 } }, Arg { name: "minute", kind: ArgKind::Int { max: 59 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::alarm(int(a, "hour")?, int(a, "minute")?) },
+    Tool { name: "call", doc: "phone call to a number or contact name (opens the dialer)", args: &[Arg { name: "who", kind: ArgKind::Text { max: 40 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::dial(text(a, "who")?) },
+    Tool { name: "text_message", doc: "write a text message (SMS) to a number or contact", args: &[Arg { name: "to", kind: ArgKind::Text { max: 40 } }, Arg { name: "message", kind: ArgKind::Text { max: 300 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::text_message(text(a, "to")?, text(a, "message")?) },
+    Tool { name: "open_settings", doc: "open a page of the phone's settings", args: &[Arg { name: "page", kind: ArgKind::Choice(&["wifi", "bluetooth", "display", "sound", "battery", "storage", "apps", "location", "notifications", "accessibility", "about"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::open_settings(text(a, "page")?) },
     Tool { name: "screenshot", doc: "take a screenshot of the screen", args: &[], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |_| crate::tools_android::screenshot() },
     Tool { name: "adb_shell", doc: "run any other shell command on the phone with adb permissions, for things that change something (asks the user first)", args: &[Arg { name: "command", kind: ArgKind::Text { max: 250 } }], kind: Kind::Act, risk: Risk::Confirm, explore: false, run: |a| crate::tools_android::adb_shell(text(a, "command")?) },
 ];
@@ -247,6 +252,12 @@ const ANDROID_EXAMPLES: &[(&str, &str)] = &[
     ("Grab a screenshot.", r#"[{"tool": "screenshot", "args": {}}]"#),
     ("What Wi-Fi network am I connected to?", r#"[{"tool": "phone_read", "args": {"command": "cmd wifi status"}}]"#),
     ("What is my IP address?", r#"[{"tool": "phone_read", "args": {"command": "ip -f inet addr show wlan0"}}]"#),
+    ("Turn on the flashlight.", r#"[{"tool": "flashlight", "args": {"state": "on"}}]"#),
+    ("Wake me up at 7:30.", r#"[{"tool": "alarm", "args": {"hour": 7, "minute": 30}}]"#),
+    ("Call Mum.", r#"[{"tool": "call", "args": {"who": "Mum"}}]"#),
+    ("Phone 020 7946 0000.", r#"[{"tool": "call", "args": {"who": "020 7946 0000"}}]"#),
+    ("Text Sam that I'm running late.", r#"[{"tool": "text_message", "args": {"to": "Sam", "message": "I'm running late"}}]"#),
+    ("Open the Wi-Fi settings.", r#"[{"tool": "open_settings", "args": {"page": "wifi"}}]"#),
     ("Which Android version is this?", r#"[{"tool": "phone_read", "args": {"command": "getprop ro.build.version.release"}}]"#),
     ("How much storage do I have left?", r#"[{"tool": "phone_read", "args": {"command": "df -h /sdcard"}}]"#),
     ("What is the screen brightness set to?", r#"[{"tool": "phone_read", "args": {"command": "settings get system screen_brightness"}}]"#),

@@ -1,7 +1,9 @@
 //! The phone's versions of the tools, and the tools only a phone has. Plain things (volume, media
-//! keys, opening apps and links, reminders, battery) go through Android's own APIs and need nothing
-//! extra; the rest (Wi-Fi, Bluetooth, airplane mode, brightness, screenshots, any shell command)
-//! need Shizuku (see `platform`). Everything is a short string in, a short sentence out.
+//! keys, opening apps and links and settings pages, reminders, alarms, the flashlight, calls and texts,
+//! battery, Wi-Fi/IP/storage/version lookups, brightness after one permission) go through Android's own APIs and need
+//! nothing extra. With Shizuku (see `platform`) the assistant can also flip Wi-Fi, Bluetooth and airplane mode itself,
+//! take screenshots and run shell commands; without it those open the right settings page instead.
+//! Everything is a short string in, a short sentence out.
 use anyhow::{Result, bail};
 
 use crate::platform::{self, call, quote, shell};
@@ -52,26 +54,79 @@ pub fn battery() -> Result<String> {
     call("battery", "")
 }
 
+fn has_shizuku() -> bool {
+    platform::shizuku() == platform::Shizuku::Ready
+}
+
 pub fn brightness(level: u64) -> Result<String> {
     let level = level.min(100);
-    // 0 = manual brightness; the value is 0-255.
-    shell(&format!("settings put system screen_brightness_mode 0 && settings put system screen_brightness {}", (level * 255).div_ceil(100)))?;
+    if has_shizuku() {
+        // 0 = manual brightness; the value is 0-255.
+        shell(&format!("settings put system screen_brightness_mode 0 && settings put system screen_brightness {}", (level * 255).div_ceil(100)))?;
+    } else {
+        call("brightness", &level.to_string())?;
+    }
     Ok(format!("Brightness set to {level}%."))
 }
 
+/// Android lets only system apps flip these switches; with Shizuku we do, otherwise open the page with the switch.
+fn switch(on: bool, what: &str, command: &str, page: &str) -> Result<String> {
+    let state = if on { "on" } else { "off" };
+    if has_shizuku() {
+        shell(command)?;
+        return Ok(format!("{what} turned {state}."));
+    }
+    call("settings_page", page)?;
+    Ok(format!("Android doesn't let apps flip {what} by themselves, so I opened its settings: tap the switch to turn it {state}. (With Shizuku I could do it for you.)"))
+}
+
 pub fn wifi(on: bool) -> Result<String> {
-    shell(&format!("svc wifi {}", if on { "enable" } else { "disable" }))?;
-    Ok(format!("Wi-Fi turned {}.", if on { "on" } else { "off" }))
+    switch(on, "Wi-Fi", &format!("svc wifi {}", if on { "enable" } else { "disable" }), "wifi")
 }
 
 pub fn bluetooth(on: bool) -> Result<String> {
-    shell(&format!("svc bluetooth {}", if on { "enable" } else { "disable" }))?;
-    Ok(format!("Bluetooth turned {}.", if on { "on" } else { "off" }))
+    switch(on, "Bluetooth", &format!("svc bluetooth {}", if on { "enable" } else { "disable" }), "bluetooth")
 }
 
 pub fn airplane(on: bool) -> Result<String> {
-    shell(&format!("cmd connectivity airplane-mode {}", if on { "enable" } else { "disable" }))?;
-    Ok(format!("Airplane mode turned {}.", if on { "on" } else { "off" }))
+    switch(on, "airplane mode", &format!("cmd connectivity airplane-mode {}", if on { "enable" } else { "disable" }), "airplane")
+}
+
+pub fn flashlight(on: bool) -> Result<String> {
+    call("flashlight", if on { "on" } else { "off" })?;
+    Ok(format!("Flashlight turned {}.", if on { "on" } else { "off" }))
+}
+
+pub fn alarm(hour: u64, minute: u64) -> Result<String> {
+    if hour > 23 || minute > 59 {
+        bail!("that isn't a time of day");
+    }
+    call("alarm", &format!("{hour}\t{minute}\t"))?;
+    Ok(format!("Alarm set for {hour:02}:{minute:02}."))
+}
+
+/// A number, or a contact's name (the phone asks once for permission to read contacts).
+fn who(text: &str) -> Result<String> {
+    let text = text.trim().replace(['\t', '\n'], " ");
+    if text.is_empty() {
+        bail!("who should I contact?");
+    }
+    Ok(text)
+}
+
+pub fn dial(person: &str) -> Result<String> {
+    let number = call("dial", &who(person)?)?;
+    Ok(format!("Opened the dialer with {number}; press call to ring."))
+}
+
+pub fn text_message(person: &str, message: &str) -> Result<String> {
+    let number = call("sms", &format!("{}\t{}", who(person)?, message.replace(['\t', '\n'], " ")))?;
+    Ok(format!("Opened a text to {number} with your message written; press send to send it."))
+}
+
+pub fn open_settings(page: &str) -> Result<String> {
+    let page = call("settings_page", page)?;
+    Ok(format!("Opened the {page} settings."))
 }
 
 pub fn screenshot() -> Result<String> {
@@ -133,14 +188,50 @@ pub fn is_lookup(command: &str) -> bool {
     })
 }
 
-/// Look something up on the phone by running a read-only shell command through Shizuku.
+/// Look something up on the phone with a read-only command: through Shizuku when it's on, otherwise by
+/// answering the common ones from what Android tells any app.
 pub fn phone_read(command: &str) -> Result<String> {
     if !is_lookup(command) {
         bail!("that isn't a read-only lookup, so I won't run it on my own; adb_shell can run it after asking you");
     }
-    let out = shell(command.trim())?;
+    let command = command.trim();
+    let out = if has_shizuku() {
+        shell(command)?
+    } else {
+        match without_shizuku(command) {
+            Some(topic) => call("info", &topic)?,
+            None => bail!(
+                "that lookup needs Shizuku. Without it I can look up Wi-Fi, IP address, battery, storage, Android version, phone model, settings values and installed apps"
+            ),
+        }
+    };
     let out: String = out.chars().take(2500).collect();
     Ok(if out.trim().is_empty() { "(the command printed nothing)".into() } else { out })
+}
+
+/// Which `PhoneActions.info` topic answers a lookup command, for when Shizuku isn't there.
+fn without_shizuku(command: &str) -> Option<String> {
+    let words: Vec<&str> = command.split_whitespace().collect();
+    let first = *words.first()?;
+    let has = |w: &str| words.iter().any(|x| x.contains(w));
+    Some(match first {
+        "cmd" if has("wifi") => "wifi".into(),
+        "dumpsys" if has("wifi") => "wifi".into(),
+        "dumpsys" if has("battery") => "battery".into(),
+        "ip" | "ifconfig" => "ip".into(),
+        "df" | "du" => "storage".into(),
+        "uptime" => "uptime".into(),
+        "pm" if has("packages") => "packages".into(),
+        "getprop" => match words.get(1).copied().unwrap_or("") {
+            "ro.build.version.release" | "ro.build.version.sdk" | "ro.build.version.security_patch" => "version".into(),
+            "ro.product.model" | "ro.product.manufacturer" | "ro.product.brand" | "ro.product.name" | "ro.product.device" => "model".into(),
+            _ => return None,
+        },
+        "settings" if words.len() >= 4 && words[1] == "get" && matches!(words[2], "system" | "global" | "secure") => {
+            format!("setting\t{}\t{}", words[2], words[3])
+        }
+        _ => return None,
+    })
 }
 
 /// Words for the Shizuku state, shown in Settings.
@@ -160,7 +251,7 @@ pub fn shizuku_text() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::platform::testing::{calls, fake, uninstall, REPLY};
+    use crate::platform::testing::{calls, fake, uninstall, REPLY, SHIZUKU};
 
     #[test]
     fn only_lookups_run_without_asking() {
@@ -237,11 +328,50 @@ mod tests {
     }
 
     #[test]
+    fn without_shizuku_the_common_things_still_work() {
+        let _g = crate::TEST_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        fake();
+        *SHIZUKU.lock().unwrap() = "none";
+        *REPLY.lock().unwrap() = Some("Wi-Fi network X, 5 GHz".into());
+        assert_eq!(phone_read("cmd wifi status").unwrap(), "Wi-Fi network X, 5 GHz");
+        phone_read("ip -f inet addr show wlan0").unwrap();
+        phone_read("dumpsys battery").unwrap();
+        phone_read("getprop ro.product.model").unwrap();
+        phone_read("settings get global bluetooth_on").unwrap();
+        phone_read("pm list packages -3").unwrap();
+        phone_read("df -h /sdcard").unwrap();
+        let err = phone_read("getprop ro.some.thing").unwrap_err();
+        assert!(format!("{err}").contains("needs Shizuku"), "{err}");
+        let sent: Vec<(String, String)> = calls().into_iter().filter(|c| c.0 == "info").collect();
+        let topics: Vec<&str> = sent.iter().map(|c| c.1.as_str()).collect();
+        assert_eq!(topics, ["wifi", "ip", "battery", "model", "setting\tglobal\tbluetooth_on", "packages", "storage"]);
+        // Switches open their page instead; brightness uses the system-settings permission.
+        assert!(wifi(true).unwrap().contains("opened its settings"));
+        brightness(40).unwrap();
+        assert!(airplane(false).unwrap().contains("tap the switch"));
+        let c = calls();
+        assert!(c.contains(&("settings_page".into(), "wifi".into())) && c.contains(&("brightness".into(), "40".into())));
+        assert!(!c.iter().any(|x| x.0 == "shell"), "no shell without Shizuku");
+        // Calls, texts, alarms, flashlight.
+        flashlight(true).unwrap();
+        assert_eq!(alarm(7, 5).unwrap(), "Alarm set for 07:05.");
+        assert!(alarm(25, 0).is_err());
+        *REPLY.lock().unwrap() = Some("+441234".into());
+        assert!(dial("Mum").unwrap().contains("+441234"));
+        text_message("Sam", "late\nsorry").unwrap();
+        assert!(dial("  ").is_err());
+        let c = calls();
+        assert!(c.contains(&("alarm".into(), "7\t5\t".into())) && c.contains(&("sms".into(), "Sam\tlate sorry".into())));
+        uninstall();
+    }
+
+    #[test]
     fn without_a_platform_layer_nothing_is_available() {
         let _g = crate::TEST_ENV.lock().unwrap_or_else(|e| e.into_inner());
         uninstall();
         assert!(volume(10).is_err());
-        let err = wifi(true).unwrap_err();
+        assert!(wifi(true).is_err());
+        let err = adb_shell("ls").unwrap_err();
         assert!(format!("{err}").contains("Shizuku"), "{err}");
         assert_eq!(quote("it's"), "'it'\\''s'");
     }

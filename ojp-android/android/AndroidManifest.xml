@@ -8,6 +8,18 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Reminders and timers show as notifications (Android 13+ asks once). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Keeps the model loaded in the background (one silent notification), and keeps the CPU awake while a reply is written. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Alarms in the clock app, and reading the network, without Shizuku. -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Asked for only when needed: contacts ("call Mum"), location (Android hides the Wi-Fi name without it), system settings (brightness). -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
     <!-- Optional Shizuku support: lets the assistant run adb-level commands once the user allows it there. -->
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
@@ -63,6 +75,14 @@
             android:name=".AssistSessionService"
             android:permission="android.permission.BIND_VOICE_INTERACTION"
             android:exported="true" />
+        <service
+            android:name=".KeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the on-device assistant model loaded so it answers quickly" />
+        </service>
         <receiver android:name=".ReminderReceiver" android:exported="false" />
 
         <!-- Shizuku hands its binder to the app through this provider (Apache-2.0, from rikka.shizuku:provider). -->

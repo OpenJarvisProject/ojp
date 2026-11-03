@@ -106,6 +106,8 @@ export global Settings {
     in-out property <bool> shizuku-supported: false;
     in-out property <string> shizuku-text;
     callback shizuku-action();
+    in-out property <bool> keep-alive;
+    callback keep-alive-changed();
     // Whether the chosen model's files are on this device, with a button to fetch them.
     in property <string> version;
     in-out property <string> model-note;
@@ -371,11 +373,13 @@ component Bubble inherits Rectangle {
 
     VerticalLayout {
         padding: 10px;
-        spacing: 4px;
-        if message.from-user: Text {
-            text: message.text;
+        spacing: 0px;
+        Text {
+            text: message.from-user ? message.text : "";
             wrap: word-wrap;
             color: Palette.accent-foreground;
+            // An empty Text still takes a line; at 1px it takes next to nothing.
+            font-size: self.text == "" ? 1px : 1rem;
         }
         if !message.from-user && message.blocks.length == 0: StyledText {
             text: message.rendered;
@@ -407,10 +411,12 @@ component Bubble inherits Rectangle {
                 }
             }
         }
-        if message.meta != "": Text {
+        if message.meta != "": Rectangle { height: 4px; }
+        // Not inside an `if` (see SettingRow): a conditional wrapped Text reports the wrong height.
+        Text {
             text: message.meta;
             wrap: word-wrap;
-            font-size: 0.8rem;
+            font-size: self.text == "" ? 1px : 0.8rem;
             color: message.from-user ? Palette.accent-foreground : Palette.foreground;
             opacity: 0.6;
         }
@@ -904,27 +910,31 @@ component ChoiceRow inherits Rectangle {
     TouchArea { clicked => { root.chosen(); } }
 }
 
-component SettingRow inherits HorizontalLayout {
+// The wrapped description is NOT inside an `if`: a wrapped Text that is created conditionally reports its height
+// for the wrong width, and the next item was drawn over its last lines. (Only fixed-height things go in `if`s.)
+component SettingRow inherits Rectangle {
     in property <string> title;
     in property <string> description;
     in-out property <bool> checked;
     callback toggled;
-    spacing: 12px;
     VerticalLayout {
-        horizontal-stretch: 1;
-        alignment: center;
-        Text { text: root.title; }
-        if root.description != "": Text {
+        spacing: 0px;
+        HorizontalLayout {
+            spacing: 12px;
+            Text { text: root.title; horizontal-stretch: 1; vertical-alignment: center; }
+            Switch {
+                horizontal-stretch: 0;
+                checked <=> root.checked;
+                toggled => { root.toggled(); }
+            }
+        }
+        if root.description != "": Rectangle { height: 2px; }
+        Text {
             text: root.description;
             wrap: word-wrap;
-            font-size: 0.85rem;
+            font-size: self.text == "" ? 1px : 0.85rem;
             opacity: 0.65;
         }
-    }
-    Switch {
-        horizontal-stretch: 0;
-        checked <=> root.checked;
-        toggled => { root.toggled(); }
     }
 }
 
@@ -987,9 +997,15 @@ component SettingsPage inherits Rectangle {
 
                 if Settings.shizuku-supported: VerticalLayout {
                     spacing: 8px;
-                    Text { text: "Phone control (optional)"; font-weight: 700; color: Palette.accent-background; }
+                    Text { text: "Phone control"; font-weight: 700; color: Palette.accent-background; }
+                    SettingRow {
+                        title: "Keep running in the background";
+                        description: "Leaving the app with Back keeps it, and the loaded model, running behind one quiet notification. You get a notification when a reply finishes while you are away.";
+                        checked <=> Settings.keep-alive;
+                        toggled => { Settings.keep-alive-changed(); }
+                    }
                     Text {
-                        text: "Volume, apps, links, reminders and battery work as they are. With Shizuku (a free helper app that gives other apps adb's rights once you start it), the assistant can also switch Wi-Fi, Bluetooth and airplane mode, set brightness, take screenshots and run commands (it always asks before a command).";
+                        text: "Without anything extra, the assistant can set volume, alarms, timers and reminders, open apps, links and settings pages, use the flashlight, start a call or text to a contact, and look up your Wi-Fi, storage and battery. With Shizuku (a free helper app that gives other apps adb's rights once you start it), it can also switch Wi-Fi, Bluetooth and airplane mode on its own, take screenshots and run commands (it always asks before a command).";
                         wrap: word-wrap;
                         font-size: 0.85rem;
                         opacity: 0.65;

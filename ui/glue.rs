@@ -144,6 +144,16 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     });
     settings.set_dynamic_colors_supported(setup.set_dynamic_colors.is_some());
     settings.set_shizuku_supported(ojp_core::platform::available());
+    settings.set_keep_alive(ojp_core::platform::call("keepalive_get", "").is_ok_and(|on| on == "on"));
+    settings.on_keep_alive_changed({
+        let weak = ui.as_weak();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                let on = ui.global::<Settings>().get_keep_alive();
+                let _ = ojp_core::platform::call("keepalive_set", if on { "on" } else { "off" });
+            }
+        }
+    });
     settings.set_brain(match setup.config.link.brain.as_str() {
         "auto" => 1,
         "remote" => 2,
@@ -350,7 +360,13 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     });
     if let Some(set_back_handler) = setup_back_handler {
         let weak = ui.as_weak();
-        set_back_handler(Box::new(move || weak.upgrade().is_some_and(|ui| ui.invoke_go_back())));
+        set_back_handler(Box::new(move || {
+            if weak.upgrade().is_some_and(|ui| ui.invoke_go_back()) {
+                return true;
+            }
+            // At the top: with the background service on, leave the app running instead of closing it.
+            ojp_core::platform::call("keepalive_get", "").is_ok_and(|on| on == "on") && ojp_core::platform::call("background", "").is_ok()
+        }));
     }
     if let Some(hook) = test_hook {
         hook(ui.as_weak());
@@ -1071,6 +1087,8 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                     move |done, of| set_stage(&ui, format!("Reading the conversation… {}%", done * 100 / of.max(1)))
                 })));
                 let mut wrote = false;
+                // Keep the processor awake while the reply is written, even with the screen off (Android only).
+                let _ = ojp_core::platform::call("busy", "1");
                 let result = engine.ask(&text, &mut |event| match event {
                     Event::Routed { route, ms } => {
                         meta.push(format!("{} ({ms} ms)", route.label()));
@@ -1134,6 +1152,11 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 }
                 refresh_list(&ui, &store, &chat);
                 set_state(&ui, false, None);
+                let _ = ojp_core::platform::call("busy", "0");
+                if let Some(reply) = chat.messages.last().filter(|m| !m.from_user && !m.text.is_empty()) {
+                    // A notification if the app isn't in front (Android only).
+                    let _ = ojp_core::platform::call("notify_reply", &reply.text);
+                }
                 if setup.config.tts.enabled {
                     if tts.is_none() {
                         // Loaded at startup was skipped; do it now.
