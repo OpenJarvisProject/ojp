@@ -461,14 +461,21 @@ public final class PhoneActions {
         Context c = ctx();
         WifiManager wm = (WifiManager) c.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
         if (!wm.isWifiEnabled()) return "Wi-Fi is off";
+        // Without the location permission Android blanks the connection's id and name, so "connected" is read from the
+        // active network instead.
+        ConnectivityManager cm = (ConnectivityManager) c.getSystemService(Context.CONNECTIVITY_SERVICE);
+        Network active = cm.getActiveNetwork();
+        NetworkCapabilities caps = active == null ? null : cm.getNetworkCapabilities(active);
+        if (caps == null || !caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+            return "Wi-Fi is on but the phone isn't using it right now (no Wi-Fi network, or it is on mobile data)";
+        }
         WifiInfo w = wm.getConnectionInfo();
-        if (w == null || w.getNetworkId() == -1) return "Wi-Fi is on but not connected to a network";
         String name = w.getSSID();
         if (name == null || name.contains("unknown ssid")) {
             // Android hides the network name from apps without the location permission.
             if (c.checkSelfPermission("android.permission.ACCESS_FINE_LOCATION") != PackageManager.PERMISSION_GRANTED) {
                 activity.runOnUiThread(() -> activity.requestPermissions(new String[] {"android.permission.ACCESS_FINE_LOCATION"}, 79));
-                name = "(name hidden by Android until you allow Location for Open Jarvis; a question just appeared, allow it and ask again)";
+                name = "(hidden: allow Location for Open Jarvis in the question that appeared, then ask again)";
             } else {
                 name = "(name hidden: switch Location on to see it)";
             }
@@ -477,7 +484,9 @@ public final class PhoneActions {
         }
         int mhz = w.getFrequency();
         String band = mhz >= 5925 ? "6 GHz" : mhz >= 4900 ? "5 GHz" : "2.4 GHz";
-        return "Wi-Fi network " + name + ", " + band + " (" + mhz + " MHz), signal " + w.getRssi() + " dBm, link speed "
-                + w.getLinkSpeed() + " Mbps, " + ip();
+        String signal = w.getRssi() <= -127 ? "" : ", signal " + w.getRssi() + " dBm";
+        String speed = w.getLinkSpeed() <= 0 ? "" : ", link speed " + w.getLinkSpeed() + " Mbps";
+        String freq = mhz <= 0 ? "" : ", " + band + " (" + mhz + " MHz)";
+        return "Wi-Fi network " + name + freq + signal + speed + ", " + ip();
     }
 }

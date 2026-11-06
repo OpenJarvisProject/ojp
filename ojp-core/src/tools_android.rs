@@ -239,15 +239,16 @@ fn without_shizuku(command: &str) -> Option<String> {
 /// done), so this is answered by [`self_check`]. `Some(true)` when the request also names switching things on and off.
 pub fn phone_check_request(request: &str) -> Option<bool> {
     let r = request.to_lowercase();
-    let asks = r.contains("test") || r.contains("check") || r.contains("diagnos");
-    let broad = ["everything", "system access", "phone control", "phone check", "what works", "what you can do", "all your abilities", "all the tools", "all of it"]
-        .iter()
-        .any(|w| r.contains(w));
-    if !(asks && broad) {
+    let has = |words: &[&str]| words.iter().any(|w| r.contains(w));
+    let test = r.contains("test");
+    let check = test || r.contains("check") || r.contains("diagnos");
+    let broad = has(&["everything", "system access", "phone control", "phone check", "what works", "what you can do", "all your abilities", "all the tools", "all of it"]);
+    // "Run tests on controlling the phone via Shizuku" names the thing being tested instead of saying "everything".
+    let subject = has(&["shizuku", "controlling", "control the phone", "control phone", "adb"]);
+    if !(check && broad || test && subject) {
         return None;
     }
-    let switches = ["everything", "full", "literally", "airplane", "bluetooth", "wifi", "wi-fi", "switch"].iter().any(|w| r.contains(w));
-    Some(switches)
+    Some(has(&["everything", "full", "literally", "airplane", "bluetooth", "wifi", "wi-fi", "switch"]) || test && subject)
 }
 
 /// Try the phone's abilities one by one and say plainly what worked, what failed and what was not tried.
@@ -263,7 +264,7 @@ pub fn self_check(switches: bool) -> String {
         };
         // Paragraphs, not a list: a long list item doesn't wrap in the chat.
         // Long unbroken words (the groups of `id`, paths) can't wrap and would make the chat wider than the screen.
-        let text: String = what.trim().replace('\n', " | ").replace(',', ", ").chars().take(160).collect();
+        let text: String = what.trim().replace('\n', " | ").replace(',', ", ").chars().take(240).collect();
         out.push(format!("{mark}{name}: {text}"));
     };
     let mut info = |name: &str, topic: &str| match call("info", topic) {
@@ -511,7 +512,9 @@ mod tests {
         assert_eq!(phone_check_request("Test literally everything"), Some(true));
         assert_eq!(phone_check_request("run a phone check"), Some(false));
         assert_eq!(phone_check_request("Can you check what works without shizuku?"), Some(false));
+        assert_eq!(phone_check_request("Run tests on controlling phone via shizuku"), Some(true));
         assert_eq!(phone_check_request("check the battery"), None);
+        assert_eq!(phone_check_request("check my phone"), None);
         assert_eq!(phone_check_request("turn the wifi off"), None);
     }
 
