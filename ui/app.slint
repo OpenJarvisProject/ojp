@@ -61,6 +61,10 @@ export global Chat {
     in-out property <string> status;
     callback send(string);
     callback clear();
+    // Messages typed while the assistant is busy wait here and are sent one after another.
+    in-out property <[string]> queued;
+    callback send-queued();
+    callback unqueue(int);
 
     // Saved chats, most recent first, and the one on screen.
     in-out property <[ChatSummary]> chats;
@@ -448,10 +452,11 @@ component ChatPage inherits Rectangle {
     property <string> restored: Chat.draft;
     changed restored => { if (input.text != self.restored) { input.text = self.restored; } }
 
+    // When the assistant stops being busy, the next queued message goes out.
+    property <bool> idle: !Chat.busy;
+    changed idle => { if (self.idle && Chat.queued.length > 0) { Chat.send-queued(); } }
+
     function submit() {
-        if (Chat.busy) {
-            return;
-        }
         // Losing focus makes the keyboard hand over the word still being typed (it is held back until a
         // space), so the whole message is sent and nothing is left to reappear in the next one.
         input.clear-focus();
@@ -623,6 +628,35 @@ component ChatPage inherits Rectangle {
             }
         }
 
+        if Chat.queued.length > 0: VerticalLayout {
+            padding-left: 16px;
+            padding-right: 16px;
+            spacing: 2px;
+            vertical-stretch: 0;
+            for waiting[i] in Chat.queued: Rectangle {
+                height: 30px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                        text: "Waiting: " + waiting;
+                        font-size: 0.85rem;
+                        opacity: 0.75;
+                        overflow: elide;
+                    }
+                    Text {
+                        horizontal-stretch: 0;
+                        vertical-alignment: center;
+                        text: "remove";
+                        font-size: 0.85rem;
+                        color: Palette.accent-background;
+                    }
+                }
+                TouchArea { clicked => { Chat.unqueue(i); } }
+            }
+        }
+
         HorizontalLayout {
             padding: 10px;
             spacing: 8px;
@@ -687,13 +721,18 @@ component ChatPage inherits Rectangle {
             VerticalLayout {
                 alignment: end;
                 horizontal-stretch: 0;
+                if Chat.busy && (input.text != "" || input.preedit-text != ""): AppButton {
+                    text: "Queue";
+                    primary: true;
+                    clicked => { root.submit(); }
+                }
                 if Chat.thinking: AppButton {
                     text: "Stop";
                     clicked => { Chat.stop(); }
                 }
-                if !Chat.thinking: AppButton {
+                if !Chat.busy: AppButton {
                     text: "Send";
-                    enabled: !Chat.busy && (input.text != "" || input.preedit-text != "");
+                    enabled: input.text != "" || input.preedit-text != "";
                     clicked => { root.submit(); }
                 }
             }

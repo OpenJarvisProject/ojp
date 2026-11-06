@@ -40,6 +40,21 @@ pub fn clear_stop() {
     STOP.store(false, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// True while the app is quietly reading the tool list into the model before anyone has asked for it.
+static WARMING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_warming(on: bool) {
+    WARMING.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// A message the user just sent cuts a warm-up short (what it has read so far is kept: the next prompt starts with
+/// the same tokens and carries on from there). Does nothing when no warm-up is running.
+pub fn request_stop_if_warming() {
+    if WARMING.load(std::sync::atomic::Ordering::Relaxed) {
+        request_stop();
+    }
+}
+
 /// What the answer to one request cost, summed over every model call it made (for the small timing line under a reply).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Stats {
@@ -567,7 +582,9 @@ impl Model {
             if stop_requested() {
                 bail!(STOPPED);
             }
-            let mut end = (start + n_batch).min(tokens.len());
+            // While warming up, small steps, so a message the user sends can cut it short within seconds.
+            let step = if WARMING.load(std::sync::atomic::Ordering::Relaxed) { n_batch.min(64) } else { n_batch };
+            let mut end = (start + step).min(tokens.len());
             if let Some(at) = checkpoint_at.filter(|&at| start < at && at < end) {
                 end = at;
             }

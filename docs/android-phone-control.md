@@ -31,6 +31,16 @@ actually run and not to claim anything else. A `phone_read` call whose command i
 `adb_shell` call (asks first). *Copy chat* in a chat's three-dot menu puts the whole chat, with each reply's grey line, on
 the clipboard.
 
+**Messages while it is busy:** typing while the assistant works shows a *Queue* button (and *Stop*); queued messages wait
+under the chat ("Waiting: ...", tap to remove) and go out one after another. Stop cuts off only the current answer; New
+chat or opening another chat empties the queue.
+
+**Tool-list warm-up:** on a phone the app reads the tool list into the model right after loading (status line: "Getting
+ready for phone tasks... 27%") and keeps it on disk, so the first request that needs tools isn't the slow one (about 3 min
+on a real phone, 16 tokens/s). Sending a message cuts the warm-up short within a few seconds and what was read is kept.
+The saved cache is no longer keyed on the app version (every update used to throw it away), and older caches of the same
+model are deleted.
+
 **Running in the background:** Settings > Phone control > *Keep running in the background* (on by default) starts a
 foreground service (`KeepAliveService`, type `specialUse`, one silent low-priority notification with a Stop button).
 The Back button at the top of the app then moves the app to the background instead of closing it, so the loaded model

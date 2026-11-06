@@ -229,9 +229,12 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     let send = move |request| {
         let _ = tx.send(request);
     };
-    chat.on_send({
+    // Messages typed while the assistant is busy wait in this list and go out one after another.
+    let queue = Rc::new(VecModel::<slint::SharedString>::default());
+    chat.set_queued(queue.clone().into());
+    let start = {
         let (send, messages, weak) = (send.clone(), messages.clone(), ui.as_weak());
-        move |text| {
+        Rc::new(move |text: slint::SharedString| {
             messages.push(Message { from_user: true, text: text.clone(), ..Default::default() });
             messages.push(Message::default());
             if let Some(ui) = weak.upgrade() {
@@ -239,7 +242,35 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
                 ui.global::<Chat>().set_thinking(true);
                 ui.global::<Chat>().set_thinking_stage("Understanding your message".into());
             }
+            // A warm-up of the tool list, if one is running, gives way to the message.
+            ojp_core::model::request_stop_if_warming();
             send(Request::Ask(text.into()));
+        })
+    };
+    chat.on_send({
+        let (start, queue, weak) = (start.clone(), queue.clone(), ui.as_weak());
+        move |text| {
+            if weak.upgrade().is_some_and(|ui| ui.global::<Chat>().get_busy()) {
+                queue.push(text);
+            } else {
+                start(text);
+            }
+        }
+    });
+    chat.on_send_queued({
+        let (start, queue) = (start.clone(), queue.clone());
+        move || {
+            if queue.row_count() > 0 {
+                start(queue.remove(0));
+            }
+        }
+    });
+    chat.on_unqueue({
+        let queue = queue.clone();
+        move |i| {
+            if (i as usize) < queue.row_count() {
+                queue.remove(i as usize);
+            }
         }
     });
     chat.on_download({
@@ -250,8 +281,9 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
         }
     });
     chat.on_clear({
-        let (send, weak, messages) = (send.clone(), ui.as_weak(), messages.clone());
+        let (send, weak, messages, queue) = (send.clone(), ui.as_weak(), messages.clone(), queue.clone());
         move || {
+            queue.set_vec(Vec::new());
             // While an answer is being written, the new chat first cuts it off (the worker is busy with it); the
             // screen is cleared at once, the worker catches up when it has stopped.
             if weak.upgrade().is_some_and(|ui| ui.global::<Chat>().get_thinking()) {
@@ -262,8 +294,11 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
         }
     });
     chat.on_open_chat({
-        let send = send.clone();
-        move |id| send(Request::OpenChat(id.into()))
+        let (send, queue) = (send.clone(), queue.clone());
+        move |id| {
+            queue.set_vec(Vec::new());
+            send(Request::OpenChat(id.into()))
+        }
     });
     // Copy a whole saved chat to the clipboard. Not through the worker, which may be busy generating.
     chat.on_copy_chat({
@@ -677,6 +712,31 @@ fn load_engine(setup: &Setup, ui: &slint::Weak<AppWindow>) -> Option<Engine> {
     engine
 }
 
+/// On a phone, read the tool list into the model while nobody is asking for anything, so the first request that
+/// needs tools is quick. A message sent meanwhile cuts it short (see `model::request_stop_if_warming`).
+fn warm_up(engine: &mut Option<Engine>, ui: &slint::Weak<AppWindow>) {
+    if !ojp_core::tools::phone_mode() {
+        return;
+    }
+    let Some(engine) = engine.as_mut() else { return };
+    ojp_core::model::clear_stop();
+    ojp_core::model::set_warming(true);
+    ojp_core::model::set_eval_hook(Some(Box::new({
+        let ui = ui.clone();
+        move |done, of| {
+            let text = format!("Getting ready for phone tasks… {}% (you can type now)", done * 100 / of.max(1));
+            let _ = ui.upgrade_in_event_loop(move |ui| ui.global::<Chat>().set_status(text.into()));
+        }
+    })));
+    engine.warm_tools();
+    ojp_core::model::set_eval_hook(None);
+    ojp_core::model::set_warming(false);
+    ojp_core::model::clear_stop();
+    // Only the line under the title: a message the user sent meanwhile has already made the app busy.
+    let status = engine.status.join(" · ");
+    let _ = ui.upgrade_in_event_loop(move |ui| ui.global::<Chat>().set_status(status.into()));
+}
+
 /// "Reading the tool list… 42% · about 20 s left". The time left is the pace since the files were opened,
 /// so it only appears once there is a pace to go by.
 fn progress_text(fraction: f32, label: &str, elapsed: Duration) -> String {
@@ -835,6 +895,7 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
     let mut chat = StoredChat::new();
     show_chat(&ui, &store, &chat);
     let mut engine = load_engine(&setup, &ui);
+    warm_up(&mut engine, &ui);
     // The device link: one server for the life of the app (engines come and go as models change).
     let caps: std::sync::Arc<ojp_core::link::net::Caps> = Default::default();
     let mut server = None;
@@ -889,6 +950,7 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                     if let Some(engine) = engine.as_mut() {
                         engine.set_history(chat.messages.iter().map(|m| (m.from_user, m.text.clone())));
                     }
+                    warm_up(&mut engine, &ui);
                 } else {
                     set_state(&ui, false, Some("Download failed".into()));
                 }
@@ -1001,7 +1063,7 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
             },
             Request::PhoneCheck(full) => {
                 set_state(&ui, true, Some("Checking what the phone lets me do…".into()));
-                let report = ojp_core::tools_android::self_check(full);
+                let report = ojp_core::tools_android::self_check(full, false);
                 chat.messages.push(StoredMessage { from_user: true, text: if full { "Run the full phone check".into() } else { "Run the phone check".into() }, meta: String::new() });
                 chat.messages.push(StoredMessage { from_user: false, text: report, meta: "phone check".into() });
                 chat.refresh_title();
@@ -1086,6 +1148,7 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                     if let Some(engine) = engine.as_mut() {
                         engine.set_history(chat.messages.iter().map(|m| (m.from_user, m.text.clone())));
                     }
+                    warm_up(&mut engine, &ui);
                 }
             }
             Request::Preview => {
@@ -1113,7 +1176,7 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 // "Test everything" is answered by the real check, not by a model guessing which steps to take.
                 let full = ojp_core::tools_android::phone_check_request(&text).unwrap_or(false);
                 set_stage(&ui, "Checking what the phone lets me do".into());
-                let report = ojp_core::tools_android::self_check(full);
+                let report = ojp_core::tools_android::self_check(full, ojp_core::tools_android::shizuku_only(&text));
                 let shown = report.clone();
                 edit_last(&ui, move |m| {
                     m.text = shown.into();

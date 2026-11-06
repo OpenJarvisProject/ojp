@@ -340,7 +340,7 @@ impl Engine {
                 warm.done(model, 110);
             }
             if let Some(p) = &router_cache {
-                let _ = model.save_cache(p);
+                if model.save_cache(p).is_ok() { prune_old_caches(p); }
             }
         }
         if let (Some(Main::Local(model)), true) = (main.as_mut(), main_todo) {
@@ -369,7 +369,7 @@ impl Engine {
                 }
             }
             if let Some(p) = &main_cache {
-                let _ = model.save_cache(p);
+                if model.save_cache(p).is_ok() { prune_old_caches(p); }
             }
         }
         progress(1.0, "Ready");
@@ -756,10 +756,19 @@ impl Engine {
             // The tool prompt is now in the model's cache: keep it for the next start.
             self.tools_saved = true;
             if let Some(path) = if on_main { &self.main_cache } else { &self.router_cache } {
-                let _ = model.save_cache(path);
+                if model.save_cache(path).is_ok() { prune_old_caches(path); }
             }
         }
         result
+    }
+
+    /// Read the tool list into the model now, and keep it for the next start, so the first request that needs
+    /// tools doesn't pay for it (minutes on a phone). Cut short quietly if the model is stopped meanwhile; what was
+    /// read is not lost.
+    pub fn warm_tools(&mut self) {
+        if !self.tools_saved {
+            let _ = self.plan_step("What time is it?", &[]);
+        }
     }
 
     fn messages(&self) -> Vec<ChatMessage> {
@@ -1047,6 +1056,34 @@ fn generate_remote(
     Ok(text)
 }
 
+const CACHE_FORMAT: u32 = 1;
+
+/// Delete the older warm-up caches of the same model (left by earlier settings or builds): each is tens to hundreds
+/// of megabytes, and they piled up on the phone.
+fn prune_old_caches(current: &std::path::Path) {
+    let (Some(dir), Some(name)) = (current.parent(), current.file_name().and_then(|n| n.to_str())) else { return };
+    // "<model>-<16 hex digits>.kv": same model, different key.
+    let Some(stem) = name.strip_suffix(".kv").and_then(|n| n.rsplit_once('-')).map(|(m, _)| m.to_string()) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let other = entry.file_name();
+        let other = other.to_string_lossy();
+        let same_model = other
+            .strip_suffix(".kv")
+            .and_then(|n| n.rsplit_once('-'))
+            .is_some_and(|(m, key)| m == stem && key.len() == 16 && key.bytes().all(|b| b.is_ascii_hexdigit()));
+        // Only old ones: a router and a main model of the same file (one-model profiles) each keep a cache here
+        // that is written in the same session.
+        let old = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .is_ok_and(|t| t.elapsed().is_ok_and(|age| age > std::time::Duration::from_secs(6 * 3600)));
+        if same_model && old && *other != *name {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
 /// Where a model's warm-up cache lives: `<models dir>/.cache/<name>-<key>.kv`,
 /// keyed on everything that would change its contents (the model file's
 /// path, size and modification time, the prompts, this build).
@@ -1062,7 +1099,9 @@ fn cache_path(config: &Config, model: Option<&std::path::Path>, prompts: &[&str]
     crate::router::PROMPT_VERSION.hash(&mut h);
     config.models.n_ctx.hash(&mut h);
     config.models.gpu_layers.hash(&mut h);
-    env!("CARGO_PKG_VERSION").hash(&mut h);
+    // Not the app's version: every release would throw the cache away, and the first tool request after each update
+    // would read the whole tool list again (3 minutes on a phone). Bump this when the saved format changes.
+    CACHE_FORMAT.hash(&mut h);
     let name = model.file_stem()?.to_string_lossy();
     Some(model.parent()?.join(".cache").join(format!("{name}-{:016x}.kv", h.finish())))
 }

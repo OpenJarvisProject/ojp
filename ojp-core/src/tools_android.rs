@@ -138,8 +138,7 @@ pub fn screenshot() -> Result<String> {
 /// Any shell command with adb-level rights (the caller has already asked the user).
 pub fn adb_shell(command: &str) -> Result<String> {
     let out = shell(command)?;
-    let out: String = out.chars().take(1500).collect();
-    Ok(if out.is_empty() { "Done (no output).".into() } else { out })
+    Ok(if out.trim().is_empty() { "Done (no output).".into() } else { shorten(&out) })
 }
 
 /// Commands the assistant may run on its own, because they only look at things and change nothing.
@@ -188,6 +187,20 @@ pub fn is_lookup(command: &str) -> bool {
     })
 }
 
+/// Long output made short for the model: the first lines, and how many there are in all (it can't count 167 lines of
+/// package names by itself, and reading them all costs minutes on a phone).
+fn shorten(out: &str) -> String {
+    const SHOWN: usize = 25;
+    let total = out.lines().count();
+    let head: String = out.lines().take(SHOWN).collect::<Vec<_>>().join("\n");
+    let head: String = head.chars().take(1500).collect();
+    match total {
+        0..=1 => head,
+        2..=SHOWN => format!("{head}\n[{total} lines in total]"),
+        _ => format!("{head}\n[{total} lines in total; only the first {SHOWN} are shown. Use the total to count.]"),
+    }
+}
+
 /// Look something up on the phone with a read-only command: through Shizuku when it's on, otherwise by
 /// answering the common ones from what Android tells any app.
 pub fn phone_read(command: &str) -> Result<String> {
@@ -205,8 +218,7 @@ pub fn phone_read(command: &str) -> Result<String> {
             ),
         }
     };
-    let out: String = out.chars().take(2500).collect();
-    Ok(if out.trim().is_empty() { "(the command printed nothing)".into() } else { out })
+    Ok(if out.trim().is_empty() { "(the command printed nothing)".into() } else { shorten(&out) })
 }
 
 /// Which `PhoneActions.info` topic answers a lookup command, for when Shizuku isn't there.
@@ -251,11 +263,17 @@ pub fn phone_check_request(request: &str) -> Option<bool> {
     Some(has(&["everything", "full", "literally", "airplane", "bluetooth", "wifi", "wi-fi", "switch"]) || test && subject)
 }
 
+/// Whether the request limits the check to what uses Shizuku ("only things done via Shizuku").
+pub fn shizuku_only(request: &str) -> bool {
+    let r = request.to_lowercase();
+    r.contains("shizuku") && !r.contains("without") && ["only", "just", "via", "using", "through", "that use", "use shizuku"].iter().any(|w| r.contains(w))
+}
+
 /// Try the phone's abilities one by one and say plainly what worked, what failed and what was not tried.
 /// `switches` also flips Wi-Fi, Bluetooth and airplane mode off and back on (Shizuku only), restoring each.
-pub fn self_check(switches: bool) -> String {
+pub fn self_check(switches: bool, shizuku_only: bool) -> String {
     use std::{thread::sleep, time::Duration};
-    let mut out = vec![format!("Phone check ({}):", if switches { "full, with switches" } else { "basic" })];
+    let mut out = vec![format!("Phone check ({}{}):", if switches { "full, with switches" } else { "basic" }, if shizuku_only { ", only what uses Shizuku" } else { "" })];
     let mut line = |ok: Option<bool>, name: &str, what: String| {
         let mark = match ok {
             Some(true) => "**OK** ",
@@ -272,23 +290,31 @@ pub fn self_check(switches: bool) -> String {
         Err(e) => Some((name.to_string(), false, format!("{e:#}"))),
     };
     let mut results = Vec::new();
-    for (name, topic) in [
-        ("Wi-Fi", "wifi"), ("IP address", "ip"), ("storage", "storage"), ("Android version", "version"), ("phone model", "model"),
-        ("uptime", "uptime"), ("permissions", "permissions"), ("installed apps", "packages"), ("brightness setting", "setting\tsystem\tscreen_brightness"),
-    ] {
+    // Everything that needs no Shizuku (skipped when only the Shizuku part was asked for).
+    let plain: &[(&str, &str)] = if shizuku_only {
+        &[]
+    } else {
+        &[
+            ("Wi-Fi", "wifi"), ("IP address", "ip"), ("storage", "storage"), ("Android version", "version"), ("phone model", "model"),
+            ("uptime", "uptime"), ("permissions", "permissions"), ("installed apps", "packages"), ("brightness setting", "setting\tsystem\tscreen_brightness"),
+        ]
+    };
+    for (name, topic) in plain {
         results.extend(info(name, topic));
     }
     line(Some(true), "Shizuku", shizuku_text());
-    match call("battery", "") {
-        Ok(t) => line(Some(true), "battery", t),
-        Err(e) => line(Some(false), "battery", format!("{e:#}")),
+    if !shizuku_only {
+        match call("battery", "") {
+            Ok(t) => line(Some(true), "battery", t),
+            Err(e) => line(Some(false), "battery", format!("{e:#}")),
+        }
     }
     for (name, ok, text) in results {
         let text = if name == "installed apps" { format!("{} launchable apps found", text.lines().count()) } else { text };
         line(Some(ok), &name, text);
     }
     // Volume: read it and set the same value back (nothing audibly changes).
-    match call("info", "volume").and_then(|v| call("volume", v.trim())) {
+    if !shizuku_only { match call("info", "volume").and_then(|v| call("volume", v.trim())) {
         Ok(_) => line(Some(true), "volume", "read the level and set it again".into()),
         Err(e) => line(Some(false), "volume", format!("{e:#}")),
     }
@@ -302,7 +328,7 @@ pub fn self_check(switches: bool) -> String {
             line(Some(false), "flashlight", format!("{e:#}"))
         }
     }
-    line(None, "alarm, call, text, open app, open settings page, reminders", "not run by the check: they open other apps or set real alarms".into());
+    line(None, "alarm, call, text, open app, open settings page, reminders", "not run by the check: they open other apps or set real alarms".into()); }
     if !has_shizuku() {
         line(Some(false), "Wi-Fi/Bluetooth/airplane switches, screenshot, shell, app details", format!("need Shizuku: {}", shizuku_text()));
     } else {
@@ -490,7 +516,7 @@ mod tests {
         let _g = crate::TEST_ENV.lock().unwrap_or_else(|e| e.into_inner());
         fake();
         *REPLY.lock().unwrap() = Some("exit=0\n1".into());
-        let full = self_check(true);
+        let full = self_check(true, false);
         assert!(full.contains("**OK** Wi-Fi: was 1") && full.contains("restored to"), "{full}");
         assert!(full.contains("**OK** airplane mode") && full.contains("**OK** screenshot") && full.contains("skipped alarm"), "{full}");
         let shells: Vec<String> = calls().into_iter().filter(|c| c.0 == "shell").map(|c| c.1).collect();
@@ -501,7 +527,7 @@ mod tests {
         assert!(shells[airplane_on..].iter().any(|c| c == "cmd connectivity airplane-mode disable") == false, "airplane was on, so it ends on: {shells:?}");
         // Without Shizuku the switch checks say so instead of pretending.
         *SHIZUKU.lock().unwrap() = "none";
-        let basic = self_check(false);
+        let basic = self_check(false, false);
         assert!(basic.contains("**FAILED** Wi-Fi/Bluetooth/airplane switches") && basic.contains("**OK** flashlight"), "{basic}");
         uninstall();
     }
@@ -516,6 +542,27 @@ mod tests {
         assert_eq!(phone_check_request("check the battery"), None);
         assert_eq!(phone_check_request("check my phone"), None);
         assert_eq!(phone_check_request("turn the wifi off"), None);
+    }
+
+    #[test]
+    fn the_check_can_be_limited_to_shizuku() {
+        let _g = crate::TEST_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        fake();
+        assert!(shizuku_only("Run a phone check, only check things that use or are done via shizuku"));
+        assert!(!shizuku_only("check what works without shizuku"));
+        assert!(!shizuku_only("run a phone check"));
+        let only = self_check(false, true);
+        assert!(only.contains("**OK** shell") && !only.contains("battery") && !only.contains("flashlight"), "{only}");
+        uninstall();
+    }
+
+    #[test]
+    fn long_output_is_shortened_with_a_count() {
+        let lines: Vec<String> = (0..167).map(|i| format!("package:com.example.app{i}")).collect();
+        let short = shorten(&lines.join("\n"));
+        assert!(short.contains("[167 lines in total") && short.lines().count() <= 27, "{short}");
+        assert_eq!(shorten("one line"), "one line");
+        assert_eq!(shorten("a\nb"), "a\nb\n[2 lines in total]");
     }
 
     #[test]
