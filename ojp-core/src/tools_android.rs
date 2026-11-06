@@ -145,7 +145,7 @@ pub fn adb_shell(command: &str) -> Result<String> {
 const LOOKUPS: &[&str] = &[
     "ip", "ifconfig", "netstat", "ss", "getprop", "uptime", "date", "id", "whoami", "uname", "df", "du", "free", "ls", "cat", "head", "tail", "wc",
     "grep", "sort", "uniq", "cut", "tr", "ps", "pidof", "which", "getenforce", "hostname", "dumpsys", "settings", "pm", "cmd", "wm", "find", "stat",
-    "service", "lsmod", "mount", "printenv", "nslookup", "ping", "arp",
+    "service", "lsmod", "mount", "printenv", "nslookup", "ping", "arp", "wg", "iw", "route",
 ];
 
 /// Words that turn a lookup into a change, wherever they appear in the command.
@@ -180,6 +180,8 @@ pub fn is_lookup(command: &str) -> bool {
             "cmd" => matches!(rest.as_slice(), ["wifi", "status" | "list-scan-results" | "list-networks"] | ["package", "list", ..]),
             "wm" => matches!(rest.as_slice(), ["size"] | ["density"]),
             "service" => rest.first() == Some(&"list"),
+            // `wg show` only reads; `wg set` and the rest change keys and peers.
+            "wg" => rest.first().is_none_or(|w| *w == "show"),
             "mount" => rest.is_empty(),
             "ping" => rest.iter().any(|w| *w == "-c"),
             _ => true,
@@ -209,7 +211,13 @@ pub fn phone_read(command: &str) -> Result<String> {
     }
     let command = command.trim();
     let out = if has_shizuku() {
-        shell(command)?
+        match shell(command) {
+            Ok(t) => t,
+            // The command itself failed (e.g. a tool that isn't on this phone): that is a finding, not a reason to stop
+            // the other lookups of the same request.
+            Err(e) if format!("{e:#}").starts_with("the command failed") => return Ok(format!("(`{command}` gave: {e:#})")),
+            Err(e) => return Err(e),
+        }
     } else {
         match without_shizuku(command) {
             Some(topic) => call("info", &topic)?,
@@ -403,6 +411,10 @@ mod tests {
     fn only_lookups_run_without_asking() {
         for ok in [
             "ip -f inet addr show wlan0",
+            "ip -o addr",
+            "ip route",
+            "wg show",
+            "dumpsys connectivity | grep -i vpn",
             "cmd wifi status",
             "dumpsys battery",
             "dumpsys wifi | grep SSID",
@@ -421,6 +433,8 @@ mod tests {
             "svc wifi disable",
             "cmd wifi set-wifi-enabled disabled",
             "ip link set wlan0 down",
+            "wg set wg0 peer x remove",
+            "wg-quick up wg0",
             "dumpsys battery set level 5",
             "cat /sdcard/a > /sdcard/b",
             "ls; reboot",
@@ -553,6 +567,18 @@ mod tests {
         assert!(!shizuku_only("run a phone check"));
         let only = self_check(false, true);
         assert!(only.contains("**OK** shell") && !only.contains("battery") && !only.contains("flashlight"), "{only}");
+        uninstall();
+    }
+
+    #[test]
+    fn a_failing_lookup_is_a_finding_not_an_abort() {
+        let _g = crate::TEST_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        fake();
+        *REPLY.lock().unwrap() = Some("exit=127\nsh: wg: inaccessible or not found".into());
+        let out = phone_read("wg show").unwrap();
+        assert!(out.contains("wg show") && out.contains("not found"), "{out}");
+        *SHIZUKU.lock().unwrap() = "permission";
+        assert!(phone_read("wg show").is_err(), "without Shizuku an unanswerable lookup says it needs Shizuku");
         uninstall();
     }
 

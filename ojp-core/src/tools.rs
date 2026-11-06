@@ -100,7 +100,7 @@ const ANDROID_ONLY: &[Tool] = &[
     Tool { name: "bluetooth", doc: "turn the phone's Bluetooth on or off", args: &[Arg { name: "state", kind: ArgKind::Choice(&["on", "off"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::bluetooth(text(a, "state")? == "on") },
     Tool { name: "airplane", doc: "turn airplane mode on or off", args: &[Arg { name: "state", kind: ArgKind::Choice(&["on", "off"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::airplane(text(a, "state")? == "on") },
     Tool { name: "brightness", doc: "set the screen brightness, 0-100", args: &[Arg { name: "level", kind: ArgKind::Int { max: 100 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::brightness(int(a, "level")?) },
-    Tool { name: "phone_read", doc: "look something up on the phone by running a read-only shell command (it changes nothing, so it runs without asking). Useful commands: `cmd wifi status` (anything about the Wi-Fi: network name, 2.4 or 5 GHz band, signal, speed), `ip -f inet addr show wlan0` (IP address), `dumpsys battery`, `dumpsys wifi`, `getprop ro.build.version.release` (Android version), `settings get system screen_brightness`, `pm list packages -3` (installed apps), `df -h /sdcard` (storage), `uptime`", args: &[Arg { name: "command", kind: ArgKind::Text { max: 250 } }], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::phone_read(text(a, "command")?) },
+    Tool { name: "phone_read", doc: "look something up on the phone by running a read-only shell command (it changes nothing, so it runs without asking). You may look up more than once. Useful commands: `cmd wifi status` (the Wi-Fi: network name, 2.4 or 5 GHz band, signal, speed), `ip -o addr` (every network interface with its address: wlan0 is Wi-Fi, rmnet is mobile data, tun or wg are VPN and WireGuard), `ip route`, `dumpsys connectivity | grep -i vpn` (VPNs), `wg show`, `dumpsys battery`, `getprop ro.build.version.release` (Android version), `settings get system screen_brightness`, `pm list packages -3` (installed apps), `df -h /sdcard` (storage), `uptime`", args: &[Arg { name: "command", kind: ArgKind::Text { max: 250 } }], kind: Kind::Read, risk: Risk::Safe, explore: true, run: |a| crate::tools_android::phone_read(text(a, "command")?) },
     Tool { name: "flashlight", doc: "flashlight (torch) on or off", args: &[Arg { name: "state", kind: ArgKind::Choice(&["on", "off"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::flashlight(text(a, "state")? == "on") },
     Tool { name: "alarm", doc: "set an alarm for a time of day (24-hour)", args: &[Arg { name: "hour", kind: ArgKind::Int { max: 23 } }, Arg { name: "minute", kind: ArgKind::Int { max: 59 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::alarm(int(a, "hour")?, int(a, "minute")?) },
     Tool { name: "call", doc: "phone call to a number or contact name (opens the dialer)", args: &[Arg { name: "who", kind: ArgKind::Text { max: 40 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::dial(text(a, "who")?) },
@@ -124,11 +124,14 @@ pub fn phone_mode() -> bool {
 
 /// The tools this device has: all of the registry on a computer; on a phone, the ones that work there plus its own.
 fn active() -> Vec<&'static Tool> {
-    if phone_mode() {
+    let all: Vec<&'static Tool> = if phone_mode() {
         REGISTRY.iter().filter(|t| ANDROID_COMMON.contains(&t.name)).chain(ANDROID_ONLY.iter()).collect()
     } else {
         REGISTRY.iter().collect()
-    }
+    };
+    // With internet access off the web tools are not offered: the small model picked them for anything it
+    // didn't recognise ("tell me more") and the answer was "internet access is off".
+    if crate::tools_ext::internet_on() { all } else { all.into_iter().filter(|t| !matches!(t.name, "web_search" | "web_fetch")).collect() }
 }
 
 /// The tool-use instructions given to the model, generated from the registry.
@@ -251,7 +254,9 @@ const ANDROID_EXAMPLES: &[(&str, &str)] = &[
     ("Make the screen dimmer, around 20%.", r#"[{"tool": "brightness", "args": {"level": 20}}]"#),
     ("Grab a screenshot.", r#"[{"tool": "screenshot", "args": {}}]"#),
     ("What Wi-Fi network am I connected to?", r#"[{"tool": "phone_read", "args": {"command": "cmd wifi status"}}]"#),
-    ("What is my IP address?", r#"[{"tool": "phone_read", "args": {"command": "ip -f inet addr show wlan0"}}]"#),
+    ("What is my IP address?", r#"[{"tool": "phone_read", "args": {"command": "ip -o addr"}}]"#),
+    ("Tell me about my internet connection.", r#"[{"tool": "phone_read", "args": {"command": "ip -o addr"}}, {"tool": "phone_read", "args": {"command": "ip route"}}]"#),
+    ("Do I have a VPN or WireGuard connection?", r#"[{"tool": "phone_read", "args": {"command": "ip -o addr"}}, {"tool": "phone_read", "args": {"command": "wg show"}}]"#),
     ("Turn on the flashlight.", r#"[{"tool": "flashlight", "args": {"state": "on"}}]"#),
     ("Wake me up at 7:30.", r#"[{"tool": "alarm", "args": {"hour": 7, "minute": 30}}]"#),
     ("Call Mum.", r#"[{"tool": "call", "args": {"who": "Mum"}}]"#),
@@ -1415,6 +1420,8 @@ mod tests {
     #[test]
     fn every_desktop_example_is_still_shown_to_the_planner() {
         // The phone filter must not silently drop a desktop example (that would change the prompt).
+        let _g = crate::TEST_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        crate::tools_ext::set_policy(crate::tools_ext::Policy { internet: true });
         let have = active();
         for (user, calls) in EXAMPLES.iter().chain(QWEN35_EXAMPLES) {
             let parsed: Vec<Value> = serde_json::from_str(calls).unwrap_or_else(|e| panic!("{user}: {e}"));
@@ -1424,6 +1431,8 @@ mod tests {
             let parsed: Vec<Value> = serde_json::from_str(calls).unwrap_or_else(|e| panic!("{user}: {e}"));
             assert!(parsed.iter().all(|c| ANDROID_ONLY.iter().any(|t| c["tool"] == t.name)), "{user}");
         }
+        crate::tools_ext::set_policy(crate::tools_ext::Policy { internet: false });
+        assert!(active().iter().all(|t| !matches!(t.name, "web_search" | "web_fetch")), "no web tools offered while internet is off");
     }
 
     use super::*;

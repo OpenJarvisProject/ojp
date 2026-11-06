@@ -27,6 +27,11 @@ pub fn set_policy(policy: Policy) {
     *POLICY.write().unwrap_or_else(|e| e.into_inner()) = policy;
 }
 
+/// Whether the web tools may be used (they are left out of the tool list when not, so the model doesn't pick them).
+pub fn internet_on() -> bool {
+    policy().internet
+}
+
 fn policy() -> Policy {
     *POLICY.read().unwrap_or_else(|e| e.into_inner())
 }

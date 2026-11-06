@@ -169,6 +169,8 @@ pub struct Engine {
     router_cache: Option<std::path::PathBuf>,
     main_cache: Option<std::path::PathBuf>,
     tools_saved: bool,
+    /// What the last lookups found, kept with the reply in the conversation so a follow-up ("you didn't tell me about X") can use it.
+    last_facts: Option<String>,
 }
 
 /// Progress through the start-up warm-up, shared with the callback each model calls after every batch.
@@ -402,6 +404,7 @@ impl Engine {
             router_cache,
             main_cache,
             tools_saved: tools_at_load,
+            last_facts: None,
         })
     }
 
@@ -496,7 +499,12 @@ impl Engine {
         } else {
             self.answer_with_memory(request, on_event)?
         };
-        self.history.push(ChatMessage::new(Role::Assistant, reply.clone()));
+        // Keep what a lookup found beside the reply: the next question may be about it.
+        let kept = match self.last_facts.take() {
+            Some(facts) if route == Route::DeviceControl => format!("{reply}\n[results: {facts}]"),
+            _ => reply.clone(),
+        };
+        self.history.push(ChatMessage::new(Role::Assistant, kept));
         Ok(reply)
     }
 
@@ -653,12 +661,13 @@ impl Engine {
         let mut text = if facts.is_empty() {
             acts.join(" ")
         } else {
+            self.last_facts = Some(facts.join("\n").chars().take(900).collect());
             let last = self.history.len() - 1;
             let done = if acts.is_empty() { String::new() } else { format!("Already done: {}\n", acts.join(" ")) };
             self.history[last] = ChatMessage::new(
                 Role::User,
                 format!(
-                    "{request}\n\n{done}[Looked up on this {}: {}]\n[Actually run: {}]\nAnswer in one or two short sentences using only that. Say only what was actually run: never claim that anything was tested, switched, opened or changed unless it is in that list, and if the request asked for more than was run, say which parts were not done. If the lookup does not contain what was asked, say what is missing; never write placeholders in brackets.{}",
+                    "{request}\n\n{done}[Looked up on this {}: {}]\n[Commands run: {}]\nAnswer the request from the results above: give the actual values (names, addresses, numbers, yes or no) instead of describing the commands, and cover every part of the request. If a part was not looked up or the results don't show it, say that part is unknown. Never claim that anything was tested, switched, opened or changed unless a command above did it. Be brief: at most five short lines. Mention only what appears in the results (skip the loopback interface lo); never explain, guess or invent details. Never write placeholders in brackets.{}",
                     if cfg!(target_os = "android") { "phone" } else { "computer" },
                     facts.join("\n"),
                     ran.join("; "),
