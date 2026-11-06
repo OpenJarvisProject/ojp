@@ -22,6 +22,15 @@ the common ones are answered from what Android gives any app (`tools_android::wi
 need Shizuku. Shizuku is a separate free app; start it once (wireless debugging, no PC needed on Android 11+), then
 Settings > Phone control > *Allow with Shizuku*. Nothing in OJP needs it.
 
+**Phone check:** Settings > Phone control > *Check what works* / *Full check* (or typing "test everything", "run a phone
+check") runs `tools_android::self_check`: every lookup, volume, flashlight, and with Shizuku the shell, app info,
+screenshot and (full check only) Wi-Fi, Bluetooth and airplane mode switched off and back to how they were. The report
+lists OK / FAILED / skipped per item and is saved as a chat message. The small model is not asked to plan this: given
+"test everything" it ran three steps and the answer sounded as if all were done. The answer step is also told what was
+actually run and not to claim anything else. A `phone_read` call whose command isn't a read-only lookup becomes an
+`adb_shell` call (asks first). *Copy chat* in a chat's three-dot menu puts the whole chat, with each reply's grey line, on
+the clipboard.
+
 **Running in the background:** Settings > Phone control > *Keep running in the background* (on by default) starts a
 foreground service (`KeepAliveService`, type `specialUse`, one silent low-priority notification with a Stop button).
 The Back button at the top of the app then moves the app to the background instead of closing it, so the loaded model

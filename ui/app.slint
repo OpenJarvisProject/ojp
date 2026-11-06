@@ -67,6 +67,7 @@ export global Chat {
     in-out property <string> current-chat;
     callback open-chat(string);
     callback delete-chat(string);
+    callback copy-chat(string);
 
     // While the model loads: 0..1, or negative when nothing is loading, and a line saying what it is doing.
     in-out property <float> load-progress: -1;
@@ -106,6 +107,8 @@ export global Settings {
     in-out property <bool> shizuku-supported: false;
     in-out property <string> shizuku-text;
     callback shizuku-action();
+    // Try every phone ability and put the report in the chat; true also switches Wi-Fi, Bluetooth and airplane mode off and on.
+    callback phone-check(bool);
     in-out property <bool> keep-alive;
     callback keep-alive-changed();
     // Whether the chosen model's files are on this device, with a button to fetch them.
@@ -703,6 +706,7 @@ component Sidebar inherits Rectangle {
     callback open-settings;
     callback rename-requested(string, string);
     callback delete-requested(string, string);
+    callback copy-requested(string);
     background: Palette.alternate-background;
 
     VerticalLayout {
@@ -778,6 +782,15 @@ component Sidebar inherits Rectangle {
                                     border-color: Palette.border;
                                     VerticalLayout {
                                         padding: 4px;
+                                        Rectangle {
+                                            height: 44px;
+                                            border-radius: Look.small;
+                                            background: copy-touch.pressed ? Palette.alternate-background : transparent;
+                                            Text { x: 12px; text: "Copy chat"; vertical-alignment: center; }
+                                            copy-touch := TouchArea {
+                                                clicked => { root.copy-requested(chat.id); }
+                                            }
+                                        }
                                         Rectangle {
                                             height: 44px;
                                             border-radius: Look.small;
@@ -1014,6 +1027,20 @@ component SettingsPage inherits Rectangle {
                     AppButton {
                         text: "Allow with Shizuku";
                         clicked => { Settings.shizuku-action(); }
+                    }
+                    AppButton {
+                        text: "Check what works";
+                        clicked => { Settings.phone-check(false); root.back(); }
+                    }
+                    AppButton {
+                        text: "Full check";
+                        clicked => { Settings.phone-check(true); root.back(); }
+                    }
+                    Text {
+                        text: "The check tries each ability and writes what worked in the chat. The full check also switches Wi-Fi, Bluetooth and airplane mode off and back on for a few seconds (Shizuku needed), so the connection drops briefly.";
+                        wrap: word-wrap;
+                        font-size: 0.85rem;
+                        opacity: 0.65;
                     }
                     Rectangle { height: 1px; background: Palette.border; opacity: 0.4; }
                 }
@@ -1436,6 +1463,7 @@ export component AppWindow inherits Window {
             width: root.wide ? root.docked-width : root.drawer-width;
             height: parent.height;
             close => { root.drawer-open = false; }
+            copy-requested(id) => { Chat.copy-chat(id); }
             rename-requested(id, title) => {
                 root.rename-text = title;
                 root.rename-id = id;

@@ -177,6 +177,11 @@ public final class PhoneActions {
                 else ctx().stopService(new Intent(ctx(), KeepAliveService.class));
                 return "";
             }
+            case "copy": {
+                android.content.ClipboardManager cm = (android.content.ClipboardManager) ctx().getSystemService(Context.CLIPBOARD_SERVICE);
+                activity.runOnUiThread(() -> cm.setPrimaryClip(android.content.ClipData.newPlainText("OpenJarvis chat", arg)));
+                return "";
+            }
             case "background":
                 activity.runOnUiThread(() -> activity.moveTaskToBack(true));
                 return "";
@@ -397,6 +402,18 @@ public final class PhoneActions {
             }
             case "version":
                 return "Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + "), security patch " + Build.VERSION.SECURITY_PATCH;
+            case "volume": {
+                AudioManager am = (AudioManager) c.getSystemService(Context.AUDIO_SERVICE);
+                return String.valueOf(Math.round(100f * am.getStreamVolume(AudioManager.STREAM_MUSIC) / am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)));
+            }
+            case "permissions": {
+                java.util.function.Function<String, String> g = n -> c.checkSelfPermission(n) == PackageManager.PERMISSION_GRANTED ? "allowed" : "not allowed";
+                return "notifications " + (Build.VERSION.SDK_INT < 33 ? "allowed" : g.apply("android.permission.POST_NOTIFICATIONS"))
+                        + ", contacts " + g.apply("android.permission.READ_CONTACTS")
+                        + ", location " + g.apply("android.permission.ACCESS_FINE_LOCATION")
+                        + ", modify system settings " + (Settings.System.canWrite(c) ? "allowed" : "not allowed")
+                        + ", background service " + (keepAlive(c) ? "on" : "off");
+            }
             case "uptime": {
                 long m = android.os.SystemClock.elapsedRealtime() / 60000;
                 return "up " + m / 1440 + " days, " + m / 60 % 24 + " hours, " + m % 60 + " minutes";

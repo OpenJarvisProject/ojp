@@ -561,6 +561,8 @@ impl Engine {
         const MAX_STEPS: usize = 5;
         let mut steps: Vec<tools::Step> = Vec::new();
         let mut acts: Vec<String> = Vec::new();
+        // What was actually run, so the answer can't claim more than that.
+        let mut ran: Vec<String> = Vec::new();
         let mut facts: Vec<String> = Vec::new();
         let mut failure: Option<String> = None;
         let mut ask_first: Option<String> = None;
@@ -587,6 +589,8 @@ impl Engine {
             let mut results = Vec::new();
             let mut explored = false;
             for call in fresh {
+                // A "lookup" that would change something is really a shell command: it goes through the asking tool.
+                let call = &tools::normalize(call);
                 // For another device: only what that device was allowed to ask for. Anything that needs a
                 // yes is put to the user of the device that asked (see `ask_for`), never done unasked.
                 if let Some(d) = &self.delegated
@@ -620,6 +624,7 @@ impl Engine {
                 match tools::run_call(call) {
                     Ok(o) => {
                         on_event(Event::Notice(format!("tool: {}", tools::describe_call(&o.call))));
+                        ran.push(tools::describe_call(&o.call));
                         if tools::writes_memory(&o.call) && std::env::var("OJP_TOOLS_DRY_RUN").is_err() {
                             self.refine_memory();
                             self.memory_changed();
@@ -653,9 +658,10 @@ impl Engine {
             self.history[last] = ChatMessage::new(
                 Role::User,
                 format!(
-                    "{request}\n\n{done}[Looked up on this {}: {}]\nAnswer in one or two short sentences using only that. If it does not contain what was asked, say what is missing; never write placeholders in brackets.{}",
+                    "{request}\n\n{done}[Looked up on this {}: {}]\n[Actually run: {}]\nAnswer in one or two short sentences using only that. Say only what was actually run: never claim that anything was tested, switched, opened or changed unless it is in that list, and if the request asked for more than was run, say which parts were not done. If the lookup does not contain what was asked, say what is missing; never write placeholders in brackets.{}",
                     if cfg!(target_os = "android") { "phone" } else { "computer" },
                     facts.join("\n"),
+                    ran.join("; "),
                     // Qwen3.5-based models paraphrased and invented numbers; this keeps them to the text.
                     if self.template.qwen35_tuned() { " Copy names and numbers exactly as written and add nothing." } else { "" }
                 ),

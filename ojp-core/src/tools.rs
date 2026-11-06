@@ -549,6 +549,17 @@ pub fn is_explore(call: &Value) -> bool {
     find(call).is_some_and(|t| t.explore)
 }
 
+/// A `phone_read` whose command isn't a read-only lookup is an `adb_shell` call (which asks the user first);
+/// the model often picks the lookup tool for "turn it off".
+pub fn normalize(call: &Value) -> Value {
+    if call["tool"] == "phone_read" && !crate::tools_android::is_lookup(call["args"]["command"].as_str().unwrap_or("")) {
+        let mut c = call.clone();
+        c["tool"] = Value::String("adb_shell".into());
+        return c;
+    }
+    call.clone()
+}
+
 /// If this call changes something that matters, a plain-words description of
 /// what it would do, to show the user before asking. `Err` if it can't be done at all.
 pub fn needs_confirmation(call: &Value) -> Option<Result<String>> {

@@ -234,6 +234,125 @@ fn without_shizuku(command: &str) -> Option<String> {
     })
 }
 
+/// Whether a typed request is asking for the phone check ("test everything", "run a phone check") rather than one
+/// action: the small model can't carry out a many-part test reliably (it did a few steps and reported as if all were
+/// done), so this is answered by [`self_check`]. `Some(true)` when the request also names switching things on and off.
+pub fn phone_check_request(request: &str) -> Option<bool> {
+    let r = request.to_lowercase();
+    let asks = r.contains("test") || r.contains("check") || r.contains("diagnos");
+    let broad = ["everything", "system access", "phone control", "phone check", "what works", "what you can do", "all your abilities", "all the tools", "all of it"]
+        .iter()
+        .any(|w| r.contains(w));
+    if !(asks && broad) {
+        return None;
+    }
+    let switches = ["everything", "full", "literally", "airplane", "bluetooth", "wifi", "wi-fi", "switch"].iter().any(|w| r.contains(w));
+    Some(switches)
+}
+
+/// Try the phone's abilities one by one and say plainly what worked, what failed and what was not tried.
+/// `switches` also flips Wi-Fi, Bluetooth and airplane mode off and back on (Shizuku only), restoring each.
+pub fn self_check(switches: bool) -> String {
+    use std::{thread::sleep, time::Duration};
+    let mut out = vec![format!("Phone check ({}):", if switches { "full, with switches" } else { "basic" })];
+    let mut line = |ok: Option<bool>, name: &str, what: String| {
+        let mark = match ok {
+            Some(true) => "**OK** ",
+            Some(false) => "**FAILED** ",
+            None => "skipped ",
+        };
+        // Paragraphs, not a list: a long list item doesn't wrap in the chat.
+        // Long unbroken words (the groups of `id`, paths) can't wrap and would make the chat wider than the screen.
+        let text: String = what.trim().replace('\n', " | ").replace(',', ", ").chars().take(160).collect();
+        out.push(format!("{mark}{name}: {text}"));
+    };
+    let mut info = |name: &str, topic: &str| match call("info", topic) {
+        Ok(t) => Some((name.to_string(), true, t)),
+        Err(e) => Some((name.to_string(), false, format!("{e:#}"))),
+    };
+    let mut results = Vec::new();
+    for (name, topic) in [
+        ("Wi-Fi", "wifi"), ("IP address", "ip"), ("storage", "storage"), ("Android version", "version"), ("phone model", "model"),
+        ("uptime", "uptime"), ("permissions", "permissions"), ("installed apps", "packages"), ("brightness setting", "setting\tsystem\tscreen_brightness"),
+    ] {
+        results.extend(info(name, topic));
+    }
+    line(Some(true), "Shizuku", shizuku_text());
+    match call("battery", "") {
+        Ok(t) => line(Some(true), "battery", t),
+        Err(e) => line(Some(false), "battery", format!("{e:#}")),
+    }
+    for (name, ok, text) in results {
+        let text = if name == "installed apps" { format!("{} launchable apps found", text.lines().count()) } else { text };
+        line(Some(ok), &name, text);
+    }
+    // Volume: read it and set the same value back (nothing audibly changes).
+    match call("info", "volume").and_then(|v| call("volume", v.trim())) {
+        Ok(_) => line(Some(true), "volume", "read the level and set it again".into()),
+        Err(e) => line(Some(false), "volume", format!("{e:#}")),
+    }
+    match call("flashlight", "on").and_then(|_| {
+        sleep(Duration::from_millis(if cfg!(test) { 0 } else { 700 }));
+        call("flashlight", "off")
+    }) {
+        Ok(_) => line(Some(true), "flashlight", "turned on, then off".into()),
+        Err(e) => {
+            let _ = call("flashlight", "off");
+            line(Some(false), "flashlight", format!("{e:#}"))
+        }
+    }
+    line(None, "alarm, call, text, open app, open settings page, reminders", "not run by the check: they open other apps or set real alarms".into());
+    if !has_shizuku() {
+        line(Some(false), "Wi-Fi/Bluetooth/airplane switches, screenshot, shell, app details", format!("need Shizuku: {}", shizuku_text()));
+    } else {
+        match shell("id") {
+            Ok(t) => line(Some(true), "shell (adb rights)", t),
+            Err(e) => line(Some(false), "shell (adb rights)", format!("{e:#}")),
+        }
+        match shell("pm list packages -3").map(|t| t.lines().count()) {
+            Ok(n) => line(Some(true), "other apps' info", format!("{n} user-installed apps listed")),
+            Err(e) => line(Some(false), "other apps' info", format!("{e:#}")),
+        }
+        match shell("dumpsys package com.android.settings | grep -E 'versionName|versionCode'") {
+            Ok(t) => line(Some(true), "one app's details (dumpsys package)", t),
+            Err(e) => line(Some(false), "one app's details (dumpsys package)", format!("{e:#}")),
+        }
+        let shot = format!("/sdcard/Pictures/jarvis-check-{}.png", crate::reminders::now());
+        match shell(&format!("screencap -p {} && ls -l {} && rm {}", quote(&shot), quote(&shot), quote(&shot))) {
+            Ok(t) => line(Some(true), "screenshot", format!("took one and removed it ({t})")),
+            Err(e) => line(Some(false), "screenshot", format!("{e:#}")),
+        }
+        if switches {
+            // (name, key that says whether it is on, off command, on command, seconds to settle)
+            for (name, key, off, on) in [
+                ("Wi-Fi", "wifi_on", "svc wifi disable", "svc wifi enable"),
+                ("Bluetooth", "bluetooth_on", "svc bluetooth disable", "svc bluetooth enable"),
+                ("airplane mode", "airplane_mode_on", "cmd connectivity airplane-mode enable", "cmd connectivity airplane-mode disable"),
+            ] {
+                let read = || shell(&format!("settings get global {key}")).map(|t| t.trim().to_string());
+                let before = read().unwrap_or_default();
+                let went = shell(off).and_then(|_| {
+                    sleep(Duration::from_secs(if cfg!(test) { 0 } else { 4 }));
+                    read()
+                });
+                // Always put it back, whatever happened.
+                let restore = if name == "airplane mode" { if before == "1" { off } else { on } } else if before == "1" { on } else { off };
+                let back = shell(restore).and_then(|_| {
+                    sleep(Duration::from_secs(if cfg!(test) { 0 } else { 5 }));
+                    read()
+                });
+                match (went, back) {
+                    (Ok(a), Ok(b)) => line(Some(true), name, format!("was {before}, after switching {a}, restored to {b}")),
+                    (a, b) => line(Some(false), name, format!("switching: {}, restoring: {}", a.map_or_else(|e| format!("{e:#}"), |v| v), b.map_or_else(|e| format!("{e:#}"), |v| v))),
+                }
+            }
+        } else {
+            line(None, "Wi-Fi, Bluetooth, airplane mode switching", "not run in the basic check (use the full check)".into());
+        }
+    }
+    out.join("\n\n")
+}
+
 /// Words for the Shizuku state, shown in Settings.
 pub fn shizuku_text() -> String {
     let manager = platform::shizuku_manager();
@@ -363,6 +482,37 @@ mod tests {
         let c = calls();
         assert!(c.contains(&("alarm".into(), "7\t5\t".into())) && c.contains(&("sms".into(), "Sam\tlate sorry".into())));
         uninstall();
+    }
+
+    #[test]
+    fn the_phone_check_reports_each_thing_and_restores_switches() {
+        let _g = crate::TEST_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        fake();
+        *REPLY.lock().unwrap() = Some("exit=0\n1".into());
+        let full = self_check(true);
+        assert!(full.contains("**OK** Wi-Fi: was 1") && full.contains("restored to"), "{full}");
+        assert!(full.contains("**OK** airplane mode") && full.contains("**OK** screenshot") && full.contains("skipped alarm"), "{full}");
+        let shells: Vec<String> = calls().into_iter().filter(|c| c.0 == "shell").map(|c| c.1).collect();
+        // Wi-Fi was on (1): switched off, then back on.
+        let off = shells.iter().position(|c| c == "svc wifi disable").unwrap();
+        assert!(shells[off..].iter().any(|c| c == "svc wifi enable"));
+        let airplane_on = shells.iter().position(|c| c == "cmd connectivity airplane-mode enable").unwrap();
+        assert!(shells[airplane_on..].iter().any(|c| c == "cmd connectivity airplane-mode disable") == false, "airplane was on, so it ends on: {shells:?}");
+        // Without Shizuku the switch checks say so instead of pretending.
+        *SHIZUKU.lock().unwrap() = "none";
+        let basic = self_check(false);
+        assert!(basic.contains("**FAILED** Wi-Fi/Bluetooth/airplane switches") && basic.contains("**OK** flashlight"), "{basic}");
+        uninstall();
+    }
+
+    #[test]
+    fn broad_test_requests_are_recognised() {
+        assert_eq!(phone_check_request("Test system access, so I can make sure you are working properly"), Some(false));
+        assert_eq!(phone_check_request("Test literally everything"), Some(true));
+        assert_eq!(phone_check_request("run a phone check"), Some(false));
+        assert_eq!(phone_check_request("Can you check what works without shizuku?"), Some(false));
+        assert_eq!(phone_check_request("check the battery"), None);
+        assert_eq!(phone_check_request("turn the wifi off"), None);
     }
 
     #[test]

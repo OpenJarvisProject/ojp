@@ -49,6 +49,18 @@ impl StoredChat {
         };
     }
 
+    /// The whole chat as plain text (with the grey line under each reply: tools used, timing), for pasting elsewhere.
+    pub fn transcript(&self, assistant: &str) -> String {
+        let mut out = format!("{}\n", if self.title.is_empty() { "Chat" } else { &self.title });
+        for m in &self.messages {
+            out.push_str(&format!("\n{}: {}\n", if m.from_user { "You" } else { assistant }, m.text.trim()));
+            if !m.meta.is_empty() {
+                out.push_str(&format!("({})\n", m.meta));
+            }
+        }
+        out
+    }
+
     pub fn touch(&mut self) {
         self.updated = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
     }
@@ -60,6 +72,7 @@ impl Default for StoredChat {
     }
 }
 
+#[derive(Clone)]
 pub struct ChatStore {
     dir: PathBuf,
     /// Unsent messages, one per chat (`new` for a chat that has no messages yet): `<data dir>/drafts.json`.
@@ -164,6 +177,15 @@ impl ChatStore {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn transcript_has_every_message_and_its_grey_line() {
+        let mut c = StoredChat::new();
+        c.title = "Wi-Fi".into();
+        c.messages.push(StoredMessage { from_user: true, text: "hi".into(), meta: String::new() });
+        c.messages.push(StoredMessage { from_user: false, text: "hello".into(), meta: "tool: x · 2 s".into() });
+        assert_eq!(c.transcript("Jarvis"), "Wi-Fi\n\nYou: hi\n\nJarvis: hello\n(tool: x · 2 s)\n");
+    }
+
     use super::*;
 
     fn msg(from_user: bool, text: &str) -> StoredMessage {

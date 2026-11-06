@@ -83,6 +83,25 @@ pub fn shell(command: &str) -> Result<String> {
     }
 }
 
+/// Put text on the clipboard: the phone's clipboard on Android, else `wl-copy` or `xclip` on a computer.
+pub fn copy_text(text: &str) -> Result<()> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    if available() {
+        call("copy", text)?;
+        return Ok(());
+    }
+    for (program, args) in [("wl-copy", &[][..]), ("xclip", &["-selection", "clipboard"][..])] {
+        let Ok(mut child) = Command::new(program).args(args).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() else { continue };
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(text.as_bytes());
+        }
+        // wl-copy and xclip stay alive to serve the clipboard; don't wait for them.
+        return Ok(());
+    }
+    bail!("copying needs wl-copy or xclip")
+}
+
 /// Single-quote `s` for `sh -c`.
 pub fn quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))

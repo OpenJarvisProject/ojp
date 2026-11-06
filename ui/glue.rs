@@ -33,6 +33,8 @@ enum Request {
     Devices,
     /// The Shizuku button in Settings.
     ShizukuAction,
+    /// Try every phone ability and write the report into the chat; true also flips the switches briefly.
+    PhoneCheck(bool),
     /// 0 this device, 1 a paired device's model if this one has none, 2 whenever reachable.
     Brain(i32),
     SetDevice { name: String, chat: bool, ask: i32, notify: bool, sync: bool },
@@ -101,6 +103,7 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
         unsafe { std::env::set_var("XDG_DATA_HOME", &setup.data_dir) };
     }
     let ui = AppWindow::new()?;
+    let assistant_name = setup.config.persona.name.clone();
     let chat = ui.global::<Chat>();
     chat.set_assistant_name(setup.config.persona.name.clone().into());
     let messages = Rc::new(VecModel::<Message>::default());
@@ -262,6 +265,21 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
         let send = send.clone();
         move |id| send(Request::OpenChat(id.into()))
     });
+    // Copy a whole saved chat to the clipboard. Not through the worker, which may be busy generating.
+    chat.on_copy_chat({
+        let (weak, store) = (ui.as_weak(), ChatStore::new(&data_dir));
+        let assistant = assistant_name.clone();
+        move |id| {
+            let (weak, store, assistant, id) = (weak.clone(), store.clone(), assistant.clone(), id.to_string());
+            std::thread::spawn(move || {
+                let note = match store.load(&id).map(|c| c.transcript(&assistant)).and_then(|t| ojp_core::platform::copy_text(&t).map(|_| t)) {
+                    Ok(text) => format!("Copied the chat ({} characters).", text.chars().count()),
+                    Err(e) => format!("Couldn't copy the chat: {e:#}"),
+                };
+                let _ = weak.upgrade_in_event_loop(move |ui| ui.global::<Chat>().set_status(note.into()));
+            });
+        }
+    });
     chat.on_delete_chat({
         let send = send.clone();
         move |id| send(Request::DeleteChat(id.into()))
@@ -289,6 +307,10 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     settings.on_pair_join({
         let (weak, send) = (ui.as_weak(), send.clone());
         move |code| pair_in_background(weak.clone(), send.clone(), Some(code.to_string()))
+    });
+    settings.on_phone_check({
+        let send = send.clone();
+        move |full| send(Request::PhoneCheck(full))
     });
     settings.on_shizuku_action({
         let send = send.clone();
@@ -977,6 +999,18 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                 }
                 Err(e) => push_message(&ui, format!("Couldn't open that chat: {e:#}"), "error"),
             },
+            Request::PhoneCheck(full) => {
+                set_state(&ui, true, Some("Checking what the phone lets me do…".into()));
+                let report = ojp_core::tools_android::self_check(full);
+                chat.messages.push(StoredMessage { from_user: true, text: if full { "Run the full phone check".into() } else { "Run the phone check".into() }, meta: String::new() });
+                chat.messages.push(StoredMessage { from_user: false, text: report, meta: "phone check".into() });
+                chat.refresh_title();
+                chat.touch();
+                let _ = store.save(&chat);
+                show_chat(&ui, &store, &chat);
+                refresh_list(&ui, &store, &chat);
+                set_state(&ui, false, Some(String::new()));
+            }
             Request::RenameChat(id, title) => {
                 if let Err(e) = store.rename(&id, &title) {
                     push_message(&ui, format!("Couldn't rename the chat: {e:#}"), "settings");
@@ -1073,6 +1107,24 @@ fn worker(mut setup: Setup, rx: mpsc::Receiver<Request>, ui: slint::Weak<AppWind
                     m.text = "No model is loaded yet. Use the Download button below first.".into();
                     m.meta = "".into();
                 });
+                set_state(&ui, false, None);
+            }
+            Request::Ask(text) if ojp_core::tools::phone_mode() && ojp_core::tools_android::phone_check_request(&text).is_some() => {
+                // "Test everything" is answered by the real check, not by a model guessing which steps to take.
+                let full = ojp_core::tools_android::phone_check_request(&text).unwrap_or(false);
+                set_stage(&ui, "Checking what the phone lets me do".into());
+                let report = ojp_core::tools_android::self_check(full);
+                let shown = report.clone();
+                edit_last(&ui, move |m| {
+                    m.text = shown.into();
+                    m.meta = "phone check".into();
+                });
+                chat.messages.push(StoredMessage { from_user: true, text, meta: String::new() });
+                chat.messages.push(StoredMessage { from_user: false, text: report, meta: "phone check".into() });
+                chat.refresh_title();
+                chat.touch();
+                let _ = store.save(&chat);
+                refresh_list(&ui, &store, &chat);
                 set_state(&ui, false, None);
             }
             Request::Ask(text) => {
