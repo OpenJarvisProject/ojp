@@ -224,7 +224,8 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     }
     let worker_tx = tx.clone();
     let (config_path, data_dir) = (setup.config_path.clone(), setup.data_dir.clone());
-    std::thread::spawn(move || worker(setup, rx, weak, worker_tx));
+    ojp_core::cpu::start_governor();
+    std::thread::Builder::new().name("ojp-worker".into()).spawn(move || worker(setup, rx, weak, worker_tx)).expect("worker thread");
 
     let send = move |request| {
         let _ = tx.send(request);
@@ -721,6 +722,8 @@ fn warm_up(engine: &mut Option<Engine>, ui: &slint::Weak<AppWindow>) {
     let Some(engine) = engine.as_mut() else { return };
     ojp_core::model::clear_stop();
     ojp_core::model::set_warming(true);
+    // Nobody asked for this: it steps aside (slow cores, fewer threads) while the phone is in use.
+    ojp_core::cpu::set_background(true);
     ojp_core::model::set_eval_hook(Some(Box::new({
         let ui = ui.clone();
         move |done, of| {
@@ -731,6 +734,7 @@ fn warm_up(engine: &mut Option<Engine>, ui: &slint::Weak<AppWindow>) {
     engine.warm_tools();
     ojp_core::model::set_eval_hook(None);
     ojp_core::model::set_warming(false);
+    ojp_core::cpu::set_background(false);
     ojp_core::model::clear_stop();
     // Only the line under the title: a message the user sent meanwhile has already made the app busy.
     let status = engine.status.join(" · ");

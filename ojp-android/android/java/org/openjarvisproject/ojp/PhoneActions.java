@@ -182,6 +182,14 @@ public final class PhoneActions {
                 activity.runOnUiThread(() -> cm.setPrimaryClip(android.content.ClipData.newPlainText("OpenJarvis chat", arg)));
                 return "";
             }
+            case "activity": {
+                // What the phone is doing: "app" (this app is in front), "phone" (another app is), "idle" (screen off).
+                android.os.PowerManager pm = (android.os.PowerManager) ctx().getSystemService(Context.POWER_SERVICE);
+                String a = !pm.isInteractive() ? "idle" : visible ? "app" : "phone";
+                if (Build.VERSION.SDK_INT >= 29 && pm.getCurrentThermalStatus() >= android.os.PowerManager.THERMAL_STATUS_MODERATE) a += " hot";
+                if (pm.isPowerSaveMode()) a += " saver";
+                return a;
+            }
             case "background":
                 activity.runOnUiThread(() -> activity.moveTaskToBack(true));
                 return "";

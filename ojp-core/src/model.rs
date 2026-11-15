@@ -247,6 +247,15 @@ impl Model {
         self.prefix_hint[seq as usize] = first[..common].to_vec();
     }
 
+    /// Put the calling thread (which makes llama.cpp's worker threads) on the cores that suit what the phone is doing
+    /// now, and use that many threads. See `cpu`.
+    fn tune(&mut self) {
+        if let Some(n) = crate::cpu::tune_current_thread(crate::cpu::current_mode()) {
+            // SAFETY: the context handle is valid for the lifetime of self.llama.
+            unsafe { llama_crab_sys::llama_set_n_threads(self.llama.context().raw_handle(), n, n) };
+        }
+    }
+
     /// Whether the memory can drop a sequence's newest tokens.
     fn can_rewind(llama: &mut Llama) -> bool {
         let Ok(tokens) = llama.model().tokenize("hello there, how are you", false, false) else { return true };
@@ -582,6 +591,7 @@ impl Model {
             if stop_requested() {
                 bail!(STOPPED);
             }
+            self.tune();
             // While warming up, small steps, so a message the user sends can cut it short within seconds.
             let step = if WARMING.load(std::sync::atomic::Ordering::Relaxed) { n_batch.min(64) } else { n_batch };
             let mut end = (start + step).min(tokens.len());
@@ -629,9 +639,12 @@ impl Model {
         // inside llama-crab's detokenize, which fails on output over 64
         // bytes (it treats llama.cpp's "buffer too small" as an error).
         let mut pending: Vec<LlamaToken> = Vec::new();
-        for _ in 0..max_tokens {
+        for step in 0..max_tokens {
             if stop_requested() {
                 break;
+            }
+            if step % 16 == 0 {
+                self.tune();
             }
             // SAFETY: the context handle is valid for the lifetime of
             // self.llama, and logits_idx indexes the last decoded batch.

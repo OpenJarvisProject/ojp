@@ -41,6 +41,14 @@ on a real phone, 16 tokens/s). Sending a message cuts the warm-up short within a
 The saved cache is no longer keyed on the app version (every update used to throw it away), and older caches of the same
 model are deleted.
 
+**Good neighbour (`cpu.rs`):** on a phone the model runs on the fast cores when the user is waiting for it or the screen is
+off, and background work (the tool-list warm-up; later, tasks the assistant starts itself) is kept on the slow cores with
+fewer threads while another app is in front, the phone is hot or battery saver is on. The user's own requests are never
+slowed. The phone's activity is read every 2 s (`PhoneActions "activity"`: app / phone / idle + hot, saver). Cores are told
+apart by `cpu_capacity` (else max frequency); on a computer it is off unless `OJP_GOVERNOR=1`. Each change is printed to the
+log as `[cpu] Fast|Polite: cores ..., threads N` (logcat tag RustStdoutStderr). A coming "do it ASAP" request would simply
+not be marked background.
+
 **Running in the background:** Settings > Phone control > *Keep running in the background* (on by default) starts a
 foreground service (`KeepAliveService`, type `specialUse`, one silent low-priority notification with a Stop button).
 The Back button at the top of the app then moves the app to the background instead of closing it, so the loaded model
