@@ -592,8 +592,9 @@ impl Model {
                 bail!(STOPPED);
             }
             self.tune();
-            // While warming up, small steps, so a message the user sends can cut it short within seconds.
-            let step = if WARMING.load(std::sync::atomic::Ordering::Relaxed) { n_batch.min(64) } else { n_batch };
+            // Small steps (64 tokens while warming up, else 128), so Stop and a message sent during the warm-up take effect
+            // within seconds: reading a long prompt is the slow part on a phone, and the stop flag is only seen between steps.
+            let step = if WARMING.load(std::sync::atomic::Ordering::Relaxed) { n_batch.min(64) } else { n_batch.min(128) };
             let mut end = (start + step).min(tokens.len());
             if let Some(at) = checkpoint_at.filter(|&at| start < at && at < end) {
                 end = at;

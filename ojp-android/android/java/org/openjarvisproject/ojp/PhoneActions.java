@@ -422,6 +422,7 @@ public final class PhoneActions {
                         + ", modify system settings " + (Settings.System.canWrite(c) ? "allowed" : "not allowed")
                         + ", background service " + (keepAlive(c) ? "on" : "off");
             }
+            case "net_check": return netCheck();
             case "uptime": {
                 long m = android.os.SystemClock.elapsedRealtime() / 60000;
                 return "up " + m / 1440 + " days, " + m / 60 % 24 + " hours, " + m % 60 + " minutes";
@@ -496,5 +497,81 @@ public final class PhoneActions {
         String speed = w.getLinkSpeed() <= 0 ? "" : ", link speed " + w.getLinkSpeed() + " Mbps";
         String freq = mhz <= 0 ? "" : ", " + band + " (" + mhz + " MHz)";
         return "Wi-Fi network " + name + freq + signal + speed + ", " + ip();
+    }
+
+    /** Facts about the active network and a few real tests through it, as key=value lines (see `tools_android::diagnose_internet`). */
+    private static String netCheck() {
+        Context c = ctx();
+        ConnectivityManager cm = (ConnectivityManager) c.getSystemService(Context.CONNECTIVITY_SERVICE);
+        StringBuilder sb = new StringBuilder();
+        Network n = cm.getActiveNetwork();
+        sb.append("airplane=").append(Settings.Global.getInt(c.getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0)).append('\n');
+        sb.append("private_dns_mode=").append(String.valueOf(Settings.Global.getString(c.getContentResolver(), "private_dns_mode"))).append('\n');
+        if (n == null) {
+            return sb.append("transport=none\n").toString();
+        }
+        NetworkCapabilities nc = cm.getNetworkCapabilities(n);
+        LinkProperties lp = cm.getLinkProperties(n);
+        String transport = "other";
+        if (nc != null) {
+            if (nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) transport = "wifi";
+            else if (nc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) transport = "mobile data";
+            else if (nc.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) transport = "ethernet";
+            else if (nc.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) transport = "vpn";
+        }
+        sb.append("transport=").append(transport).append('\n');
+        if (nc != null) {
+            sb.append("validated=").append(nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)).append('\n');
+            sb.append("captive=").append(nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)).append('\n');
+            sb.append("partial=").append(Build.VERSION.SDK_INT >= 28 && nc.hasCapability(24)).append('\n');
+        }
+        boolean vpn = false;
+        for (Network other : cm.getAllNetworks()) {
+            NetworkCapabilities oc = cm.getNetworkCapabilities(other);
+            if (oc != null && oc.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) vpn = true;
+        }
+        sb.append("vpn=").append(vpn).append('\n');
+        if (lp != null) {
+            StringBuilder addrs = new StringBuilder();
+            for (LinkAddress a : lp.getLinkAddresses()) {
+                if (a.getAddress() instanceof java.net.Inet4Address) addrs.append(a.getAddress().getHostAddress()).append(' ');
+            }
+            sb.append("address=").append(addrs.toString().trim()).append('\n');
+            String gateway = "none";
+            for (android.net.RouteInfo r : lp.getRoutes()) {
+                if (r.isDefaultRoute() && r.getGateway() != null && r.getGateway() instanceof java.net.Inet4Address) gateway = r.getGateway().getHostAddress();
+            }
+            sb.append("gateway=").append(gateway).append('\n');
+            StringBuilder dns = new StringBuilder();
+            for (java.net.InetAddress d : lp.getDnsServers()) dns.append(d.getHostAddress()).append(' ');
+            sb.append("dns_servers=").append(dns.toString().trim()).append('\n');
+            sb.append("private_dns_active=").append(Build.VERSION.SDK_INT >= 28 && lp.isPrivateDnsActive()).append('\n');
+            sb.append("private_dns_name=").append(Build.VERSION.SDK_INT >= 28 ? String.valueOf(lp.getPrivateDnsServerName()) : "null").append('\n');
+            sb.append("proxy=").append(lp.getHttpProxy() == null ? "none" : lp.getHttpProxy().toString()).append('\n');
+        }
+        // Real tests through this network, a few seconds each at most.
+        try {
+            n.getAllByName("example.com");
+            sb.append("dns_resolve=ok\n");
+        } catch (Throwable t) {
+            sb.append("dns_resolve=fail ").append(t.getClass().getSimpleName()).append('\n');
+        }
+        try (java.net.Socket sock = n.getSocketFactory().createSocket()) {
+            sock.connect(new java.net.InetSocketAddress("1.1.1.1", 443), 3000);
+            sb.append("tcp_ip=ok\n");
+        } catch (Throwable t) {
+            sb.append("tcp_ip=fail ").append(t.getClass().getSimpleName()).append('\n');
+        }
+        try {
+            java.net.HttpURLConnection h = (java.net.HttpURLConnection) n.openConnection(new java.net.URL("https://connectivitycheck.gstatic.com/generate_204"));
+            h.setInstanceFollowRedirects(false);
+            h.setConnectTimeout(3000);
+            h.setReadTimeout(3000);
+            sb.append("http_204=").append(h.getResponseCode()).append('\n');
+            h.disconnect();
+        } catch (Throwable t) {
+            sb.append("http_204=fail ").append(t.getClass().getSimpleName()).append('\n');
+        }
+        return sb.toString();
     }
 }

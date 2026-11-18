@@ -1,8 +1,9 @@
 # Next version: desktop hands (plan)
 
-Decisions (user, 2026-11-17): the brain stays **local only** (nothing is exposed to outside agents); the AI **sees the
-desktop as text** (window list + accessibility tree), no vision model yet; the first demo is a **dev loop in the
-background**. Target: the user's fht-compositor (branch `feat/touch-transient`, transient seats), on an aarch64 laptop
+Decisions (user, 2026-11-17, refined 2026-11-18): the brain stays **local only** (nothing is exposed to outside agents);
+the AI **sees the desktop as text**, no vision model yet; the first demo is a **dev loop in the background**. The
+**transient seat is the main way of acting** (it works in every app, which the accessibility tree does not): accessibility
+is only an optional helper for finding things. Target: the user's fht-compositor (branch `feat/touch-transient`, transient seats), on an aarch64 laptop
 that is short of RAM. Voice, morning brief and root support are not part of this version.
 
 ## The idea
@@ -28,11 +29,12 @@ look at; second best: capture of windows that aren't visible).
 and pointer, `click(x, y)`, `type(text)`, `key(combo)`, `scroll`, and clean shutdown (seats vanish with the process).
 Reuse the verified code of `/mnt/a/OJP/seat-test`. Tool: `open_app` already exists.
 
-**M2, seeing**: window list from the compositor IPC; the accessibility tree of a window over AT-SPI (role, name, state,
-bounds, children), found by role and name; the tree as short text for the model. AT-SPI's own actions (press a button,
-set a text field) are used first because they need no pointer at all; clicks by coordinates are the fallback.
-Known gap: apps that don't expose AT-SPI (many Electron apps, games, terminals like foot) give little; for the dev loop
-the shell tools cover the terminal anyway.
+**M2, seeing** (all apps, text only): the window list from the compositor IPC, then a screenshot of the window
+(screencopy) read by a small **OCR** that returns the words with their boxes (about 50-100 MB, no vision model). The
+model picks a label ("Save"); the code finds its box and clicks its centre through the seat. That covers every app,
+including Electron, games and terminals. Icons without text come later (template matching, or a small vision model).
+AT-SPI (the accessibility tree) stays an optional accelerator where an app exposes it: exact names, and button presses
+that need no pointer.
 
 **M3, tools for the planner** (six or so, the tool list costs prompt time): `list_windows`, `read_window`,
 `click_control`, `type_text`, `press_keys`, `scroll`, plus `run_recipe`. Each result is short text.
@@ -56,7 +58,8 @@ RAM: nothing here loads a second model; AT-SPI reading is small. The laptop keep
 
 ## Risks
 
-- AT-SPI coverage differs per app, so the tools say plainly when a window exposes nothing.
+- OCR misses small, stylised or icon-only controls, and costs a second or so per window read; the tools say plainly when
+  a label isn't found rather than clicking blindly.
 - The model's reliability: recipes carry the weight, free-form requests will fail more often.
 - The transient seat's rules (only visible windows) shape what "in the background" can mean until M0's workspace
   exists.

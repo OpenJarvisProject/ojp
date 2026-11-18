@@ -106,6 +106,7 @@ const ANDROID_ONLY: &[Tool] = &[
     Tool { name: "call", doc: "phone call to a number or contact name (opens the dialer)", args: &[Arg { name: "who", kind: ArgKind::Text { max: 40 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::dial(text(a, "who")?) },
     Tool { name: "text_message", doc: "write a text message (SMS) to a number or contact", args: &[Arg { name: "to", kind: ArgKind::Text { max: 40 } }, Arg { name: "message", kind: ArgKind::Text { max: 300 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::text_message(text(a, "to")?, text(a, "message")?) },
     Tool { name: "open_settings", doc: "open a page of the phone's settings", args: &[Arg { name: "page", kind: ArgKind::Choice(&["wifi", "bluetooth", "display", "sound", "battery", "storage", "apps", "location", "notifications", "accessibility", "about"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| crate::tools_android::open_settings(text(a, "page")?) },
+    Tool { name: "diagnose_internet", doc: "find out why the internet doesn't work or won't load (tests the connection step by step and names the likely cause)", args: &[], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |_| crate::tools_android::diagnose_internet() },
     Tool { name: "screenshot", doc: "take a screenshot of the screen", args: &[], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |_| crate::tools_android::screenshot() },
     Tool { name: "adb_shell", doc: "run any other shell command on the phone with adb permissions, for things that change something (asks the user first)", args: &[Arg { name: "command", kind: ArgKind::Text { max: 250 } }], kind: Kind::Act, risk: Risk::Confirm, explore: false, run: |a| crate::tools_android::adb_shell(text(a, "command")?) },
 ];
@@ -263,6 +264,10 @@ const ANDROID_EXAMPLES: &[(&str, &str)] = &[
     ("Phone 020 7946 0000.", r#"[{"tool": "call", "args": {"who": "020 7946 0000"}}]"#),
     ("Text Sam that I'm running late.", r#"[{"tool": "text_message", "args": {"to": "Sam", "message": "I'm running late"}}]"#),
     ("Open the Wi-Fi settings.", r#"[{"tool": "open_settings", "args": {"page": "wifi"}}]"#),
+    ("Why won't the internet load even though I'm on Wi-Fi?", r#"[{"tool": "diagnose_internet", "args": {}}]"#),
+    ("My connection is connected but nothing opens, find out why.", r#"[{"tool": "diagnose_internet", "args": {}}]"#),
+    ("Using Shizuku, see why the internet won't load.", r#"[{"tool": "diagnose_internet", "args": {}}]"#),
+    ("Using Shizuku, how many apps do I have installed?", r#"[{"tool": "phone_read", "args": {"command": "pm list packages -3"}}]"#),
     ("Which Android version is this?", r#"[{"tool": "phone_read", "args": {"command": "getprop ro.build.version.release"}}]"#),
     ("How much storage do I have left?", r#"[{"tool": "phone_read", "args": {"command": "df -h /sdcard"}}]"#),
     ("What is the screen brightness set to?", r#"[{"tool": "phone_read", "args": {"command": "settings get system screen_brightness"}}]"#),

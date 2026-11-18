@@ -229,6 +229,102 @@ pub fn phone_read(command: &str) -> Result<String> {
     Ok(if out.trim().is_empty() { "(the command printed nothing)".into() } else { shorten(&out) })
 }
 
+/// Find out why the internet doesn't work: real tests through the active network (see `PhoneActions.netCheck`), then
+/// plain rules say which step fails. The answer is the findings and the most likely cause, not a model's guess.
+pub fn diagnose_internet() -> Result<String> {
+    let raw = call("info", "net_check")?;
+    Ok(explain_internet(&raw))
+}
+
+/// Turn the `key=value` lines of the network check into findings and a likely cause.
+pub fn explain_internet(raw: &str) -> String {
+    let f: std::collections::HashMap<&str, &str> = raw.lines().filter_map(|l| l.split_once('=')).collect();
+    let get = |k: &str| f.get(k).copied().unwrap_or("?");
+    let ok = |k: &str| get(k) == "ok";
+    let mut out = Vec::new();
+    let transport = get("transport");
+    if transport == "none" {
+        let why = if get("airplane") == "1" { "Airplane mode is on." } else { "The phone isn't connected to any network (Wi-Fi or mobile data)." };
+        return format!("No network is active. {why}");
+    }
+    out.push(format!("Connection: {transport}, address {}, gateway {}", get("address"), get("gateway")));
+    out.push(format!("Android's own internet test: {}", match (get("validated"), get("captive"), get("partial")) {
+        ("true", ..) => "passed".to_string(),
+        (_, "true", _) => "FAILED (a login page is required)".to_string(),
+        (_, _, "true") => "FAILED (only partly connected)".to_string(),
+        _ => "FAILED (no internet detected)".to_string(),
+    }));
+    out.push(format!("Name lookup (example.com): {}", if ok("dns_resolve") { "works".to_string() } else { format!("FAILS ({})", get("dns_resolve")) }));
+    out.push(format!("Reaching the internet by address (1.1.1.1): {}", if ok("tcp_ip") { "works".to_string() } else { format!("FAILS ({})", get("tcp_ip")) }));
+    let code = get("http_204");
+    // A sign-in page that takes over secure connections shows up as a certificate or handshake error.
+    let intercepted = code.starts_with("fail") && ["SSL", "Certificate", "CertPath", "Handshake"].iter().any(|w| code.contains(w));
+    out.push(format!("Web check (secure): {}", match code {
+        "204" => "works".to_string(),
+        "301" | "302" | "303" | "307" | "200" => format!("got a web page instead of the expected answer (code {code})"),
+        _ if intercepted => "the connection is being intercepted (certificate error)".to_string(),
+        other => format!("FAILS ({other})"),
+    }));
+    let dns_mode = get("private_dns_mode");
+    let dns_shown = if dns_mode == "null" || dns_mode == "?" { "automatic" } else { dns_mode };
+    out.push(format!("Private DNS: {dns_shown}{}", if get("private_dns_name") != "null" && get("private_dns_name") != "?" { format!(" ({})", get("private_dns_name")) } else { String::new() }));
+    if get("proxy") != "none" && get("proxy") != "?" {
+        out.push(format!("Proxy: {}", get("proxy")));
+    }
+    if get("vpn") == "true" {
+        out.push("A VPN is active".into());
+    }
+    let web_page = matches!(code, "301" | "302" | "303" | "307" | "200") || intercepted;
+    let web_ok = code == "204";
+    let cause = if get("captive") == "true" || web_page {
+        "A sign-in page (captive portal) probably has to be passed first: open the browser and load any plain http page to get it, or accept the network's terms."
+    } else if get("proxy") != "none" && get("proxy") != "?" {
+        "A proxy is set for this network and may be wrong or unreachable: remove it in the Wi-Fi network's settings."
+    } else if ok("tcp_ip") && !ok("dns_resolve") && dns_mode == "hostname" {
+        "Names don't resolve although the internet is reachable by address, and Private DNS is set to a fixed server. Work and public networks often block it: set Private DNS to Off or Automatic (Settings > Network & internet > Private DNS)."
+    } else if ok("tcp_ip") && !ok("dns_resolve") {
+        "Names don't resolve although the internet is reachable by address: the network's DNS server isn't answering. Try another DNS (Private DNS), or ask the network's owner."
+    } else if !ok("tcp_ip") && ok("dns_resolve") {
+        "Names resolve but connections are refused or time out: a firewall on the network is probably blocking them."
+    } else if !ok("tcp_ip") && !ok("dns_resolve") && get("gateway") == "none" {
+        "The phone has no gateway: it joined the network but got no usable address (DHCP). Forget the network and join again, or try another network."
+    } else if !ok("tcp_ip") && !ok("dns_resolve") {
+        "The network is joined but passes nothing to the internet: the router's own connection may be down, or the network needs a login or allows only registered devices."
+    } else if !web_ok {
+        "The address and name tests pass but the secure web test fails: a proxy, filter or firewall on the network is probably stopping web traffic, or the connection is very slow."
+    } else if get("validated") != "true" {
+        "The tests pass but Android hasn't marked the network as working yet: turn Wi-Fi off and on, or wait a moment."
+    } else {
+        "Everything works from here, so the problem is probably one app or website, not the connection."
+    };
+    out.push(format!("Most likely cause: {cause}"));
+    out.join("\n")
+}
+
+/// Whether the request asks why the internet doesn't work ("see why the internet refuses to load"). Answered by
+/// `diagnose_internet` directly, without the model choosing: the 2B model picked `ping wikipedia` for it.
+pub fn wants_internet_diagnosis(request: &str) -> bool {
+    let r = request.to_lowercase();
+    let has = |words: &[&str]| words.iter().any(|w| r.contains(w));
+    let about = has(&["internet", "wifi", "wi-fi", "website", "online", "connection", "network"]);
+    let asks = has(&["why", "find out", "diagnos", "troubleshoot", "figure out", "what's wrong", "whats wrong", "what is wrong"]);
+    let broken = has(&["won't", "wont", "refuse", "not work", "doesn't", "doesnt", "isn't", "isnt", "no internet", "can't", "cant", "cannot", "fail", "broken", "nothing", "stuck", "not load", "slow", "wrong"]);
+    about && asks && broken
+}
+
+/// Whether a request is plainly about this phone (so it is done with the phone's tools, not answered from general
+/// knowledge). The small model's router sent "using shizuku, see why the internet refuses to load" to the coding route.
+pub fn phone_task(request: &str) -> bool {
+    let r = request.to_lowercase();
+    let has = |words: &[&str]| words.iter().any(|w| r.contains(w));
+    if has(&["shizuku", "adb "]) {
+        return true;
+    }
+    let thing = has(&["wifi", "wi-fi", "bluetooth", "airplane mode", "mobile data", "my internet", "internet connection", "the internet", "brightness", "flashlight", "battery", "storage", "my ip", "vpn", "wireguard", "installed apps", "my phone", "this phone"]);
+    let ask = has(&["my ", "this phone", "see why", "find out why", "diagnos", "fix", "turn ", "check", "tell me", "is it", "am i", "why is", "why does", "why won't", "refuses", "doesn't", "not work"]);
+    thing && ask
+}
+
 /// Which `PhoneActions.info` topic answers a lookup command, for when Shizuku isn't there.
 fn without_shizuku(command: &str) -> Option<String> {
     let words: Vec<&str> = command.split_whitespace().collect();
@@ -589,6 +685,49 @@ mod tests {
         assert!(short.contains("[167 lines in total") && short.lines().count() <= 27, "{short}");
         assert_eq!(shorten("one line"), "one line");
         assert_eq!(shorten("a\nb"), "a\nb\n[2 lines in total]");
+    }
+
+    #[test]
+    fn the_internet_diagnosis_names_the_failing_step() {
+        let base = "airplane=0\nprivate_dns_mode=off\ntransport=wifi\nvalidated=true\ncaptive=false\npartial=false\nvpn=false\naddress=10.0.0.5\ngateway=10.0.0.1\nproxy=none\nprivate_dns_name=null\ndns_resolve=ok\ntcp_ip=ok\nhttp_204=204\n";
+        assert!(explain_internet(base).contains("Everything works from here"));
+        let dns = base.replace("dns_resolve=ok", "dns_resolve=fail UnknownHostException").replace("private_dns_mode=off", "private_dns_mode=hostname").replace("validated=true", "validated=false");
+        let said = explain_internet(&dns);
+        assert!(said.contains("Private DNS is set to a fixed server") && said.contains("FAILED (no internet detected)"), "{said}");
+        let intercepted = base.replace("http_204=204", "http_204=fail SSLHandshakeException");
+        assert!(explain_internet(&intercepted).contains("captive portal") && explain_internet(&intercepted).contains("intercepted"));
+        let blocked_web = base.replace("http_204=204", "http_204=fail SocketTimeoutException");
+        assert!(explain_internet(&blocked_web).contains("secure web test fails"));
+        let portal = base.replace("http_204=204", "http_204=302").replace("tcp_ip=ok", "tcp_ip=fail SocketTimeoutException");
+        assert!(explain_internet(&portal).contains("captive portal"));
+        let proxy = base.replace("proxy=none", "proxy=[10.0.0.9] 3128 ()");
+        assert!(explain_internet(&proxy).contains("proxy"));
+        let firewall = base.replace("tcp_ip=ok", "tcp_ip=fail SocketTimeoutException").replace("http_204=204", "http_204=fail SocketTimeoutException");
+        assert!(explain_internet(&firewall).contains("firewall"));
+        assert!(explain_internet("airplane=1\nprivate_dns_mode=off\ntransport=none\n").contains("Airplane mode is on"));
+        let nogw = base.replace("gateway=10.0.0.1", "gateway=none").replace("tcp_ip=ok", "tcp_ip=fail X").replace("dns_resolve=ok", "dns_resolve=fail X").replace("http_204=204", "http_204=fail X");
+        assert!(explain_internet(&nogw).contains("no gateway"));
+    }
+
+    #[test]
+    fn internet_trouble_requests_are_recognised() {
+        assert!(wants_internet_diagnosis("Using shizuku, even though it says I am connected to the internet via WiFi, see why the internet refuses to load stuff at all"));
+        assert!(wants_internet_diagnosis("why won't my wifi work"));
+        assert!(wants_internet_diagnosis("find out what is wrong with my connection"));
+        assert!(!wants_internet_diagnosis("tell me about my internet connection"));
+        assert!(!wants_internet_diagnosis("why is the sky blue"));
+        assert!(!wants_internet_diagnosis("what wifi am i on"));
+    }
+
+    #[test]
+    fn plainly_phone_requests_are_recognised() {
+        assert!(phone_task("Using shizuku, even though it says I am connected to the internet via WiFi, see why the internet refuses to load stuff at all"));
+        assert!(phone_task("why is my wifi not working"));
+        assert!(phone_task("check my battery"));
+        assert!(phone_task("tell me my ip address"));
+        assert!(!phone_task("what is the capital of France"));
+        assert!(!phone_task("write a poem about the internet"));
+        assert!(!phone_task("what is wifi"));
     }
 
     #[test]

@@ -510,6 +510,13 @@ impl Engine {
 
     fn route(&mut self, request: &str, on_event: &mut dyn FnMut(Event)) -> Route {
         let start = Instant::now();
+        // A request that is plainly about this phone is done with the phone's tools; the small router had sent
+        // "using shizuku, see why the internet refuses to load" to the coding route (and got a generic guide).
+        if tools::phone_mode() && crate::tools_android::phone_task(request) {
+            self.route_hidden = None;
+            on_event(Event::Routed { route: Route::DeviceControl, ms: 0 });
+            return Route::DeviceControl;
+        }
         // A probe-equipped router is the most accurate and the fastest classifier
         // (98% on held-out requests). Without one, the in-process main model, when
         // loaded, is far more accurate than the small router answering for itself
@@ -567,6 +574,19 @@ impl Engine {
     /// answering model from the findings (shown as-is if that fails).
     fn use_tool(&mut self, request: &str, on_event: &mut dyn FnMut(Event)) -> Result<String> {
         const MAX_STEPS: usize = 5;
+        // "Why won't the internet load": a fixed, tested diagnosis, not the model's choice of commands.
+        if tools::phone_mode() && crate::tools_android::wants_internet_diagnosis(request) {
+            let call = serde_json::json!({"tool": "diagnose_internet", "args": {}});
+            let text = match tools::run_call(&call) {
+                Ok(o) => {
+                    on_event(Event::Notice(format!("tool: {}", tools::describe_call(&o.call))));
+                    o.text
+                }
+                Err(e) => format!("Couldn't do that: {e:#}"),
+            };
+            on_event(Event::Token(text.clone()));
+            return Ok(text);
+        }
         let mut steps: Vec<tools::Step> = Vec::new();
         let mut acts: Vec<String> = Vec::new();
         // What was actually run, so the answer can't claim more than that.
