@@ -395,26 +395,31 @@ component Bubble inherits Rectangle {
         }
         if !message.from-user && message.blocks.length > 0: VerticalLayout {
             spacing: 6px;
-            for block in message.blocks: VerticalLayout {
-                if !block.is-math: StyledText {
+            // Each block is a row with an explicit height taken from the text laid out at the row's own width: a wrapped
+            // text inside nested layouts reports a height for the wrong width, and the bubble of a long reply with a
+            // formula ended halfway through the text (and the list could not be scrolled to the end).
+            for block in message.blocks: Rectangle {
+                // Rendered at twice the logical size; shrinks (keeping its proportions) if the bubble is narrower.
+                property <length> shown-width: min(block.image.width * 0.5px, self.width);
+                height: block.is-math ? self.shown-width * block.image.height / max(block.image.width, 1) : txt.preferred-height;
+                txt := StyledText {
+                    x: 0px;
+                    y: 0px;
+                    width: parent.width;
+                    visible: !block.is-math;
                     text: block.text;
                     default-color: Palette.foreground;
                     link-color: Palette.accent-background;
+                    default-font-size: block.is-math ? 1px : 16px;
                 }
-                if block.is-math: Rectangle {
-                    // Rendered at twice the logical size; shrinks (keeping
-                    // its proportions) if the bubble is narrower.
-                    property <length> shown-width: min(block.image.width * 0.5px, self.width);
-                    height: self.shown-width * block.image.height / max(block.image.width, 1);
-                    Image {
-                        x: 0px;
-                        y: 0px;
-                        width: parent.shown-width;
-                        height: parent.height;
-                        source: block.image;
-                        colorize: Palette.foreground;
-                        image-fit: contain;
-                    }
+                if block.is-math: Image {
+                    x: 0px;
+                    y: 0px;
+                    width: parent.shown-width;
+                    height: parent.height;
+                    source: block.image;
+                    colorize: Palette.foreground;
+                    image-fit: contain;
                 }
             }
         }

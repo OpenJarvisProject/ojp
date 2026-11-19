@@ -227,7 +227,12 @@ pub fn run(mut setup: Setup) -> anyhow::Result<()> {
     ojp_core::cpu::start_governor();
     std::thread::Builder::new().name("ojp-worker".into()).spawn(move || worker(setup, rx, weak, worker_tx)).expect("worker thread");
 
-    let send = move |request| {
+    let send = move |request: Request| {
+        // Anything the user does (opening a chat, a new chat, settings) cuts the background warm-up short instead of
+        // waiting behind it; only the periodic device check doesn't.
+        if !matches!(request, Request::Devices) {
+            ojp_core::model::request_stop_if_warming();
+        }
         let _ = tx.send(request);
     };
     // Messages typed while the assistant is busy wait in this list and go out one after another.
@@ -469,6 +474,10 @@ fn blocks(text: &str) -> ModelRc<Block> {
         match segment {
             Segment::Text(t) if t.trim().is_empty() => {}
             Segment::Text(t) => blocks.push(Block { text: render(&t), image: Default::default(), is_math: false }),
+            // A command or address in \[ ... \] (the model uses it for code) is not a formula.
+            Segment::Display(latex) if latex.contains("://") || latex.contains('<') || latex.contains('>') => {
+                blocks.push(Block { text: render(&format!("`{}`", latex.trim())), image: Default::default(), is_math: false })
+            }
             Segment::Display(latex) => match formula_image(&latex) {
                 Some(image) => {
                     any_image = true;
