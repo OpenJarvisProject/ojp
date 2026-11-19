@@ -90,6 +90,11 @@ const REGISTRY: &[Tool] = &[
     Tool { name: "tags_list", doc: "show the tags that memories are filed under", args: &[], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |_| tags_list() },
     Tool { name: "tag_add", doc: "add a memory tag, or more words for one; words are separated by commas", args: &[Arg { name: "name", kind: ArgKind::Text { max: 24 } }, Arg { name: "words", kind: ArgKind::Text { max: 120 } }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| tag_add(text(a, "name")?, text(a, "words")?) },
     Tool { name: "forget", doc: "remove something that is remembered about the user (asks first)", args: &[Arg { name: "query", kind: ArgKind::Text { max: 80 } }], kind: Kind::Act, risk: Risk::Confirm, explore: false, run: |a| forget(text(a, "query")?) },
+    Tool { name: "list_windows", doc: "list the windows that are open (number, app, title)", args: &[], kind: Kind::Read, risk: Risk::Safe, explore: true, run: |_| desk_windows() },
+    Tool { name: "click_window", doc: "click inside a window at x,y pixels from its top-left corner, with the assistant's own mouse (asks first)", args: &[Arg { name: "window", kind: ArgKind::Text { max: 40 } }, Arg { name: "x", kind: ArgKind::Int { max: 8000 } }, Arg { name: "y", kind: ArgKind::Int { max: 8000 } }], kind: Kind::Act, risk: Risk::Confirm, explore: false, run: |a| desk_click(text(a, "window")?, int(a, "x")?, int(a, "y")?) },
+    Tool { name: "type_text", doc: "type text with the assistant's own keyboard into the window it clicked last (asks first)", args: &[Arg { name: "text", kind: ArgKind::Text { max: 300 } }], kind: Kind::Act, risk: Risk::Confirm, explore: false, run: |a| desk_type(text(a, "text")?) },
+    Tool { name: "press_keys", doc: "press keys such as ctrl+s or Return in the window it clicked last (asks first)", args: &[Arg { name: "keys", kind: ArgKind::Text { max: 30 } }], kind: Kind::Act, risk: Risk::Confirm, explore: false, run: |a| desk_keys(text(a, "keys")?) },
+    Tool { name: "scroll_window", doc: "scroll a window down or up", args: &[Arg { name: "window", kind: ArgKind::Text { max: 40 } }, Arg { name: "direction", kind: ArgKind::Choice(&["down", "up"]) }], kind: Kind::Act, risk: Risk::Safe, explore: false, run: |a| desk_scroll(text(a, "window")?, text(a, "direction")? == "down") },
     Tool { name: "notes_list", doc: "show the saved notes", args: &[], kind: Kind::Read, risk: Risk::Safe, explore: false, run: |_| notes_list() },
 ];
 
@@ -223,6 +228,13 @@ const EXAMPLES: &[(&str, &str)] = &[
     ("Is my laptop charged?", r#"[{"tool": "system_status", "args": {}}]"#),
     ("Which track is on?", r#"[{"tool": "now_playing", "args": {}}]"#),
     ("What did I copy?", r#"[{"tool": "clipboard", "args": {}}]"#),
+    ("Click at 200, 120 in the browser window.", r#"[{"tool": "click_window", "args": {"window": "browser", "x": 200, "y": 120}}]"#),
+    ("Type hello world.", r#"[{"tool": "type_text", "args": {"text": "hello world"}}]"#),
+    ("Press control S.", r#"[{"tool": "press_keys", "args": {"keys": "ctrl+s"}}]"#),
+    ("Press Ctrl+C.", r#"[{"tool": "press_keys", "args": {"keys": "ctrl+c"}}]"#),
+    ("Hit alt tab.", r#"[{"tool": "press_keys", "args": {"keys": "alt+tab"}}]"#),
+    ("Which windows do I have open?", r#"[{"tool": "list_windows", "args": {}}]"#),
+    ("Scroll down in the browser.", r#"[{"tool": "scroll_window", "args": {"window": "browser", "direction": "down"}}]"#),
     ("Locate my vacation photos.", r#"[{"tool": "find_files", "args": {"query": "vacation"}}]"#),
     ("Remind me to stretch in 30 minutes.", r#"[{"tool": "remind", "args": {"minutes": 30, "text": "stretch"}}]"#),
     ("What reminders do I have?", r#"[{"tool": "reminders_list", "args": {}}]"#),
@@ -586,6 +598,9 @@ pub fn needs_confirmation(call: &Value) -> Option<Result<String>> {
         "write_file" => ext::write_plan(args["path"].as_str().unwrap_or(""), args["text"].as_str().unwrap_or("")),
         "run_command" => Ok(format!("run this command in your home folder: {}", args["command"].as_str().unwrap_or(""))),
         "adb_shell" => Ok(format!("run this on the phone with adb permissions: {}", args["command"].as_str().unwrap_or(""))),
+        "click_window" => Ok(format!("click at ({}, {}) in the window {:?} with my own mouse (yours doesn't move)", args["x"], args["y"], args["window"].as_str().unwrap_or(""))),
+        "type_text" => Ok(format!("type {:?} with my own keyboard (yours isn't used)", args["text"].as_str().unwrap_or(""))),
+        "press_keys" => Ok(format!("press {} with my own keyboard (yours isn't used)", args["keys"].as_str().unwrap_or(""))),
         "forget" => crate::memory::forget_matches(args["query"].as_str().unwrap_or("")).and_then(|m| {
             if m.len() > 5 {
                 anyhow::bail!("that matches {} memories; be more specific", m.len());
@@ -712,6 +727,11 @@ const COMMANDS: &[(&str, &str, Option<&str>)] = &[
     ("tags", "tags_list", None),
     ("tag", "tag_add", None),
     ("fetch", "web_fetch", None),
+    ("windows", "list_windows", None),
+    ("click", "click_window", None),
+    ("typetext", "type_text", None),
+    ("keys", "press_keys", None),
+    ("scroll", "scroll_window", None),
 ];
 
 /// The list of typed commands, for `/help`.
@@ -790,6 +810,48 @@ pub fn command(line: &str) -> Option<Result<Vec<Value>, String>> {
 /// Names of all tools, for tests and `ojp-cli`.
 pub fn names() -> Vec<&'static str> {
     active().into_iter().map(|t| t.name).collect()
+}
+
+// The assistant's hands on the desktop (see `desktop`); only on Linux.
+#[cfg(target_os = "linux")]
+fn desk_windows() -> Result<String> {
+    crate::desktop::list_windows()
+}
+#[cfg(target_os = "linux")]
+fn desk_click(window: &str, x: u64, y: u64) -> Result<String> {
+    crate::desktop::click(window, x as i32, y as i32, crate::desktop::seat::Button::Left, 1)
+}
+#[cfg(target_os = "linux")]
+fn desk_type(text: &str) -> Result<String> {
+    crate::desktop::type_text(text)
+}
+#[cfg(target_os = "linux")]
+fn desk_keys(keys: &str) -> Result<String> {
+    crate::desktop::press_keys(keys)
+}
+#[cfg(target_os = "linux")]
+fn desk_scroll(window: &str, down: bool) -> Result<String> {
+    crate::desktop::scroll(window, if down { 5 } else { -5 })
+}
+#[cfg(not(target_os = "linux"))]
+fn desk_windows() -> Result<String> {
+    bail!("controlling the desktop needs Linux with fht-compositor")
+}
+#[cfg(not(target_os = "linux"))]
+fn desk_click(_: &str, _: u64, _: u64) -> Result<String> {
+    desk_windows()
+}
+#[cfg(not(target_os = "linux"))]
+fn desk_type(_: &str) -> Result<String> {
+    desk_windows()
+}
+#[cfg(not(target_os = "linux"))]
+fn desk_keys(_: &str) -> Result<String> {
+    desk_windows()
+}
+#[cfg(not(target_os = "linux"))]
+fn desk_scroll(_: &str, _: bool) -> Result<String> {
+    desk_windows()
 }
 
 fn int(args: &Value, key: &str) -> Result<u64> {
@@ -1610,6 +1672,17 @@ mod tests {
         assert_eq!(edit_distance("firefox", "fierfox"), 2);
         assert_eq!(edit_distance("brave", "brave"), 0);
         assert_eq!(edit_distance("", "abc"), 3);
+    }
+
+    #[test]
+    fn desktop_input_asks_first_and_says_what_it_will_do() {
+        let click = json!({"tool": "click_window", "args": {"window": "notes", "x": 10, "y": 20}});
+        let said = needs_confirmation(&click).expect("clicking needs a yes").unwrap();
+        assert!(said.contains("(10, 20)") && said.contains("notes") && said.contains("my own mouse"), "{said}");
+        let typed = needs_confirmation(&json!({"tool": "type_text", "args": {"text": "hi"}})).expect("typing needs a yes").unwrap();
+        assert!(typed.contains("\"hi\"") && typed.contains("own keyboard"), "{typed}");
+        assert!(needs_confirmation(&json!({"tool": "list_windows", "args": {}})).is_none());
+        assert!(needs_confirmation(&json!({"tool": "scroll_window", "args": {"window": "x", "direction": "down"}})).is_none());
     }
 
     #[test]

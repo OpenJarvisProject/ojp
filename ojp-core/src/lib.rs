@@ -8,6 +8,8 @@ pub mod chats;
 pub mod config;
 pub mod cpu;
 pub mod dsp;
+#[cfg(target_os = "linux")]
+pub mod desktop;
 pub mod download;
 pub mod engine;
 pub mod format;

@@ -17,6 +17,11 @@ A small model can't read a screen and aim a mouse. So the code does the aiming a
 No MCP server for now (nothing outside should drive it); the tools are plain Rust tools in the same registry as the
 phone's. An MCP *client* for light offline servers stays on the list for later.
 
+## Status
+
+M1 (seat session) and the first part of M3 (list/click/type/keys/scroll tools, confirmations) are in; see
+`desktop-control.md`. Next: M2 (OCR seeing), M4 (recipes), M5, M6.
+
 ## Milestones
 
 **M0, needed from the compositor session** (not OJP work): transient seat stable (the crash from seat-test fixed); IPC

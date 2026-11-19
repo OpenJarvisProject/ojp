@@ -380,6 +380,38 @@ fn main() -> anyhow::Result<()> {
                 println!("{}: {}", item.role, item.dest.display());
             }
         }
+        #[cfg(target_os = "linux")]
+        Some("desk") => {
+            // Drive the desktop on the assistant's own seat. Commands, one per line on standard input (all in one
+            // session, so keyboard focus carries over): `windows`, `click <window> <x> <y> [times]`, `type <text>`,
+            // `key <combo>`, `scroll <window> <amount>`. For testing the transient seat without a model.
+            use ojp_core::desktop;
+            for line in std::io::stdin().lines().map_while(Result::ok) {
+                let line = line.trim_end().to_string();
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let (cmd, rest) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+                let words: Vec<&str> = rest.split_whitespace().collect();
+                let result = match (cmd, words.as_slice()) {
+                    ("windows", _) => desktop::list_windows(),
+                    ("click", [w, x, y]) => desktop::click(w, x.parse()?, y.parse()?, desktop::seat::Button::Left, 1),
+                    ("click", [w, x, y, n]) => desktop::click(w, x.parse()?, y.parse()?, desktop::seat::Button::Left, n.parse()?),
+                    ("type", _) => desktop::type_text(rest),
+                    ("key", _) => desktop::press_keys(rest),
+                    ("scroll", [w, n]) => desktop::scroll(w, n.parse()?),
+                    ("sleep", [ms]) => {
+                        std::thread::sleep(std::time::Duration::from_millis(ms.parse()?));
+                        Ok(String::new())
+                    }
+                    _ => Err(anyhow::anyhow!("unknown command {line:?}")),
+                };
+                match result {
+                    Ok(text) => println!("ok: {text}"),
+                    Err(e) => println!("error: {e:#}"),
+                }
+            }
+        }
         Some("plan") => {
             // The tool call the planner picks for each request read from standard input (one per line); nothing runs.
             // OJP_PHONE_TOOLS=1 uses the phone's tool list.
